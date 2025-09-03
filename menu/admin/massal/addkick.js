@@ -193,20 +193,18 @@ const addKickComboAPI1Only = async (nomor_hp, availableSlot, nomor_tumbal) => {
       // Fallback: ambil fresh slot info lagi untuk dapat member_id
       console.log('🔄 Fallback: Get fresh member_id from CEKSLOT1...');
       const freshSlotResult = await getSlotInfoAPI1Only(nomor_hp);
-      if (freshSlotResult.success) {
-        // Gabungkan members dan additional_members untuk pencarian
-        const allFreshMembers = [
-          ...(freshSlotResult.members || []),
-          ...(freshSlotResult.additional_members || [])
-        ];
-        
-        const targetSlot = allFreshMembers.find(member => 
-          member.slot_id === availableSlot.slot_id && 
-          member.msisdn === formatNomorToInternational(nomor_tumbal)
+      if (freshSlotResult.success && freshSlotResult.slots) {
+        // Cari slot yang sesuai dengan slot_id dan msisdn tumbal
+        const targetSlot = freshSlotResult.slots.find(slot => 
+          slot.slot_id === availableSlot.slot_id && 
+          slot.msisdn === formatNomorToInternational(nomor_tumbal)
         );
         memberIdToKick = targetSlot?.family_member_id;
+        console.log(`🔍 Fallback result: targetSlot found=${!!targetSlot}, member_id=${memberIdToKick}`);
       }
     }
+
+    console.log(`🎯 KICK1 akan menggunakan member_id: ${memberIdToKick}`);
 
     if (!memberIdToKick) {
       return {
@@ -470,15 +468,24 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
         }
         
         // PROSES: API1+CEKSLOT1+ADD1+KICK1 COMBO
+        console.log(`🎯 MULAI COMBO untuk slot ${slot.slot_id}: API1+CEKSLOT1+ADD1+KICK1`);
         const comboResult = await addKickComboAPI1Only(nomor_hp, slot, nomor_tumbal);
+        
+        console.log(`🔍 COMBO RESULT untuk slot ${slot.slot_id}:`, {
+          success: comboResult.success,
+          combo: comboResult.combo,
+          message: comboResult.message || comboResult.error
+        });
         
         if (comboResult.success) {
           totalSuccess++;
           statusTracker[nomor_hp].successSlots++;
           apiStats.khfy++;
+          console.log(`✅ COMBO SUCCESS - Slot ${slot.slot_id} berhasil: ADD+30s+KICK complete`);
         } else {
           totalFailed++;
           apiStats.failed++;
+          console.log(`❌ COMBO FAILED - Slot ${slot.slot_id} gagal: ${comboResult.error}`);
           
           // Tambahkan ke daftar nomor gagal jika belum ada
           if (!failedNumbers.includes(nomor_hp)) {
@@ -488,8 +495,9 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
         
         totalSlotProcessed++;
         
-        // TUNGGU: Istirahat 35 detik setelah combo selesai, sebelum proses selanjutnya
+        // TUNGGU: Istirahat 35 detik setelah combo selesai, sebelum proses slot selanjutnya
         if (j < availableSlots.length - 1) { // Jangan tunggu di slot terakhir untuk pengelola ini
+          console.log(`⏳ TUNGGU 35 detik sebelum proses slot selanjutnya...`);
           await new Promise(resolve => setTimeout(resolve, 35000)); // 35 detik (30s combo + 5s buffer)
         }
       }
