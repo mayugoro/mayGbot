@@ -28,7 +28,7 @@ function formatNomorToInternational(nomor) {
 }
 
 // COMBO Function: API1+ADD1 untuk add anggota
-const addAnggotaAPI1Only = async (nomor_hp, slot_id, nomor_anggota, nama_anggota = "TUMBAL", parent_name = "XL") => {
+const addAnggotaAPI1Only = async (nomor_hp, slot_id, nomor_anggota, nama_anggota = "TUMBAL", parent_name = "XL", family_member_id = "") => {
   try {
     const formattedNomor = formatNomorToInternational(nomor_hp);
     const formattedAnggota = formatNomorToInternational(nomor_anggota);
@@ -39,7 +39,7 @@ const addAnggotaAPI1Only = async (nomor_hp, slot_id, nomor_anggota, nama_anggota
     formData.append('token', API_PRIMARY_TOKEN);
     formData.append('id_parent', formattedNomor);
     formData.append('msisdn', formattedAnggota);
-    formData.append('member_id', ''); // Empty for new member
+    formData.append('member_id', family_member_id); // Gunakan member_id dari slot yang dipilih
     formData.append('slot_id', slot_id);
     formData.append('parent_name', parent_name);
     formData.append('child_name', nama_anggota);
@@ -48,6 +48,7 @@ const addAnggotaAPI1Only = async (nomor_hp, slot_id, nomor_anggota, nama_anggota
       token: API_PRIMARY_TOKEN ? API_PRIMARY_TOKEN.substring(0, 10) + '...' : 'KOSONG',
       id_parent: formattedNomor,
       msisdn: formattedAnggota,
+      member_id: family_member_id,
       slot_id: slot_id,
       parent_name: parent_name,
       child_name: nama_anggota
@@ -163,7 +164,8 @@ const addKickComboAPI1Only = async (nomor_hp, availableSlot, nomor_tumbal) => {
       availableSlot.slot_id, 
       nomor_tumbal, 
       'TUMBAL', 
-      'XL'
+      'XL',
+      availableSlot.family_member_id || '' // Gunakan family_member_id dari slot
     );
 
     if (!addResult.success) {
@@ -191,8 +193,14 @@ const addKickComboAPI1Only = async (nomor_hp, availableSlot, nomor_tumbal) => {
       // Fallback: ambil fresh slot info lagi untuk dapat member_id
       console.log('🔄 Fallback: Get fresh member_id from CEKSLOT1...');
       const freshSlotResult = await getSlotInfoAPI1Only(nomor_hp);
-      if (freshSlotResult.success && freshSlotResult.members && freshSlotResult.members.length > 0) {
-        const targetSlot = freshSlotResult.members.find(member => 
+      if (freshSlotResult.success) {
+        // Gabungkan members dan additional_members untuk pencarian
+        const allFreshMembers = [
+          ...(freshSlotResult.members || []),
+          ...(freshSlotResult.additional_members || [])
+        ];
+        
+        const targetSlot = allFreshMembers.find(member => 
           member.slot_id === availableSlot.slot_id && 
           member.msisdn === formatNomorToInternational(nomor_tumbal)
         );
@@ -325,9 +333,15 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
         console.log(`🔄 Processing pengelola ${i+1}/${nomor_pengelola_list.length}: ${nomor_hp}`);
         
         // STEP 1: Get slot info dengan API1+CEKSLOT1
+        console.log(`🔍 STEP 1: Getting slot info for ${nomor_hp}`);
         const slotResult = await getSlotInfoAPI1Only(nomor_hp);
-        if (!slotResult.success || !slotResult.members || !slotResult.members.length) {
+        const totalSlots = (slotResult.slots || []).length;
+        
+        console.log(`🔍 STEP 1 RESULT: success=${slotResult.success}, totalSlots=${totalSlots}`);
+        
+        if (!slotResult.success || totalSlots === 0) {
           // Mark as failed - no slots
+          console.log(`❌ STEP 1 FAILED: success=${slotResult.success}, totalSlots=${totalSlots}`);
           statusTracker[nomor_hp] = { 
             status: 'failed', 
             reason: 'no_slots_or_cekslot1_failed',
@@ -355,27 +369,35 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
       // 2. alias kosong (slot belum terisi)
       // 3. msisdn kosong (belum ada anggota)
       // 4. add_chances = 2 (HANYA slot dengan add_chances = 2)
-      const availableSlots = (slotResult.members || []).filter(member => {
-        const slotId = member.slot_id;
-        const alias = member.alias || '';
-        const msisdn = member.msisdn || '';
-        const addChances = parseInt(member.add_chances) || 0;
+      
+      // Ambil slots dari hasil cekslot1
+      const allSlots = slotResult.slots || [];
+      
+      console.log(`🔍 TOTAL SLOTS: ${allSlots.length} slots from cekslot1`);
+      
+      const availableSlots = allSlots.filter(slot => {
+        const slotId = slot.slot_id;
+        const alias = (slot.alias || '').trim();
+        const msisdn = (slot.msisdn || '').trim();
+        const addChances = parseInt(slot.add_chances) || 0;
         
         console.log(`🔍 FILTER CHECK - Slot ${slotId}: alias='${alias}', msisdn='${msisdn}', add_chances=${addChances}`);
         
-        // Slot kosong dengan add_chances = 2: slot_id ada, bukan 0, alias + msisdn kosong, dan add_chances = 2
-        const isValid = slotId && slotId !== '0' && slotId !== 0 && !alias.trim() && !msisdn.trim() && addChances === 2;
+        // Slot kosong dengan add_chances = 2: slot_id ada, bukan 0, alias + msisdn kosong ATAU '-', dan add_chances = 2
+        const isEmptyAlias = alias === '' || alias === '-';
+        const isEmptyMsisdn = msisdn === '' || msisdn === '-';
+        const isValid = slotId && slotId !== '0' && slotId !== 0 && isEmptyAlias && isEmptyMsisdn && addChances === 2;
         
         if (isValid) {
           console.log(`✅ SLOT VALID - Slot ${slotId} memenuhi kriteria (add_chances=2, kosong)`);
         } else {
-          console.log(`❌ SLOT SKIP - Slot ${slotId} tidak memenuhi kriteria`);
+          console.log(`❌ SLOT SKIP - Slot ${slotId} tidak memenuhi kriteria (need: empty alias/msisdn + add_chances=2)`);
         }
         
         return isValid;
       });
       
-      console.log(`📊 FILTER RESULT - ${availableSlots.length} slot tersedia dari ${(slotResult.members || []).length} total slot`);
+      console.log(`📊 FILTER RESULT - ${availableSlots.length} slot tersedia dari ${allSlots.length} total slot`);
 
       // Hanya proses pengelola dengan slot tersedia
       if (!availableSlots.length) {
