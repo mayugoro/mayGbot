@@ -28,105 +28,8 @@ function formatNomorToInternational(nomor) {
   return cleanNomor;
 }
 
-// COMBO Function: API1+CEKSLOT1+EDITKUBER1 (TANPA FALLBACK)
-const editKuberAPI1Only = async (nomorPengelola, nomorTarget, kuberBaru) => {
-  try {
-    // STEP 1: API1+CEKSLOT1 - Ambil data slot & member info
-    console.log('🚀 STEP 1: API1+CEKSLOT1 - Mengambil data slot...');
-    const slotResult = await getSlotInfoAPI1Only(nomorPengelola);
-    
-    if (!slotResult.success) {
-      return {
-        success: false,
-        error: `Gagal mengambil data slot: ${slotResult.error}`,
-        combo: 'API1+CEKSLOT1+EDITKUBER1',
-        step: 1,
-        source: '🟢 KHFY API1'
-      };
-    }
-
-    // Cari member yang akan diedit berdasarkan nomor
-    const formattedTarget = formatNomorToInternational(nomorTarget);
-    const targetMember = slotResult.slots.find(slot => {
-      const slotNomor = formatNomorToInternational(slot.nomor || '');
-      return slotNomor === formattedTarget;
-    });
-
-    if (!targetMember) {
-      return {
-        success: false,
-        error: `Nomor ${formattedTarget} tidak ditemukan dalam keluarga`,
-        combo: 'API1+CEKSLOT1+EDITKUBER1',
-        step: 1,
-        source: '🟢 KHFY API1',
-        slotInfo: slotResult.slots,
-        availableMembers: slotResult.slots.map(s => s.nomor).filter(Boolean)
-      };
-    }
-
-    if (!targetMember.family_member_id) {
-      return {
-        success: false,
-        error: 'family_member_id tidak ditemukan untuk anggota target',
-        combo: 'API1+CEKSLOT1+EDITKUBER1',
-        step: 1,
-        source: '🟢 KHFY API1',
-        targetMember,
-        slotInfo: slotResult.slots
-      };
-    }
-
-    // STEP 2: API1+EDITKUBER1 - Edit kuber dengan data dari step 1
-    console.log('🚀 STEP 2: API1+EDITKUBER1 - Mengedit kuber...');
-    const formattedPengelola = formatNomorToInternational(nomorPengelola);
-    
-    const formData = new URLSearchParams();
-    formData.append('token', API_PRIMARY_TOKEN);
-    formData.append('id_parent', formattedPengelola);
-    formData.append('id_member', targetMember.family_member_id);
-    formData.append('kuber_gb', kuberBaru.toString());
-
-    const response = await axios.post(API_PRIMARY_BASE + API_PRIMARY_EDITKUBER_ENDPOINT, formData, {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      timeout: 30000
-    });
-
-    if (response.data?.status === 'success') {
-      return {
-        success: true,
-        message: response.data.message || 'Kuber berhasil diubah',
-        combo: 'API1+CEKSLOT1+EDITKUBER1',
-        step: 2,
-        source: '🟢 KHFY API1',
-        slotInfo: slotResult.slots,
-        editedMember: targetMember,
-        newKuber: kuberBaru,
-        oldKuber: targetMember.kuber || 'tidak diketahui'
-      };
-    } else {
-      return {
-        success: false,
-        error: response.data?.message || 'Gagal mengubah kuber',
-        combo: 'API1+CEKSLOT1+EDITKUBER1',
-        step: 2,
-        source: '🟢 KHFY API1',
-        slotInfo: slotResult.slots,
-        editedMember: targetMember,
-        newKuber: kuberBaru
-      };
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: error.message,
-      combo: 'API1+CEKSLOT1+EDITKUBER1',
-      step: error.message.includes('STEP 1') ? 1 : 2,
-      source: '🟢 KHFY API1'
-    };
-  }
-};
+// Export functions untuk penggunaan internal (jika diperlukan)
+// editKuberAPI1Only sudah tidak digunakan karena menggunakan inline keyboard
 
 module.exports = (bot) => {
   bot.on('callback_query', async (query) => {
@@ -153,6 +56,51 @@ module.exports = (bot) => {
       );
       
       editkuberStates.set(chatId, { step: 'input_pengelola', inputMessageId: inputMsg.message_id });
+      await bot.answerCallbackQuery(id);
+      return;
+    }
+
+    // Handle member selection
+    if (data.startsWith('edit_member_')) {
+      const memberIndex = parseInt(data.split('_')[2]);
+      const state = editkuberStates.get(chatId);
+      
+      if (!state || !state.slotData || !state.slotData.slots[memberIndex]) {
+        await bot.answerCallbackQuery(id, { text: '❌ Data tidak valid', show_alert: true });
+        return;
+      }
+
+      const selectedMember = state.slotData.slots[memberIndex];
+      
+      // Update state dengan member yang dipilih
+      editkuberStates.set(chatId, {
+        ...state,
+        step: 'input_kuber',
+        selectedMember: selectedMember,
+        memberIndex: memberIndex
+      });
+
+      // Show kuber input message
+      const inputMsg = await bot.sendMessage(chatId,
+        `⚙️ <b>EDIT KUBER - LANGKAH 3</b>\n\n` +
+        `📞 <b>Pengelola:</b> ${state.pengelola}\n` +
+        `👤 <b>Anggota Dipilih:</b> ${selectedMember.alias} (${selectedMember.msisdn})\n\n` +
+        `📊 <b>MASUKKAN KUBER BARU (GB)</b>\n\n` +
+        `Ketik jumlah kuber baru dalam GB:\n\n` +
+        `💡 <b>Contoh:</b> <code>50</code> (untuk 50 GB)\n` +
+        `💡 <b>Format:</b> Angka saja (1-999)\n\n` +
+        `💡 Ketik "keluar" untuk membatalkan`,
+        { parse_mode: 'HTML' }
+      );
+
+      editkuberStates.set(chatId, {
+        ...state,
+        step: 'input_kuber',
+        selectedMember: selectedMember,
+        memberIndex: memberIndex,
+        inputMessageId: inputMsg.message_id
+      });
+
       await bot.answerCallbackQuery(id);
       return;
     }
@@ -194,7 +142,7 @@ module.exports = (bot) => {
           return;
         }
 
-        // Hapus messages dan update state
+        // Hapus input message
         if (state.inputMessageId) {
           try {
             await bot.deleteMessage(chatId, state.inputMessageId);
@@ -204,66 +152,69 @@ module.exports = (bot) => {
           await bot.deleteMessage(chatId, msg.message_id);
         } catch (e) {}
 
-        const inputMsg2 = await bot.sendMessage(chatId,
-          `⚙️ <b>EDIT KUBER - LANGKAH 2</b>\n\n` +
-          `📞 <b>Pengelola:</b> ${cleanNumber}\n\n` +
-          `👤 <b>MASUKKAN NOMOR ANGGOTA YANG AKAN DIEDIT</b>\n\n` +
-          `Ketik nomor HP anggota yang kubernya akan diubah:\n\n` +
-          `💡 <b>Contoh:</b> <code>089876543210</code>\n\n` +
-          `💡 Ketik "keluar" untuk membatalkan`,
+        // Processing message
+        const processingMsg = await bot.sendMessage(chatId,
+          `⚡ <b>MEMPROSES STEP 1: API1+CEKSLOT1...</b>\n\n` +
+          `📞 <b>Pengelola:</b> ${cleanNumber}\n` +
+          `🔄 <b>Status:</b> Mengambil data anggota keluarga...\n\n` +
+          `� <b>COMBO:</b> API1+CEKSLOT1+EDITKUBER1`,
           { parse_mode: 'HTML' }
         );
 
-        editkuberStates.set(chatId, { 
-          step: 'input_target', 
-          pengelola: cleanNumber,
-          inputMessageId: inputMsg2.message_id 
-        });
-        return;
-      }
-
-      if (state.step === 'input_target') {
-        const cleanNumber = text.replace(/\D/g, '');
+        // Get slot data from API1+CEKSLOT1
+        const slotResult = await getSlotInfoAPI1Only(cleanNumber);
         
-        if (cleanNumber.length < 10 || cleanNumber.length > 15) {
-          await bot.sendMessage(chatId,
-            `❌ <b>Format nomor tidak valid!</b>\n\n` +
-            `Nomor harus 10-15 digit angka.\n` +
-            `Coba lagi atau ketik "keluar" untuk batal.`,
-            { parse_mode: 'HTML' }
+        if (!slotResult.success || slotResult.slots.length === 0) {
+          await bot.editMessageText(
+            `❌ <b>GAGAL MENGAMBIL DATA SLOT</b>\n\n` +
+            `📞 <b>Pengelola:</b> ${cleanNumber}\n` +
+            `🔍 <b>Error:</b> ${slotResult.error || 'Tidak ada anggota ditemukan'}\n\n` +
+            `💡 <b>Kemungkinan:</b>\n` +
+            `• Nomor pengelola salah\n` +
+            `• Tidak ada anggota dalam keluarga\n` +
+            `• API1 sedang maintenance`,
+            {
+              chat_id: chatId,
+              message_id: processingMsg.message_id,
+              parse_mode: 'HTML'
+            }
           );
-          await bot.deleteMessage(chatId, msg.message_id);
+          editkuberStates.delete(chatId);
           return;
         }
 
-        // Hapus messages dan update state
-        if (state.inputMessageId) {
-          try {
-            await bot.deleteMessage(chatId, state.inputMessageId);
-          } catch (e) {}
-        }
-        try {
-          await bot.deleteMessage(chatId, msg.message_id);
-        } catch (e) {}
+        // Create inline keyboard with members
+        const keyboard = [];
+        slotResult.slots.forEach((slot, index) => {
+          keyboard.push([{
+            text: `${index + 1}. ${slot.alias} (${slot.msisdn})`,
+            callback_data: `edit_member_${index}`
+          }]);
+        });
 
-        const inputMsg3 = await bot.sendMessage(chatId,
-          `⚙️ <b>EDIT KUBER - LANGKAH 3</b>\n\n` +
-          `📞 <b>Pengelola:</b> ${state.pengelola}\n` +
-          `👤 <b>Anggota Target:</b> ${cleanNumber}\n\n` +
-          `📊 <b>MASUKKAN KUBER BARU (GB)</b>\n\n` +
-          `Ketik jumlah kuber baru dalam GB:\n\n` +
-          `💡 <b>Contoh:</b> <code>50</code> (untuk 50 GB)\n` +
-          `💡 <b>Format:</b> Angka saja (1-999)\n\n` +
-          `💡 Ketik "keluar" untuk membatalkan`,
-          { parse_mode: 'HTML' }
+        // Add cancel button
+        keyboard.push([{ text: '❌ Batal', callback_data: 'menu_admin' }]);
+
+        await bot.editMessageText(
+          `✅ <b>PILIH ANGGOTA YANG AKAN DIEDIT KUBERNYA</b>\n\n` +
+          `📞 <b>Pengelola:</b> ${cleanNumber}\n` +
+          `👥 <b>Total Anggota:</b> ${slotResult.slots.length} orang\n\n` +
+          `🔽 <b>Pilih anggota di bawah ini:</b>`,
+          {
+            chat_id: chatId,
+            message_id: processingMsg.message_id,
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: keyboard }
+          }
         );
 
-        editkuberStates.set(chatId, { 
-          step: 'input_kuber', 
-          pengelola: state.pengelola,
-          target: cleanNumber,
-          inputMessageId: inputMsg3.message_id 
+        // Update state dengan slot data
+        editkuberStates.set(chatId, {
+          step: 'select_member',
+          pengelola: cleanNumber,
+          slotData: slotResult
         });
+
         return;
       }
 
@@ -292,80 +243,115 @@ module.exports = (bot) => {
           await bot.deleteMessage(chatId, msg.message_id);
         } catch (e) {}
         
-        // Process COMBO API1+CEKSLOT1+EDITKUBER1
+        // Process STEP 2: API1+EDITKUBER1 dengan data yang sudah ada
         const processingMsg = await bot.sendMessage(chatId,
-          `⚡ <b>MEMPROSES COMBO API1...</b>\n\n` +
+          `⚡ <b>MEMPROSES STEP 2: API1+EDITKUBER1...</b>\n\n` +
           `📞 <b>Pengelola:</b> ${state.pengelola}\n` +
-          `👤 <b>Anggota Target:</b> ${state.target}\n` +
+          `👤 <b>Anggota:</b> ${state.selectedMember.alias} (${state.selectedMember.msisdn})\n` +
           `📊 <b>Kuber Baru:</b> ${kuberNumber} GB\n\n` +
-          `🔄 <b>Step 1:</b> Mencari anggota dengan API1+CEKSLOT1...\n` +
-          `⏳ <b>Step 2:</b> Menunggu hasil step 1...\n\n` +
-          `🚀 <b>COMBO:</b> API1+CEKSLOT1+EDITKUBER1`,
+          `� <b>Status:</b> Mengirim request edit kuber...\n` +
+          `� <b>COMBO:</b> API1+CEKSLOT1+EDITKUBER1`,
           { parse_mode: 'HTML' }
         );
-        
-        const result = await editKuberAPI1Only(state.pengelola, state.target, kuberNumber);
-        
-        let responseText = `⚙️ <b>HASIL EDIT KUBER - ${result.combo}</b>\n\n`;
-        responseText += `📞 <b>Pengelola:</b> ${state.pengelola}\n`;
-        responseText += `👤 <b>Anggota Target:</b> ${state.target}\n`;
-        responseText += `📊 <b>Kuber Baru:</b> ${kuberNumber} GB\n`;
-        responseText += `📡 <b>Sumber API:</b> ${result.source}\n\n`;
-        
-        if (result.success) {
-          responseText += `✅ <b>BERHASIL MENGUBAH KUBER!</b>\n\n`;
-          responseText += `🎉 <b>Pesan:</b> ${result.message}\n\n`;
-          
-          if (result.editedMember) {
-            responseText += `👤 <b>Detail Anggota:</b>\n`;
-            responseText += `├ 📞 Nomor: ${result.editedMember.nomor}\n`;
-            responseText += `├ 👤 Nama: ${result.editedMember.nama || '-'}\n`;
-            responseText += `├ 🔑 Family Member ID: ${result.editedMember.family_member_id}\n`;
-            responseText += `├ 📊 Kuber Lama: ${result.oldKuber} GB\n`;
-            responseText += `└ 📊 Kuber Baru: ${result.newKuber} GB\n\n`;
-          }
-          
-          if (result.slotInfo && result.slotInfo.length > 0) {
-            responseText += `📊 <b>Total Anggota Keluarga:</b> ${result.slotInfo.length} orang\n\n`;
-          }
-        } else {
-          responseText += `❌ <b>GAGAL MENGUBAH KUBER</b>\n\n`;
-          responseText += `🔍 <b>Error di Step ${result.step}:</b> ${result.error}\n\n`;
-          
-          if (result.availableMembers && result.availableMembers.length > 0) {
-            responseText += `👥 <b>Anggota yang Tersedia:</b>\n`;
-            result.availableMembers.forEach((nomor, index) => {
-              responseText += `├ ${index + 1}. ${nomor}\n`;
-            });
-            responseText += `\n`;
-          }
-          
-          if (result.slotInfo && result.slotInfo.length > 0) {
-            responseText += `📊 <b>Total Anggota Keluarga:</b> ${result.slotInfo.length} orang\n\n`;
-          }
-          
-          responseText += `💡 <b>Solusi:</b>\n`;
-          responseText += `• Pastikan nomor pengelola benar\n`;
-          responseText += `• Pastikan nomor target ada dalam keluarga\n`;
-          responseText += `• Pastikan kuber dalam range yang valid\n`;
-          responseText += `• Coba cek slot terlebih dahulu\n`;
-        }
-        
-        responseText += `⚡ <b>COMBO API1:</b> ${result.combo}\n`;
-        responseText += `🎯 <b>API Digunakan:</b> ${result.source}\n`;
-        responseText += `🔥 <b>Keunggulan:</b> Auto-find family_member_id, presisi tinggi`;
-        
+
         try {
+          // STEP 2: API1+EDITKUBER1 langsung dengan data dari state
+          const formattedPengelola = formatNomorToInternational(state.pengelola);
+          
+          const formData = new URLSearchParams();
+          formData.append('token', API_PRIMARY_TOKEN);
+          formData.append('id_parent', formattedPengelola);
+          formData.append('member_id', state.selectedMember.family_member_id);
+          formData.append('new_allocation', kuberNumber.toString());
+
+          console.log('🚀 STEP 2: API1+EDITKUBER1 - Editing kuber...');
+          console.log('📝 Form Data:', {
+            token: API_PRIMARY_TOKEN ? API_PRIMARY_TOKEN.substring(0, 10) + '...' : 'KOSONG',
+            id_parent: formattedPengelola,
+            member_id: state.selectedMember.family_member_id,
+            new_allocation: kuberNumber.toString()
+          });
+
+          const response = await axios.post(API_PRIMARY_BASE + API_PRIMARY_EDITKUBER_ENDPOINT, formData, {
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            timeout: 30000
+          });
+
+          console.log('🔍 EDITKUBER1 Response:', JSON.stringify(response.data, null, 2));
+
+          let responseText = `⚙️ <b>HASIL EDIT KUBER - API1+CEKSLOT1+EDITKUBER1</b>\n\n`;
+          responseText += `📞 <b>Pengelola:</b> ${state.pengelola}\n`;
+          responseText += `� <b>Anggota:</b> ${state.selectedMember.alias}\n`;
+          responseText += `� <b>Nomor:</b> ${state.selectedMember.msisdn}\n`;
+          responseText += `📊 <b>Kuber Baru:</b> ${kuberNumber} GB\n`;
+          responseText += `� <b>Sumber API:</b> 🟢 KHFY API1\n\n`;
+
+          if (response.data?.status === 'success' || response.data?.status === true) {
+            responseText += `✅ <b>BERHASIL MENGUBAH KUBER!</b>\n\n`;
+            responseText += `🎉 <b>Pesan:</b> ${response.data.message || 'Kuber berhasil diubah'}\n\n`;
+            
+            responseText += `📋 <b>Detail Anggota:</b>\n`;
+            responseText += `💌 Member ID: <code>${state.selectedMember.family_member_id}</code>\n`;
+            responseText += `✨ Nama: ${state.selectedMember.alias}\n`;
+            responseText += `� Nomor: ${state.selectedMember.msisdn}\n`;
+            responseText += `⚡ Slot ID: ${state.selectedMember.slot_id}\n`;
+            responseText += `♻️ Kuber Baru: ${kuberNumber} GB\n\n`;
+            
+            responseText += `� <b>Total Anggota Keluarga:</b> ${state.slotData.slots.length} orang\n`;
+          } else {
+            responseText += `❌ <b>GAGAL MENGUBAH KUBER</b>\n\n`;
+            responseText += `🔍 <b>Error:</b> ${response.data?.message || 'Tidak ada response dari API'}\n\n`;
+            
+            responseText += `� <b>Detail Request:</b>\n`;
+            responseText += `� Member ID: <code>${state.selectedMember.family_member_id}</code>\n`;
+            responseText += `✨ Nama: ${state.selectedMember.alias}\n`;
+            responseText += `� Nomor: ${state.selectedMember.msisdn}\n`;
+            responseText += `♻️ Kuber Diminta: ${kuberNumber} GB\n\n`;
+            
+            responseText += `� <b>Solusi:</b>\n`;
+            responseText += `• Pastikan member_id valid\n`;
+            responseText += `• Pastikan kuber dalam range yang diizinkan\n`;
+            responseText += `• Coba cek slot terlebih dahulu\n`;
+          }
+          
+          responseText += `\n⚡ <b>COMBO API1:</b> API1+CEKSLOT1+EDITKUBER1\n`;
+          responseText += `🎯 <b>API Digunakan:</b> 🟢 KHFY API1\n`;
+          responseText += `🔥 <b>Keunggulan:</b> Data akurat dari slot, presisi tinggi`;
+
           await bot.editMessageText(responseText, {
             chat_id: chatId,
             message_id: processingMsg.message_id,
             parse_mode: 'HTML'
           });
-        } catch (e) {
-          await bot.sendMessage(chatId, responseText, { parse_mode: 'HTML' });
+
+        } catch (error) {
+          console.error('💥 EDITKUBER1 Error:', error);
+          
+          let responseText = `⚙️ <b>HASIL EDIT KUBER - API1+CEKSLOT1+EDITKUBER1</b>\n\n`;
+          responseText += `📞 <b>Pengelola:</b> ${state.pengelola}\n`;
+          responseText += `� <b>Anggota:</b> ${state.selectedMember.alias}\n`;
+          responseText += `📧 <b>Nomor:</b> ${state.selectedMember.msisdn}\n`;
+          responseText += `� <b>Kuber Baru:</b> ${kuberNumber} GB\n\n`;
+          responseText += `❌ <b>GAGAL MENGUBAH KUBER</b>\n\n`;
+          responseText += `🔍 <b>Error:</b> ${error.message}\n\n`;
+          responseText += `💡 <b>Kemungkinan:</b>\n`;
+          responseText += `• Koneksi timeout ke API\n`;
+          responseText += `• API sedang maintenance\n`;
+          responseText += `• Data tidak valid\n\n`;
+          responseText += `⚡ <b>COMBO API1:</b> API1+CEKSLOT1+EDITKUBER1\n`;
+          responseText += `🎯 <b>API Digunakan:</b> 🟢 KHFY API1`;
+
+          await bot.editMessageText(responseText, {
+            chat_id: chatId,
+            message_id: processingMsg.message_id,
+            parse_mode: 'HTML'
+          });
         }
         
         editkuberStates.delete(chatId);
+        return;
       }
       
     } catch (error) {
@@ -374,6 +360,3 @@ module.exports = (bot) => {
     }
   });
 };
-
-// Export functions untuk penggunaan internal
-module.exports.editKuberAPI1Only = editKuberAPI1Only;
