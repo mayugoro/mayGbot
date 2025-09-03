@@ -66,6 +66,12 @@ const getSlotInfoAPI1Only = async (nomor_hp) => {
       const parentMember = allMembers.find(member => member.member_type === 'PARENT');
       const childMembers = allMembers.filter(member => member.member_type === 'CHILD');
       
+      // Debug: log raw member data untuk melihat field yang tersedia
+      console.log('🔍 Raw Child Members Data:');
+      childMembers.forEach((member, index) => {
+        console.log(`Member ${index + 1}:`, JSON.stringify(member, null, 2));
+      });
+      
       const slots = childMembers.map((member, index) => ({
         parent_id: memberInfo.parent_msisdn || formattedNomor,
         family_member_id: member.family_member_id || member.id || member.member_id,
@@ -74,6 +80,9 @@ const getSlotInfoAPI1Only = async (nomor_hp) => {
         slot_id: member.slot_id !== undefined ? member.slot_id : index,
         add_chances: member.add_chances || member.sisa_add || member['sisa-add'] || 0,
         member_type: member.member_type || 'UNKNOWN',
+        // Quota/kuber fields - coba berbagai kemungkinan field name
+        quota_allocated: member.quota_allocated || member.kuota || member.limit || member.allocation || member.quota || 0,
+        kuota: member.quota_allocated || member.kuota || member.limit || member.allocation || member.quota || 0,
         // Additional fields for compatibility
         nama: member.alias || member.name || member.nama || '-',
         nomor: member.msisdn || member.phone || member.nomor || '-',

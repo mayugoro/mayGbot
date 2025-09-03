@@ -185,9 +185,28 @@ module.exports = (bot) => {
 
         // Create inline keyboard with members
         const keyboard = [];
+        
+        // Format deskripsi pengelola dan slot info
+        let pengelolaInfo = `✅ <b>PILIH ANGGOTA YANG AKAN DIEDIT KUBERNYA</b>\n\n`;
+        pengelolaInfo += `<b>Pengelola:</b>\n\n`;
+        
         slotResult.slots.forEach((slot, index) => {
+          // Coba ambil kuota dari berbagai field yang mungkin ada
+          const quotaMB = slot.quota_allocated || slot.kuota || slot.limit || slot.allocation || 0;
+          const quotaGB = quotaMB ? (parseInt(quotaMB) / 1024).toFixed(1) : '0.0';
+          const slotId = slot.slot_id || (index + 1);
+          const addChances = slot.add_chances || 0;
+          const alias = slot.alias || 'Unknown';
+          
+          pengelolaInfo += `Slot ${index + 1} : ${slotId} : ${addChances} : ${alias}\n`;
+          
+          // Create keyboard button dengan format: msisdn : quota_gb : alias  
+          // Jika tidak ada data kuota, tampilkan "N/A"
+          const quotaDisplay = quotaMB ? `${quotaGB}GB` : 'N/A';
+          const buttonText = `${slot.msisdn} : ${quotaDisplay} : ${slot.alias}`;
+          
           keyboard.push([{
-            text: `${index + 1}. ${slot.alias} (${slot.msisdn})`,
+            text: buttonText,
             callback_data: `edit_member_${index}`
           }]);
         });
@@ -195,18 +214,12 @@ module.exports = (bot) => {
         // Add cancel button
         keyboard.push([{ text: '❌ Batal', callback_data: 'menu_admin' }]);
 
-        await bot.editMessageText(
-          `✅ <b>PILIH ANGGOTA YANG AKAN DIEDIT KUBERNYA</b>\n\n` +
-          `📞 <b>Pengelola:</b> ${cleanNumber}\n` +
-          `👥 <b>Total Anggota:</b> ${slotResult.slots.length} orang\n\n` +
-          `🔽 <b>Pilih anggota di bawah ini:</b>`,
-          {
-            chat_id: chatId,
-            message_id: processingMsg.message_id,
-            parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: keyboard }
-          }
-        );
+        await bot.editMessageText(pengelolaInfo, {
+          chat_id: chatId,
+          message_id: processingMsg.message_id,
+          parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: keyboard }
+        });
 
         // Update state dengan slot data
         editkuberStates.set(chatId, {
