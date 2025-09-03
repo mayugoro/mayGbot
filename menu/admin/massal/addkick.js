@@ -1,24 +1,20 @@
-const axios = require('axios');//MASIH PAKAI API2❌❌❌
+const axios = require('axios');
 require('dotenv').config();
+const { getSlotInfoAPI1Only } = require('../../admin/manage_akrab/cekslot1.js');
 
-// API Configuration dari .env
+// API1 Configuration (KHUSUS - COMBO API1+CEKSLOT1+ADD1+KICK1)
 const API_PRIMARY_BASE = process.env.API1;
 const API_PRIMARY_ADD_ENDPOINT = process.env.ADD1;
 const API_PRIMARY_KICK_ENDPOINT = process.env.KICK1;
 const API_PRIMARY_INFO_ENDPOINT = process.env.CEKSLOT1;
 const API_PRIMARY_TOKEN = process.env.APIKEY1;
 
-const API_SECONDARY_BASE = process.env.API2;
-const API_SECONDARY_ENDPOINT = process.env.ADD2; // Same endpoint for add/kick/info
-const API_SECONDARY_AUTH = process.env.APIKEY2;
-const API_SECONDARY_PASSWORD = process.env.PASSWORD2;
-
 const ADMIN_ID = process.env.ADMIN_ID;
 
 // Storage untuk add-kick states
 const addKickStates = new Map(); // key: chatId, value: { step, data }
 
-// Helper function untuk format nomor ke internasional (untuk API primary)
+// Helper function untuk format nomor ke internasional (untuk API1)
 function formatNomorToInternational(nomor) {
   let cleanNomor = nomor.replace(/\D/g, '');
   
@@ -31,160 +27,13 @@ function formatNomorToInternational(nomor) {
   return cleanNomor;
 }
 
-// Helper function untuk format nomor ke lokal (untuk API secondary)
-function formatNomorToLocal(nomor) {
-  let cleanNomor = nomor.replace(/\D/g, '');
-  
-  if (cleanNomor.startsWith('628')) {
-    cleanNomor = '08' + cleanNomor.substring(3);
-  } else if (cleanNomor.startsWith('62')) {
-    cleanNomor = '0' + cleanNomor.substring(2);
-  } else if (!cleanNomor.startsWith('0')) {
-    cleanNomor = '0' + cleanNomor;
-  }
-  
-  return cleanNomor;
-}
-
-// Function untuk get slot info menggunakan API Primary (KHFY-Store)
-const getSlotInfoPrimary = async (nomor_hp) => {
-  try {
-    const formattedNomor = formatNomorToInternational(nomor_hp);
-    
-    const formData = new URLSearchParams();
-    formData.append('token', API_PRIMARY_TOKEN);
-    formData.append('id_parent', formattedNomor);
-
-    const response = await axios.post(API_PRIMARY_BASE + API_PRIMARY_INFO_ENDPOINT, formData, {
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      timeout: 30000
-    });
-
-    if (response.data?.status === 'success' && response.data?.data) {
-      const members = response.data.data.members || [];
-      // Convert KHFY format to standard slot format
-      const slots = members.map((member, index) => ({
-        'slot-ke': index.toString(),
-        nomor: member.phone || member.nomor || '',
-        nama: member.name || member.nama || '',
-        member_id: member.id || member.member_id,
-        'sisa-add': member.sisa_add || member['sisa-add'] || 0,
-        expired: member.expired || '',
-        status: member.status || 'aktif'
-      }));
-      
-      return {
-        success: true,
-        slots,
-        source: 'primary'
-      };
-    }
-    
-    return { success: false, slots: [], source: 'primary' };
-  } catch (error) {
-    // Error handled silently
-    return { success: false, slots: [], error: error.message, source: 'primary' };
-  }
-};
-
-// Function untuk get slot info menggunakan API Secondary (HidePulsa)
-const getSlotInfoSecondary = async (nomor_hp) => {
-  try {
-    const formattedNomor = formatNomorToLocal(nomor_hp);
-    
-    const response = await axios.post(API_SECONDARY_BASE + API_SECONDARY_ENDPOINT, {
-      action: "info",
-      id_telegram: ADMIN_ID,
-      password: API_SECONDARY_PASSWORD,
-      nomor_hp: formattedNomor
-    }, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: API_SECONDARY_AUTH
-      },
-      timeout: 30000
-    });
-
-    const slots = response.data?.data?.data_slot || [];
-    
-    // Jika tidak ada data, hit sekali lagi (untuk Redis cache issue)
-    if (slots.length === 0) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const secondResponse = await axios.post(API_SECONDARY_BASE + API_SECONDARY_ENDPOINT, {
-        action: "info",
-        id_telegram: ADMIN_ID,
-        password: API_SECONDARY_PASSWORD,
-        nomor_hp: formattedNomor
-      }, {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: API_SECONDARY_AUTH
-        },
-        timeout: 30000
-      });
-      
-      const secondSlots = secondResponse.data?.data?.data_slot || [];
-      return {
-        success: secondSlots.length > 0,
-        slots: secondSlots,
-        source: 'secondary'
-      };
-    }
-    
-    return {
-      success: slots.length > 0,
-      slots,
-      source: 'secondary'
-    };
-    
-  } catch (error) {
-    // Error handled silently
-    return { success: false, slots: [], error: error.message, source: 'secondary' };
-  }
-};
-
-// Function untuk get slot info dengan dual API strategy
-const getSlotInfoDualAPI = async (nomor_hp) => {
-  // Try primary API first
-  const primaryResult = await getSlotInfoPrimary(nomor_hp);
-  if (primaryResult.success && primaryResult.slots.length > 0) {
-    return {
-      slots: primaryResult.slots,
-      source: '🟢 KHFY'
-    };
-  }
-  
-  // Fallback to secondary API
-  const secondaryResult = await getSlotInfoSecondary(nomor_hp);
-  if (secondaryResult.success && secondaryResult.slots.length > 0) {
-    return {
-      slots: secondaryResult.slots,
-      source: '⚪ H-P'
-    };
-  }
-  
-  // Both APIs failed or returned empty
-  return {
-    slots: [],
-    source: '❌ GAGAL',
-    error: secondaryResult.error || primaryResult.error || 'Both APIs returned empty'
-  };
-};
-
-// Function untuk get info slot dari nomor HP (LEGACY - kept for compatibility)
-const getSlotInfo = async (nomor_hp) => {
-  const result = await getSlotInfoDualAPI(nomor_hp);
-  return result.slots;
-};
-
-// Function untuk add anggota menggunakan API Primary (KHFY-Store)
-const addAnggotaPrimary = async (nomor_hp, slot_id, nomor_anggota, nama_anggota = "TUMBAL", parent_name = "XL") => {
+// COMBO Function: API1+ADD1 untuk add anggota
+const addAnggotaAPI1Only = async (nomor_hp, slot_id, nomor_anggota, nama_anggota = "TUMBAL", parent_name = "XL") => {
   try {
     const formattedNomor = formatNomorToInternational(nomor_hp);
     const formattedAnggota = formatNomorToInternational(nomor_anggota);
+    
+    console.log(`🚀 ADD1 - Menambah anggota: ${nama_anggota} (${formattedAnggota}) ke slot ${slot_id}`);
     
     const formData = new URLSearchParams();
     formData.append('token', API_PRIMARY_TOKEN);
@@ -195,6 +44,15 @@ const addAnggotaPrimary = async (nomor_hp, slot_id, nomor_anggota, nama_anggota 
     formData.append('parent_name', parent_name);
     formData.append('child_name', nama_anggota);
 
+    console.log('📝 Form Data ADD1:', {
+      token: API_PRIMARY_TOKEN ? API_PRIMARY_TOKEN.substring(0, 10) + '...' : 'KOSONG',
+      id_parent: formattedNomor,
+      msisdn: formattedAnggota,
+      slot_id: slot_id,
+      parent_name: parent_name,
+      child_name: nama_anggota
+    });
+
     const response = await axios.post(API_PRIMARY_BASE + API_PRIMARY_ADD_ENDPOINT, formData, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
@@ -202,88 +60,50 @@ const addAnggotaPrimary = async (nomor_hp, slot_id, nomor_anggota, nama_anggota 
       timeout: 30000
     });
 
-    if (response.data?.status === 'success') {
+    console.log('🔍 ADD1 Response:', JSON.stringify(response.data, null, 2));
+
+    if (response.data?.status === 'success' || response.data?.success === true) {
       return {
         success: true,
-        data: response.data,
-        source: 'primary',
-        member_id: response.data?.data?.member_id || null, // Important untuk kick nanti
-        added_number: formattedAnggota
-      };
-    }
-    
-    return {
-      success: false,
-      error: response.data?.message || 'Primary ADD failed',
-      source: 'primary'
-    };
-  } catch (error) {
-    // Error handled silently
-    return {
-      success: false,
-      error: error.message,
-      source: 'primary'
-    };
-  }
-};
-
-// Function untuk add anggota menggunakan API Secondary (HidePulsa)
-const addAnggotaSecondary = async (nomor_hp, nomor_slot, nomor_anggota, nama_anggota = "TUMBAL", nama_admin = "XL") => {
-  try {
-    const formattedNomor = formatNomorToLocal(nomor_hp);
-    const formattedAnggota = formatNomorToLocal(nomor_anggota);
-    
-    const response = await axios.post(API_SECONDARY_BASE + API_SECONDARY_ENDPOINT, {
-      action: "add",
-      id_telegram: ADMIN_ID,
-      password: API_SECONDARY_PASSWORD,
-      nomor_hp: formattedNomor,
-      nomor_slot: parseInt(nomor_slot),
-      nomor_anggota: formattedAnggota,
-      nama_anggota,
-      nama_admin
-    }, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: API_SECONDARY_AUTH
-      },
-      timeout: 30000
-    });
-
-    if (response.data?.status === 'success') {
-      return {
-        success: true,
-        data: response.data,
-        source: 'secondary',
+        message: response.data.message || 'Anggota berhasil ditambahkan',
+        source: '🟢 KHFY API1',
+        member_id: response.data?.data?.member_id || response.data?.member_id || null,
         added_number: formattedAnggota,
-        slot_number: nomor_slot
+        slot_id: slot_id
+      };
+    } else {
+      return {
+        success: false,
+        error: response.data?.message || 'Gagal menambahkan anggota',
+        source: '🟢 KHFY API1'
       };
     }
-    
-    return {
-      success: false,
-      error: response.data?.message || 'Secondary ADD failed',
-      source: 'secondary'
-    };
   } catch (error) {
-    // Error handled silently
     return {
       success: false,
       error: error.message,
-      source: 'secondary'
+      source: '🟢 KHFY API1'
     };
   }
 };
 
-// Function untuk kick anggota menggunakan API Primary (KHFY-Store) - kick by member_id
-const kickAnggotaPrimary = async (nomor_hp, member_id) => {
+// COMBO Function: API1+KICK1 untuk kick anggota (sama dengan kickmassal.js)
+const kickAnggotaAPI1Only = async (nomor_hp, member_id) => {
   try {
     const formattedNomor = formatNomorToInternational(nomor_hp);
     
+    console.log(`🚀 KICK1 - Mengeluarkan anggota dengan member_id: ${member_id}`);
+    
     const formData = new URLSearchParams();
     formData.append('token', API_PRIMARY_TOKEN);
-    formData.append('id_parent', formattedNomor);
     formData.append('member_id', member_id);
+    formData.append('id_parent', formattedNomor);
+
+    console.log('📝 Form Data KICK1:', {
+      token: API_PRIMARY_TOKEN ? API_PRIMARY_TOKEN.substring(0, 10) + '...' : 'KOSONG',
+      member_id: member_id,
+      id_parent: formattedNomor
+    });
 
     const response = await axios.post(API_PRIMARY_BASE + API_PRIMARY_KICK_ENDPOINT, formData, {
       headers: {
@@ -292,128 +112,144 @@ const kickAnggotaPrimary = async (nomor_hp, member_id) => {
       timeout: 30000
     });
 
-    return {
-      success: response.data?.status === 'success' || response.data?.success === true,
-      data: response.data,
-      source: 'primary'
-    };
-  } catch (error) {
-    // Error handled silently
-    return {
-      success: false,
-      error: error.message,
-      source: 'primary'
-    };
-  }
-};
+    console.log('🔍 KICK1 Response:', JSON.stringify(response.data, null, 2));
 
-// Function untuk kick anggota menggunakan API Secondary (HidePulsa) - kick by slot number
-const kickAnggotaSecondary = async (nomor_hp, nomor_slot) => {
-  try {
-    const formattedNomor = formatNomorToLocal(nomor_hp);
-    
-    const response = await axios.post(API_SECONDARY_BASE + API_SECONDARY_ENDPOINT, {
-      action: "kick",
-      id_telegram: ADMIN_ID,
-      password: API_SECONDARY_PASSWORD,
-      nomor_hp: formattedNomor,
-      nomor_slot: parseInt(nomor_slot)
-    }, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: API_SECONDARY_AUTH
-      },
-      timeout: 30000
-    });
-
-    return {
-      success: response.data?.status === 'success',
-      data: response.data,
-      source: 'secondary'
-    };
-  } catch (error) {
-    // Error handled silently
-    return {
-      success: false,
-      error: error.message,
-      source: 'secondary'
-    };
-  }
-};
-
-// Function untuk add-kick combo dengan dual API strategy - COMBO BENAR
-const addKickCombo = async (nomor_hp, slotData, nomor_tumbal) => {
-  const { 'slot-ke': nomor_slot, member_id, 'sisa-add': sisaAdd } = slotData;
-  
-  // STEP 1: Get fresh slot info dulu (API1+CEKSLOT1) - COMBO PATTERN
-  const slotInfoResult = await getSlotInfoPrimary(nomor_hp);
-  
-  if (slotInfoResult.success && slotInfoResult.slots.length > 0) {
-    // STEP 2: Try primary API ADD (API1+ADD1) dengan data dari STEP 1
-    const primaryAddResult = await addAnggotaPrimary(nomor_hp, slotData.slot_id || nomor_slot, nomor_tumbal);
-    
-    if (primaryAddResult.success) {
-      // STEP 3: Success with primary ADD, wait then kick (API1+KICK1)
-      await new Promise(resolve => setTimeout(resolve, 20000)); // 20 detik tunggu
-      
-      // Use member_id from ADD result, bukan dari slot info lama
-      const primaryKickResult = await kickAnggotaPrimary(nomor_hp, primaryAddResult.member_id);
-      
+    if (response.data?.status === 'success' || response.data?.success === true) {
       return {
-        success: primaryKickResult.success,
-        source: primaryKickResult.success ? '🟢 KHFY' : '🟢 KHFY (ADD) / ❌ KICK FAILED',
-        addResult: primaryAddResult,
-        kickResult: primaryKickResult,
-        tumbal: nomor_tumbal,
-        slot: nomor_slot,
-        combo: 'API1+CEKSLOT1+ADD1+KICK1'
+        success: true,
+        message: response.data.message || 'Anggota berhasil dikeluarkan',
+        source: '🟢 KHFY API1'
+      };
+    } else {
+      return {
+        success: false,
+        error: response.data?.message || 'Gagal mengeluarkan anggota',
+        source: '🟢 KHFY API1'
       };
     }
-  }
-  
-  // Primary COMBO failed, try secondary API (HidePulsa)
-  const secondaryAddResult = await addAnggotaSecondary(nomor_hp, nomor_slot, nomor_tumbal);
-  
-  if (secondaryAddResult.success) {
-    // Success with secondary ADD, now kick with secondary API
-    await new Promise(resolve => setTimeout(resolve, 20000)); // 20 detik tunggu
-    
-    const secondaryKickResult = await kickAnggotaSecondary(nomor_hp, nomor_slot);
-    
+  } catch (error) {
     return {
-      success: secondaryKickResult.success,
-      source: secondaryKickResult.success ? '⚪ H-P' : '⚪ H-P (ADD) / ❌ KICK FAILED',
-      addResult: secondaryAddResult,
-      kickResult: secondaryKickResult,
-      tumbal: nomor_tumbal,
-      slot: nomor_slot,
-      combo: 'API2+ADD2+KICK2'
+      success: false,
+      error: error.message,
+      source: '🟢 KHFY API1'
     };
   }
-  
-  // Both COMBO operations failed
-  return {
-    success: false,
-    source: '❌ GAGAL',
-    error: `Both COMBO failed - Primary: CEKSLOT1 issue or ADD1 failed, Secondary: ${secondaryAddResult.error}`,
-    tumbal: nomor_tumbal,
-    slot: nomor_slot,
-    combo: 'FAILED'
-  };
 };
 
-// Function untuk add anggota ke slot dengan timeout 30 detik (LEGACY - kept for compatibility)
-const addAnggota = async (nomor_hp, nomor_slot, nomor_anggota) => {
-  const slotData = { 'slot-ke': nomor_slot, member_id: null, 'sisa-add': 2 };
-  const result = await addKickCombo(nomor_hp, slotData, nomor_anggota);
-  return result.success && result.addResult ? { status: 'success', ...result.addResult.data } : null;
+// COMBO Function: API1+CEKSLOT1+ADD1+KICK1 (FULL COMBO PATTERN)
+const addKickComboAPI1Only = async (nomor_hp, availableSlot, nomor_tumbal) => {
+  try {
+    console.log(`🎯 COMBO START: API1+CEKSLOT1+ADD1+KICK1 untuk slot ${availableSlot.slot_id}`);
+    
+    // STEP 1: Get fresh slot info (API1+CEKSLOT1)
+    console.log('🚀 STEP 1: API1+CEKSLOT1 - Fresh slot data...');
+    const slotResult = await getSlotInfoAPI1Only(nomor_hp);
+    
+    if (!slotResult.success) {
+      return {
+        success: false,
+        source: '🟢 KHFY API1 COMBO',
+        error: 'STEP 1 Failed: ' + (slotResult.error || 'CEKSLOT1 gagal'),
+        tumbal: nomor_tumbal,
+        slot: availableSlot.slot_id,
+        combo: 'API1+CEKSLOT1 FAILED'
+      };
+    }
+
+    // STEP 2: Add anggota tumbal (API1+ADD1)
+    console.log('🚀 STEP 2: API1+ADD1 - Adding tumbal...');
+    const addResult = await addAnggotaAPI1Only(
+      nomor_hp, 
+      availableSlot.slot_id, 
+      nomor_tumbal, 
+      'TUMBAL', 
+      'XL'
+    );
+
+    if (!addResult.success) {
+      return {
+        success: false,
+        source: '🟢 KHFY API1 COMBO',
+        error: 'STEP 2 Failed: ' + (addResult.error || 'ADD1 gagal'),
+        tumbal: nomor_tumbal,
+        slot: availableSlot.slot_id,
+        combo: 'API1+CEKSLOT1+ADD1 FAILED'
+      };
+    }
+
+    // STEP 3: Tunggu 30 detik setelah ADD
+    console.log('⏳ STEP 3: Menunggu 30 detik setelah ADD...');
+    await new Promise(resolve => setTimeout(resolve, 30000));
+
+    // STEP 4: Kick anggota tumbal (API1+KICK1)
+    console.log('🚀 STEP 4: API1+KICK1 - Kicking tumbal...');
+    
+    // Gunakan member_id dari hasil ADD atau fallback ke fresh slot info
+    let memberIdToKick = addResult.member_id;
+    
+    if (!memberIdToKick) {
+      // Fallback: ambil fresh slot info lagi untuk dapat member_id
+      console.log('🔄 Fallback: Get fresh member_id from CEKSLOT1...');
+      const freshSlotResult = await getSlotInfoAPI1Only(nomor_hp);
+      if (freshSlotResult.success) {
+        const targetSlot = freshSlotResult.members.find(member => 
+          member.slot_id === availableSlot.slot_id && 
+          member.msisdn === formatNomorToInternational(nomor_tumbal)
+        );
+        memberIdToKick = targetSlot?.family_member_id;
+      }
+    }
+
+    if (!memberIdToKick) {
+      return {
+        success: false,
+        source: '🟢 KHFY API1 COMBO',
+        error: 'STEP 4 Failed: member_id tidak ditemukan untuk kick',
+        tumbal: nomor_tumbal,
+        slot: availableSlot.slot_id,
+        combo: 'API1+CEKSLOT1+ADD1+KICK1 (NO MEMBER_ID)',
+        addResult: addResult
+      };
+    }
+
+    const kickResult = await kickAnggotaAPI1Only(nomor_hp, memberIdToKick);
+
+    // COMBO RESULT
+    return {
+      success: kickResult.success,
+      source: '🟢 KHFY API1 COMBO',
+      message: kickResult.success ? 'COMBO berhasil: ADD+KICK complete' : 'COMBO partial: ADD berhasil, KICK gagal',
+      addResult: addResult,
+      kickResult: kickResult,
+      tumbal: nomor_tumbal,
+      slot: availableSlot.slot_id,
+      member_id_used: memberIdToKick,
+      combo: kickResult.success ? 'API1+CEKSLOT1+ADD1+KICK1 SUCCESS' : 'API1+CEKSLOT1+ADD1+KICK1 PARTIAL'
+    };
+
+  } catch (error) {
+    console.error('❌ COMBO Error:', error);
+    return {
+      success: false,
+      source: '🟢 KHFY API1 COMBO',
+      error: `COMBO Exception: ${error.message}`,
+      tumbal: nomor_tumbal,
+      slot: availableSlot?.slot_id || 'unknown',
+      combo: 'API1 COMBO EXCEPTION'
+    };
+  }
 };
 
-// Function untuk kick anggota dari slot (LEGACY - kept for compatibility)
-const kickAnggota = async (nomor_hp, nomor_slot) => {
-  // This is just kick operation, not add-kick combo
-  const secondaryKickResult = await kickAnggotaSecondary(nomor_hp, nomor_slot);
-  return secondaryKickResult.success ? { status: 'success', ...secondaryKickResult.data } : null;
+// Function untuk add anggota ke slot (LEGACY - updated for API1 only)
+const addAnggota = async (nomor_hp, slot_id, nomor_anggota) => {
+  const result = await addAnggotaAPI1Only(nomor_hp, slot_id, nomor_anggota);
+  return result.success ? { status: 'success', ...result } : null;
+};
+
+// Function untuk kick anggota dari slot (LEGACY - updated for API1 only)
+const kickAnggota = async (nomor_hp, member_id) => {
+  const result = await kickAnggotaAPI1Only(nomor_hp, member_id);
+  return result.success ? { status: 'success', ...result } : null;
 };
 
 // Function untuk proses massal add-kick dengan auto slot selection
@@ -432,7 +268,7 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
 
     // Function untuk membuat tampilan status list
     const createStatusList = (currentIndex = -1) => {
-      let statusText = `🎯 <b>STATUS ADD-KICK MASSAL</b>\n`;
+      let statusText = `🎯 <b>STATUS ADD-KICK MASSAL - API1 COMBO</b>\n`;
       statusText += `⏰ <i>${new Date().toLocaleString('id-ID')}</i>\n\n`;
       
       nomor_pengelola_list.forEach((nomor, index) => {
@@ -454,6 +290,7 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
       });
       
       statusText += `\n🎯 <b>Progress:</b> ${currentIndex + 1}/${nomor_pengelola_list.length} pengelola`;
+      statusText += `\n🚀 <b>API Strategy:</b> API1+CEKSLOT1+ADD1(30s)+KICK1`;
       return statusText;
     };
 
@@ -472,14 +309,14 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
     for (let i = 0; i < nomor_pengelola_list.length; i++) {
       const nomor_hp = nomor_pengelola_list[i];
       
-      // Get slot info dengan dual API
-      const slotResult = await getSlotInfoDualAPI(nomor_hp);
-      if (!slotResult.slots.length) {
+      // STEP 1: Get slot info dengan API1+CEKSLOT1
+      const slotResult = await getSlotInfoAPI1Only(nomor_hp);
+      if (!slotResult.success || !slotResult.members.length) {
         // Mark as failed - no slots
         statusTracker[nomor_hp] = { 
           status: 'failed', 
-          reason: 'no_slots',
-          source: slotResult.source
+          reason: 'no_slots_or_cekslot1_failed',
+          source: '🟢 KHFY API1'
         };
         
         // Update live status
@@ -499,19 +336,16 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
       }
 
       // Filter slot dengan kriteria ketat:
-      // 1. sisa-add harus tepat 2 (bukan 1 atau 0)
-      // 2. slot >= 1 (bukan slot 0 pengelola)
-      // 3. slot harus kosong (tidak ada anggota)
-      const availableSlots = slotResult.slots.filter(slot => {
-        const sisaAdd = parseInt(slot['sisa-add']) || parseInt(slot.sisa_add) || 0;
-        const slotKe = parseInt(slot['slot-ke']) || parseInt(slot.slot_ke) || 0;
-        const nomorAnggota = slot.nomor || slot.phone || '';
-        const namaAnggota = slot.nama || slot.name || '';
+      // 1. slot_id ada dan bukan 0 (bukan pengelola)
+      // 2. alias kosong (slot belum terisi)
+      // 3. msisdn kosong (belum ada anggota)
+      const availableSlots = slotResult.members.filter(member => {
+        const slotId = member.slot_id;
+        const alias = member.alias || '';
+        const msisdn = member.msisdn || '';
         
-        // Cek apakah slot kosong (tidak ada nomor atau nama anggota)
-        const slotKosong = !nomorAnggota.trim() && !namaAnggota.trim();
-        
-        return sisaAdd === 2 && slotKe >= 1 && slotKosong;
+        // Slot kosong: slot_id ada, bukan 0, dan alias + msisdn kosong
+        return slotId && slotId !== '0' && slotId !== 0 && !alias.trim() && !msisdn.trim();
       });
 
       // Hanya proses pengelola dengan slot tersedia
@@ -519,7 +353,8 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
         // Mark as failed - no available slots
         statusTracker[nomor_hp] = { 
           status: 'failed', 
-          reason: 'no_available_slots'
+          reason: 'no_available_slots',
+          source: '🟢 KHFY API1'
         };
         
         // Update live status
@@ -560,12 +395,11 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
         // Silent error handling
       }
 
-      let apiStats = { khfy: 0, hidepulsa: 0, failed: 0 };
+      let apiStats = { khfy: 0, failed: 0 };
 
-      // Process setiap slot yang tersedia dengan dual API combo
+      // Process setiap slot yang tersedia dengan API1 COMBO
       for (let j = 0; j < availableSlots.length; j++) {
         const slot = availableSlots[j];
-        const slotKe = slot['slot-ke'] || slot.slot_ke;
         
         // Update progress per slot
         statusTracker[nomor_hp].slots = j + 1;
@@ -584,19 +418,13 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
           // Silent error handling
         }
         
-        // PROSES: Add-Kick Combo dengan Dual API Strategy
-        const comboResult = await addKickCombo(nomor_hp, slot, nomor_tumbal);
+        // PROSES: API1+CEKSLOT1+ADD1+KICK1 COMBO
+        const comboResult = await addKickComboAPI1Only(nomor_hp, slot, nomor_tumbal);
         
         if (comboResult.success) {
           totalSuccess++;
           statusTracker[nomor_hp].successSlots++;
-          
-          // Track API usage
-          if (comboResult.source.includes('🟢 KHFY')) {
-            apiStats.khfy++;
-          } else if (comboResult.source.includes('⚪ H-P')) {
-            apiStats.hidepulsa++;
-          }
+          apiStats.khfy++;
         } else {
           totalFailed++;
           apiStats.failed++;
@@ -609,9 +437,9 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
         
         totalSlotProcessed++;
         
-        // TUNGGU: Istirahat 25 detik setelah combo selesai, sebelum proses selanjutnya
+        // TUNGGU: Istirahat 35 detik setelah combo selesai, sebelum proses selanjutnya
         if (j < availableSlots.length - 1) { // Jangan tunggu di slot terakhir untuk pengelola ini
-          await new Promise(resolve => setTimeout(resolve, 25000)); // 25 detik
+          await new Promise(resolve => setTimeout(resolve, 35000)); // 35 detik (30s combo + 5s buffer)
         }
       }
       
@@ -661,18 +489,17 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
     });
 
     // Calculate global API statistics
-    let globalApiStats = { khfy: 0, hidepulsa: 0, failed: 0 };
+    let globalApiStats = { khfy: 0, failed: 0 };
     
     // Aggregate API stats from status tracker if available
     Object.keys(statusTracker).forEach(nomor => {
       if (statusTracker[nomor].apiStats) {
         globalApiStats.khfy += statusTracker[nomor].apiStats.khfy || 0;
-        globalApiStats.hidepulsa += statusTracker[nomor].apiStats.hidepulsa || 0;
         globalApiStats.failed += statusTracker[nomor].apiStats.failed || 0;
       }
     });
 
-    let finalMessage = `📊 <b>RINGKASAN HASIL - DUAL API</b>\n\n`;
+    let finalMessage = `📊 <b>RINGKASAN HASIL - API1 COMBO</b>\n\n`;
     finalMessage += `📞 <b>Total Pengelola:</b> ${nomor_pengelola_list.length} nomor\n`;
     finalMessage += `✅ <b>Berhasil diproses:</b> ${completedCount}/${nomor_pengelola_list.length} pengelola\n`;
     finalMessage += `❌ <b>Gagal/No slots:</b> ${failedPengelolaCount}/${nomor_pengelola_list.length} pengelola\n\n`;
@@ -702,8 +529,9 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
       }
     }
     
-    finalMessage += `\n⏰ <b>Waktu total:</b> ~${totalSlotProcessed * 45} detik (~${Math.round(totalSlotProcessed * 45 / 60)} menit)`;
-    finalMessage += `\n🚀 <b>Strategy:</b> Dual API (KHFY → HidePulsa)`;
+    finalMessage += `\n⏰ <b>Waktu total:</b> ~${totalSlotProcessed * 65} detik (~${Math.round(totalSlotProcessed * 65 / 60)} menit)`;
+    finalMessage += `\n🚀 <b>Strategy:</b> API1 Only (KHFY-Store)`;
+    finalMessage += `\n⚡ <b>Combo timing:</b> CEKSLOT1 + ADD1 + 30s wait + KICK1 + 35s interval`;
     
     await bot.sendMessage(chatId, finalMessage, { parse_mode: 'HTML' });
 
@@ -735,19 +563,19 @@ module.exports = (bot) => {
         ];
         
         const content = 
-          `🔧 <b>ADD-KICK MASSAL - DUAL API</b>\n\n` +
-          `📝 <b>Fitur Terbaru:</b>\n` +
-          `• Dual API Strategy (KHFY + HidePulsa)\n` +
-          `• Smart Add-Kick Combo\n` +
-          `• Filter slot: sisa-add = 2 (tepat)\n` +
-          `• Hanya slot kosong (tanpa anggota)\n` +
-          `• Add tumbal → tunggu 20s → kick tumbal\n` +
+          `🔧 <b>ADD-KICK MASSAL - API1 COMBO</b>\n\n` +
+          `📝 <b>Fitur Baru:</b>\n` +
+          `• API1 Only Strategy (KHFY-Store)\n` +
+          `• Full API1 Combo Pattern\n` +
+          `• Slot detection: kosong (tanpa alias/msisdn)\n` +
+          `• Add tumbal → tunggu 30s → kick tumbal\n` +
           `• Progress tracking real-time\n` +
-          `• API fallback mechanism\n\n` +
-          `🚀 <b>API Strategy:</b>\n` +
-          `• Primary: KHFY (member_id tracking)\n` +
-          `• Fallback: HidePulsa (slot_number)\n` +
-          `• Smart timeout & retry\n\n` +
+          `• member_id tracking untuk kick\n\n` +
+          `🚀 <b>API1 Combo Pattern:</b>\n` +
+          `• Step 1: API1+CEKSLOT1 (fresh data)\n` +
+          `• Step 2: API1+ADD1 (add tumbal)\n` +
+          `• Step 3: Wait 30 seconds\n` +
+          `• Step 4: API1+KICK1 (kick tumbal)\n\n` +
           `⚡ <b>Mulai proses?</b>`;
 
         // Cek apakah message memiliki caption (dari photo message)
@@ -816,7 +644,7 @@ module.exports = (bot) => {
         
         // JANGAN hapus menu, kirim input form di bawah menu (sama seperti scan_bekasan)
         const inputMsg = await bot.sendMessage(chatId,
-          `⚡ <b>ADD-KICK MASSAL - DUAL API</b>\n\n` +
+          `⚡ <b>ADD-KICK MASSAL - API1 COMBO</b>\n\n` +
           `📞 <b>MASUKAN NOMOR PENGELOLA</b>\n\n` +
           `Ketik nomor HP pengelola (bisa multiple):\n\n` +
           `💡 <b>Format:</b>\n` +
@@ -825,10 +653,10 @@ module.exports = (bot) => {
           `  081234567890\n` +
           `  081234567891\n` +
           `  081234567892\n\n` +
-          `🚀 <b>Dual API Strategy:</b>\n` +
-          `• Primary: KHFY (member_id based)\n` +
-          `• Fallback: HidePulsa (slot based)\n` +
-          `• Smart Add-Kick combo\n\n` +
+          `🚀 <b>API1 Combo Strategy:</b>\n` +
+          `• Full API1+CEKSLOT1+ADD1+KICK1 pattern\n` +
+          `• member_id tracking untuk kick\n` +
+          `• 30 detik wait setelah ADD\n\n` +
           `⚠️ <b>Pastikan semua nomor sudah login!</b>\n\n` +
           `💡 Ketik "exit" untuk membatalkan`,
           { parse_mode: 'HTML' }
@@ -972,24 +800,26 @@ module.exports = (bot) => {
         
         // Show confirmation
         const confirmText = 
-          `🔄 <b>KONFIRMASI ADD-KICK MASSAL - DUAL API</b>\n\n` +
+          `🔄 <b>KONFIRMASI ADD-KICK MASSAL - API1 COMBO</b>\n\n` +
           `📞 <b>Nomor Pengelola:</b> ${state.nomor_pengelola_list.length} nomor\n` +
           `📝 <b>Daftar:</b>\n${state.nomor_pengelola_list.map((num, i) => `${i+1}. ${num}`).join('\n')}\n\n` +
           `👤 <b>Nomor Tumbal:</b> ${cleanNumber}\n\n` +
-          `🚀 <b>Dual API Strategy:</b>\n` +
-          `• Primary: KHFY (add → kick by member_id)\n` +
-          `• Fallback: HidePulsa (add → kick by slot)\n` +
-          `• Smart failover mechanism\n\n` +
+          `🚀 <b>API1 Combo Strategy:</b>\n` +
+          `• Full API1 pattern: CEKSLOT1+ADD1+KICK1\n` +
+          `• member_id tracking untuk kick yang akurat\n` +
+          `• Single API reliability (KHFY-Store only)\n\n` +
           `⚡ <b>Filter Ketat:</b>\n` +
-          `1. Slot sisa-add = 2 (tepat, bukan 1/0)\n` +
-          `2. Slot >= 1 (bukan pengelola)\n` +
-          `3. Slot kosong (tanpa anggota)\n` +
-          `4. Add-Kick combo dengan dual API\n\n` +
+          `1. Slot harus punya slot_id (bukan 0)\n` +
+          `2. Alias kosong (slot belum terisi)\n` +
+          `3. MSISDN kosong (belum ada anggota)\n` +
+          `4. Fresh data dari CEKSLOT1 setiap combo\n\n` +
           `⏰ <b>Timing Detail:</b>\n` +
-          `• ADD timeout: hingga 30 detik\n` +
-          `• Tunggu setelah ADD: 20 detik\n` +
-          `• Tunggu setelah KICK: 25 detik\n` +
-          `• Estimasi: ~45 detik per slot\n\n` +
+          `• CEKSLOT1: instant\n` +
+          `• ADD1 timeout: hingga 30 detik\n` +
+          `• Wait setelah ADD: 30 detik\n` +
+          `• KICK1 timeout: hingga 30 detik\n` +
+          `• Interval antar slot: 35 detik\n` +
+          `• Estimasi: ~65 detik per slot\n\n` +
           `❓ <b>Lanjutkan proses?</b>`;
         
         const keyboard = [
@@ -1056,8 +886,7 @@ module.exports = (bot) => {
   });
 };
 
-// Export functions untuk testing/external use
+// Export functions untuk testing/external use (API1 only)
 module.exports.addAnggota = addAnggota;
 module.exports.kickAnggota = kickAnggota;
-module.exports.getSlotInfo = getSlotInfo;
 module.exports.processAddKickMassal = processAddKickMassal;
