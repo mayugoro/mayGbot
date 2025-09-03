@@ -48,11 +48,11 @@ const addMemberAPI1Only = async (nomorPengelola, nomorBaru, namaBaru) => {
     // Check sisa add dari slot pertama
     const firstSlot = slotResult.slots[0];
     const sisaAdd = firstSlot ? (firstSlot['sisa-add'] || 0) : 0;
-    
+
     if (sisaAdd <= 0) {
       return {
         success: false,
-        error: 'Kuota tambah anggota sudah habis (sisa-add: 0)',
+        error: `Tidak bisa menambah anggota. Sisa kesempatan: ${sisaAdd}`,
         combo: 'API1+CEKSLOT1+ADD1',
         step: 1,
         source: '🟢 KHFY API1',
@@ -60,16 +60,19 @@ const addMemberAPI1Only = async (nomorPengelola, nomorBaru, namaBaru) => {
       };
     }
 
-    // STEP 2: API1+ADD1 - Tambah anggota dengan data dari step 1
-    console.log('🚀 STEP 2: API1+ADD1 - Menambah anggota...');
+    // STEP 2: API1+ADD1 - Tambah anggota
+    console.log('🚀 STEP 2: API1+ADD1 - Menambahkan anggota...');
     const formattedPengelola = formatNomorToInternational(nomorPengelola);
-    const formattedBaru = formatNomorToInternational(nomorBaru);
+    const formattedAnggota = formatNomorToInternational(nomorBaru);
     
     const formData = new URLSearchParams();
     formData.append('token', API_PRIMARY_TOKEN);
     formData.append('id_parent', formattedPengelola);
-    formData.append('hp_member', formattedBaru);
-    formData.append('name_member', namaBaru);
+    formData.append('msisdn', formattedAnggota);
+    formData.append('member_id', '');
+    formData.append('slot_id', '');
+    formData.append('parent_name', 'XL');
+    formData.append('child_name', namaBaru);
 
     const response = await axios.post(API_PRIMARY_BASE + API_PRIMARY_ADD_ENDPOINT, formData, {
       headers: {
@@ -85,16 +88,12 @@ const addMemberAPI1Only = async (nomorPengelola, nomorBaru, namaBaru) => {
         combo: 'API1+CEKSLOT1+ADD1',
         step: 2,
         source: '🟢 KHFY API1',
-        slotInfo: slotResult.slots,
-        addedMember: {
-          nomor: formattedBaru,
-          nama: namaBaru
-        }
+        slotInfo: slotResult.slots
       };
     } else {
       return {
         success: false,
-        error: response.data?.message || 'Gagal menambah anggota',
+        error: response.data?.message || 'Gagal menambahkan anggota',
         combo: 'API1+CEKSLOT1+ADD1',
         step: 2,
         source: '🟢 KHFY API1',
@@ -129,7 +128,7 @@ module.exports = (bot) => {
         `Ketik nomor HP pengelola yang akan menambah anggota:\n\n` +
         `💡 <b>Contoh:</b> <code>081234567890</code>\n\n` +
         `🚀 <b>Strategi COMBO API1:</b>\n` +
-        `• Step 1: API1+CEKSLOT1 (ambil data slot)\n` +
+        `• Step 1: API1+CEKSLOT1 (cek slot kosong)\n` +
         `• Step 2: API1+ADD1 (tambah anggota)\n` +
         `• Tanpa fallback - presisi tinggi\n\n` +
         `💡 Ketik "keluar" untuk membatalkan`,
@@ -138,6 +137,115 @@ module.exports = (bot) => {
       
       addStates.set(chatId, { step: 'input_pengelola', inputMessageId: inputMsg.message_id });
       await bot.answerCallbackQuery(id);
+      return;
+    }
+
+    // Handle slot selection untuk add member
+    if (data.startsWith('add_slot_')) {
+      const state = addStates.get(chatId);
+      if (!state || !state.allSlots) {
+        await bot.answerCallbackQuery(id, { text: '❌ Session expired, silakan mulai ulang!' });
+        return;
+      }
+
+      const slotIndex = parseInt(data.replace('add_slot_', ''));
+      const selectedSlot = state.allSlots[slotIndex];
+
+      if (!selectedSlot) {
+        await bot.answerCallbackQuery(id, { text: '❌ Slot tidak ditemukan!' });
+        return;
+      }
+
+      if (selectedSlot.status !== 'empty') {
+        await bot.answerCallbackQuery(id, { text: '❌ Slot sudah terisi!' });
+        return;
+      }
+
+      // Show form input for new member phone
+      const inputMsg = await bot.editMessageText(
+        `➕ <b>TAMBAH ANGGOTA - LANGKAH 2</b>\n\n` +
+        `📞 <b>Pengelola:</b> ${state.pengelola}\n` +
+        `🎯 <b>Slot Dipilih:</b> Slot ${selectedSlot.slot_id || slotIndex + 1}\n\n` +
+        `📱 <b>MASUKKAN NOMOR ANGGOTA BARU</b>\n\n` +
+        `Ketik nomor HP anggota yang akan ditambahkan:\n\n` +
+        `💡 <b>Contoh:</b> <code>089876543210</code>\n\n` +
+        `💡 Ketik "keluar" untuk membatalkan`,
+        {
+          chat_id: chatId,
+          message_id: message.message_id,
+          parse_mode: 'HTML'
+        }
+      );
+
+      addStates.set(chatId, {
+        ...state,
+        step: 'input_member_phone',
+        selectedSlot: selectedSlot,
+        slotIndex: slotIndex,
+        inputMessageId: inputMsg.message_id
+      });
+
+      await bot.answerCallbackQuery(id);
+      return;
+    }
+
+    // Handle filled slot (non-clickable)
+    if (data === 'slot_filled') {
+      await bot.answerCallbackQuery(id, { text: '❌ Slot sudah terisi, tidak bisa dipilih!' });
+      return;
+    }
+
+    // Handle add to new slot
+    if (data === 'add_new_slot') {
+      const state = addStates.get(chatId);
+      if (!state || !state.allSlots) {
+        await bot.answerCallbackQuery(id, { text: '❌ Session expired, silakan mulai ulang!' });
+        return;
+      }
+
+      // Show form input for new member phone
+      const nextSlotId = state.allSlots.length + 1;
+      const inputMsg = await bot.editMessageText(
+        `➕ <b>TAMBAH ANGGOTA - LANGKAH 2</b>\n\n` +
+        `📞 <b>Pengelola:</b> ${state.pengelola}\n` +
+        `🎯 <b>Slot Baru:</b> Slot ${nextSlotId}\n\n` +
+        `📱 <b>MASUKKAN NOMOR ANGGOTA BARU</b>\n\n` +
+        `Ketik nomor HP anggota yang akan ditambahkan:\n\n` +
+        `💡 <b>Contoh:</b> <code>089876543210</code>\n\n` +
+        `💡 Ketik "keluar" untuk membatalkan`,
+        {
+          chat_id: chatId,
+          message_id: message.message_id,
+          parse_mode: 'HTML'
+        }
+      );
+
+      addStates.set(chatId, {
+        ...state,
+        step: 'input_member_phone',
+        selectedSlot: { slot_id: nextSlotId },
+        slotIndex: nextSlotId - 1,
+        inputMessageId: inputMsg.message_id
+      });
+
+      await bot.answerCallbackQuery(id);
+      return;
+    }
+
+    // Handle cancel add
+    if (data === 'cancel_add') {
+      await bot.editMessageText(
+        `❌ <b>PROSES TAMBAH ANGGOTA DIBATALKAN</b>\n\n` +
+        `Tidak ada anggota yang ditambahkan.`,
+        {
+          chat_id: chatId,
+          message_id: message.message_id,
+          parse_mode: 'HTML'
+        }
+      );
+      
+      addStates.delete(chatId);
+      await bot.answerCallbackQuery(id, { text: '❌ Dibatalkan' });
       return;
     }
   });
@@ -188,25 +296,190 @@ module.exports = (bot) => {
           await bot.deleteMessage(chatId, msg.message_id);
         } catch (e) {}
 
-        const inputMsg2 = await bot.sendMessage(chatId,
-          `➕ <b>TAMBAH ANGGOTA - LANGKAH 2</b>\n\n` +
+        // Process STEP 1: API1+CEKSLOT1 untuk mendapatkan data slot
+        const processingMsg = await bot.sendMessage(chatId,
+          `⚡ <b>MEMPROSES STEP 1: API1+CEKSLOT1...</b>\n\n` +
           `📞 <b>Pengelola:</b> ${cleanNumber}\n\n` +
-          `👤 <b>MASUKKAN NOMOR ANGGOTA BARU</b>\n\n` +
-          `Ketik nomor HP yang akan ditambahkan:\n\n` +
-          `💡 <b>Contoh:</b> <code>089876543210</code>\n\n` +
-          `💡 Ketik "keluar" untuk membatalkan`,
+          `🔄 <b>Status:</b> Mengambil data slot keluarga...\n` +
+          `📡 <b>COMBO:</b> API1+CEKSLOT1+ADD1`,
           { parse_mode: 'HTML' }
         );
 
-        addStates.set(chatId, { 
-          step: 'input_anggota', 
-          pengelola: cleanNumber,
-          inputMessageId: inputMsg2.message_id 
-        });
+        try {
+          // Hit cekslot1 untuk mendapatkan data slot
+          const slotResult = await getSlotInfoAPI1Only(cleanNumber);
+          
+          if (!slotResult.success) {
+            await bot.editMessageText(
+              `❌ <b>GAGAL MENGAMBIL DATA SLOT</b>\n\n` +
+              `📞 <b>Pengelola:</b> ${cleanNumber}\n\n` +
+              `🔍 <b>Error:</b> ${slotResult.error}\n\n` +
+              `💡 <b>Solusi:</b>\n` +
+              `• Pastikan nomor pengelola benar\n` +
+              `• Pastikan nomor sudah login di API1\n` +
+              `• Coba lagi dalam beberapa saat`,
+              {
+                chat_id: chatId,
+                message_id: processingMsg.message_id,
+                parse_mode: 'HTML'
+              }
+            );
+            addStates.delete(chatId);
+            return;
+          }
+
+          // Create slot list - hanya slot yang benar-benar ada dari API response
+          const allSlots = [];
+          
+          // Add HANYA slot yang ada di response API dan memiliki slot_id
+          if (slotResult.slots && slotResult.slots.length > 0) {
+            slotResult.slots.forEach((slot, index) => {
+              // Hanya tambahkan jika ada slot_id yang valid dari API
+              if (slot.slot_id && slot.slot_id !== null && slot.slot_id !== undefined) {
+                allSlots.push({
+                  slot_id: slot.slot_id,
+                  status: 'filled',
+                  msisdn: slot.msisdn || slot.nomor,
+                  alias: slot.alias || slot.nama || '-',
+                  quota_allocated_gb: slot.quota_allocated_gb || '0.00',
+                  family_member_id: slot.family_member_id
+                });
+              }
+            });
+          }
+
+          // TIDAK MENAMBAHKAN slot kosong buatan - hanya tampilkan yang ada dari API
+
+          // Check add chances
+          const firstSlot = slotResult.slots && slotResult.slots[0];
+          const sisaAdd = firstSlot ? (firstSlot['sisa-add'] || firstSlot.add_chances || 0) : 0;
+
+          if (sisaAdd <= 0) {
+            await bot.editMessageText(
+              `❌ <b>TIDAK BISA MENAMBAH ANGGOTA</b>\n\n` +
+              `📞 <b>Pengelola:</b> ${cleanNumber}\n\n` +
+              `🔍 <b>Alasan:</b> Sisa kesempatan tambah anggota: ${sisaAdd}\n\n` +
+              `💡 <b>Solusi:</b>\n` +
+              `• Beli kesempatan tambah anggota\n` +
+              `• Hubungi operator untuk upgrade paket`,
+              {
+                chat_id: chatId,
+                message_id: processingMsg.message_id,
+                parse_mode: 'HTML'
+              }
+            );
+            addStates.delete(chatId);
+            return;
+          }
+
+          // Check jika tidak ada slot yang tersedia
+          if (allSlots.length === 0) {
+            await bot.editMessageText(
+              `❌ <b>TIDAK ADA SLOT TERSEDIA</b>\n\n` +
+              `📞 <b>Pengelola:</b> ${cleanNumber}\n\n` +
+              `🔍 <b>Alasan:</b> Tidak ada slot yang dikembalikan dari API\n\n` +
+              `💡 <b>Kemungkinan:</b>\n` +
+              `• Semua slot sudah terisi penuh\n` +
+              `• Nomor belum memiliki paket keluarga\n` +
+              `• API tidak mengembalikan data slot`,
+              {
+                chat_id: chatId,
+                message_id: processingMsg.message_id,
+                parse_mode: 'HTML'
+              }
+            );
+            addStates.delete(chatId);
+            return;
+          }
+
+          // Check apakah ada kemungkinan slot kosong berdasarkan jumlah slot vs maksimal
+          const maxPossibleSlots = 10; // Asumsi maksimal 10 slot per keluarga
+          const hasEmptySlots = allSlots.length < maxPossibleSlots && sisaAdd > 0;
+
+          // Create inline keyboard
+          const keyboard = [];
+          
+          // Tampilkan slot yang ada dari API
+          allSlots.forEach((slot, index) => {
+            const buttonText = `❗ Slot ${slot.slot_id} : ${slot.msisdn} : ${slot.alias}`;
+            const callbackData = 'slot_filled'; // Non-clickable
+            
+            keyboard.push([{ 
+              text: buttonText, 
+              callback_data: callbackData
+            }]);
+          });
+
+          // Jika masih bisa add dan belum mencapai batas maksimal, tampilkan opsi add
+          if (hasEmptySlots) {
+            keyboard.push([{ 
+              text: `✅ TAMBAH KE SLOT BARU (${allSlots.length + 1})`, 
+              callback_data: `add_new_slot`
+            }]);
+          }
+
+          // Tambah tombol batal
+          keyboard.push([{ text: '❌ BATAL', callback_data: 'cancel_add' }]);
+
+          let statusMessage;
+          if (hasEmptySlots) {
+            statusMessage = `➕ <b>PILIH AKSI UNTUK ANGGOTA BARU</b>\n\n` +
+              `📞 <b>Pengelola:</b> ${cleanNumber}\n` +
+              `📊 <b>Sisa Add:</b> ${sisaAdd} kesempatan\n` +
+              `📈 <b>Slot Aktif:</b> ${allSlots.length}/${maxPossibleSlots}\n\n` +
+              `🔍 <b>SLOT YANG TERISI:</b>\n\n` +
+              `❗ = Slot terisi (dari API)\n` +
+              `✅ = Tambah ke slot baru\n\n` +
+              `💡 <b>Klik "TAMBAH KE SLOT BARU" untuk menambah anggota</b>`;
+          } else {
+            statusMessage = `❌ <b>TIDAK BISA MENAMBAH ANGGOTA</b>\n\n` +
+              `📞 <b>Pengelola:</b> ${cleanNumber}\n` +
+              `📊 <b>Sisa Add:</b> ${sisaAdd} kesempatan\n` +
+              `📈 <b>Slot Aktif:</b> ${allSlots.length}/${maxPossibleSlots}\n\n` +
+              `🔍 <b>SLOT YANG TERISI:</b>\n\n` +
+              `❗ = Slot terisi (dari API)\n\n` +
+              `💡 <b>Semua slot penuh atau tidak ada kesempatan add</b>`;
+          }
+
+          await bot.editMessageText(statusMessage, {
+            chat_id: chatId,
+            message_id: processingMsg.message_id,
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: keyboard
+            }
+          });
+
+          // Update state dengan data slot
+          addStates.set(chatId, {
+            step: 'select_slot',
+            pengelola: cleanNumber,
+            allSlots: allSlots,
+            slotData: slotResult,
+            sisaAdd: sisaAdd,
+            messageId: processingMsg.message_id
+          });
+
+        } catch (error) {
+          console.log('❌ CEKSLOT1 Error:', error.message);
+          
+          await bot.editMessageText(
+            `❌ <b>ERROR SAAT MENGAMBIL DATA</b>\n\n` +
+            `📞 <b>Pengelola:</b> ${cleanNumber}\n\n` +
+            `🔍 <b>Error:</b> ${error.message}\n\n` +
+            `💡 <b>Solusi:</b> Silakan coba lagi atau hubungi admin`,
+            {
+              chat_id: chatId,
+              message_id: processingMsg.message_id,
+              parse_mode: 'HTML'
+            }
+          );
+          addStates.delete(chatId);
+        }
         return;
       }
 
-      if (state.step === 'input_anggota') {
+      if (state.step === 'input_member_phone') {
         const cleanNumber = text.replace(/\D/g, '');
         
         if (cleanNumber.length < 10 || cleanNumber.length > 15) {
@@ -233,30 +506,77 @@ module.exports = (bot) => {
         const inputMsg3 = await bot.sendMessage(chatId,
           `➕ <b>TAMBAH ANGGOTA - LANGKAH 3</b>\n\n` +
           `📞 <b>Pengelola:</b> ${state.pengelola}\n` +
+          `🎯 <b>Slot Dipilih:</b> Slot ${state.selectedSlot.slot_id}\n` +
           `👤 <b>Anggota Baru:</b> ${cleanNumber}\n\n` +
-          `📝 <b>MASUKKAN NAMA ANGGOTA</b>\n\n` +
-          `Ketik nama untuk anggota baru:\n\n` +
-          `💡 <b>Contoh:</b> <code>Ahmad Budi</code>\n\n` +
+          `📝 <b>MASUKKAN NAMA PARENT</b>\n\n` +
+          `Ketik nama parent (operator pengelola):\n\n` +
+          `💡 <b>Contoh:</b> <code>XL</code>, <code>Telkomsel</code>, <code>Indosat</code>\n\n` +
           `💡 Ketik "keluar" untuk membatalkan`,
           { parse_mode: 'HTML' }
         );
 
         addStates.set(chatId, { 
-          step: 'input_nama', 
-          pengelola: state.pengelola,
+          ...state,
+          step: 'input_parent_name', 
           anggota: cleanNumber,
           inputMessageId: inputMsg3.message_id 
         });
         return;
       }
 
-      if (state.step === 'input_nama') {
-        const namaAnggota = text;
+      if (state.step === 'input_parent_name') {
+        const parentName = text;
         
-        if (namaAnggota.length < 2 || namaAnggota.length > 50) {
+        if (parentName.length < 2 || parentName.length > 20) {
           await bot.sendMessage(chatId,
-            `❌ <b>Nama tidak valid!</b>\n\n` +
-            `Nama harus 2-50 karakter.\n` +
+            `❌ <b>Nama parent tidak valid!</b>\n\n` +
+            `Nama parent harus 2-20 karakter.\n` +
+            `Coba lagi atau ketik "keluar" untuk batal.`,
+            { parse_mode: 'HTML' }
+          );
+          await bot.deleteMessage(chatId, msg.message_id);
+          return;
+        }
+
+        // Hapus messages dan update state
+        if (state.inputMessageId) {
+          try {
+            await bot.deleteMessage(chatId, state.inputMessageId);
+          } catch (e) {}
+        }
+        try {
+          await bot.deleteMessage(chatId, msg.message_id);
+        } catch (e) {}
+
+        const inputMsg4 = await bot.sendMessage(chatId,
+          `➕ <b>TAMBAH ANGGOTA - LANGKAH 4</b>\n\n` +
+          `📞 <b>Pengelola:</b> ${state.pengelola}\n` +
+          `🎯 <b>Slot Dipilih:</b> Slot ${state.selectedSlot.slot_id}\n` +
+          `👤 <b>Anggota Baru:</b> ${state.anggota}\n` +
+          `📡 <b>Parent Name:</b> ${parentName}\n\n` +
+          `📝 <b>MASUKKAN NAMA CHILD</b>\n\n` +
+          `Ketik nama untuk anggota baru (child name):\n\n` +
+          `💡 <b>Contoh:</b> <code>Ahmad Budi</code>, <code>Siti Aisyah</code>\n\n` +
+          `💡 Ketik "keluar" untuk membatalkan`,
+          { parse_mode: 'HTML' }
+        );
+
+        addStates.set(chatId, { 
+          ...state,
+          step: 'input_child_name', 
+          parentName: parentName,
+          inputMessageId: inputMsg4.message_id 
+        });
+        return;
+      }
+
+      if (state.step === 'input_child_name') {
+        const childName = text;
+        
+        if (childName.length < 2 || childName.length > 50) {
+          await bot.sendMessage(chatId,
+            `❌ <b>Nama child tidak valid!</b>\n\n` +
+            `Nama child harus 2-50 karakter.\n` +
             `Coba lagi atau ketik "keluar" untuk batal.`,
             { parse_mode: 'HTML' }
           );
@@ -274,68 +594,112 @@ module.exports = (bot) => {
           await bot.deleteMessage(chatId, msg.message_id);
         } catch (e) {}
         
-        // Process COMBO API1+CEKSLOT1+ADD1
+        // Process STEP 2: API1+ADD1 dengan data yang sudah lengkap
         const processingMsg = await bot.sendMessage(chatId,
-          `⚡ <b>MEMPROSES COMBO API1...</b>\n\n` +
+          `⚡ <b>MEMPROSES STEP 2: API1+ADD1...</b>\n\n` +
           `📞 <b>Pengelola:</b> ${state.pengelola}\n` +
+          `🎯 <b>Slot:</b> Slot ${state.selectedSlot.slot_id}\n` +
           `👤 <b>Anggota Baru:</b> ${state.anggota}\n` +
-          `📝 <b>Nama:</b> ${namaAnggota}\n\n` +
-          `🔄 <b>Step 1:</b> Mengecek slot dengan API1+CEKSLOT1...\n` +
-          `⏳ <b>Step 2:</b> Menunggu hasil step 1...\n\n` +
-          `🚀 <b>COMBO:</b> API1+CEKSLOT1+ADD1`,
+          `📡 <b>Parent Name:</b> ${state.parentName}\n` +
+          `📝 <b>Child Name:</b> ${childName}\n\n` +
+          `🔄 <b>Status:</b> Menambahkan anggota ke keluarga...\n` +
+          `📡 <b>COMBO:</b> API1+CEKSLOT1+ADD1`,
           { parse_mode: 'HTML' }
         );
-        
-        const result = await addMemberAPI1Only(state.pengelola, state.anggota, namaAnggota);
-        
-        let responseText = `➕ <b>HASIL TAMBAH ANGGOTA - ${result.combo}</b>\n\n`;
-        responseText += `📞 <b>Pengelola:</b> ${state.pengelola}\n`;
-        responseText += `👤 <b>Anggota Baru:</b> ${state.anggota}\n`;
-        responseText += `📝 <b>Nama:</b> ${namaAnggota}\n`;
-        responseText += `📡 <b>Sumber API:</b> ${result.source}\n\n`;
-        
-        if (result.success) {
-          responseText += `✅ <b>BERHASIL MENAMBAH ANGGOTA!</b>\n\n`;
-          responseText += `🎉 <b>Pesan:</b> ${result.message}\n\n`;
-          
-          if (result.slotInfo && result.slotInfo.length > 0) {
-            const firstSlot = result.slotInfo[0];
-            responseText += `📊 <b>Info Slot Sebelumnya:</b>\n`;
-            responseText += `├ ➕ Sisa Tambah: ${firstSlot['sisa-add'] || 0}\n`;
-            responseText += `└ 📊 Total Slot: ${result.slotInfo.length}\n\n`;
-          }
-        } else {
-          responseText += `❌ <b>GAGAL MENAMBAH ANGGOTA</b>\n\n`;
-          responseText += `🔍 <b>Error di Step ${result.step}:</b> ${result.error}\n\n`;
-          
-          if (result.slotInfo && result.slotInfo.length > 0) {
-            const firstSlot = result.slotInfo[0];
-            responseText += `📊 <b>Info Slot:</b>\n`;
-            responseText += `├ ➕ Sisa Tambah: ${firstSlot['sisa-add'] || 0}\n`;
-            responseText += `└ 📊 Total Slot: ${result.slotInfo.length}\n\n`;
-          }
-          
-          responseText += `💡 <b>Solusi:</b>\n`;
-          responseText += `• Pastikan nomor pengelola benar\n`;
-          responseText += `• Pastikan masih ada kuota tambah\n`;
-          responseText += `• Coba beberapa saat lagi\n`;
-        }
-        
-        responseText += `⚡ <b>COMBO API1:</b> ${result.combo}\n`;
-        responseText += `🎯 <b>API Digunakan:</b> ${result.source}\n`;
-        responseText += `🔥 <b>Keunggulan:</b> 2-step validation, presisi tinggi`;
-        
+
         try {
+          // STEP 2: API1+ADD1 dengan form data lengkap
+          const formattedPengelola = formatNomorToInternational(state.pengelola);
+          const formattedAnggota = formatNomorToInternational(state.anggota);
+          
+          const formData = new URLSearchParams();
+          formData.append('token', API_PRIMARY_TOKEN);
+          formData.append('id_parent', formattedPengelola);
+          formData.append('msisdn', formattedAnggota);
+          formData.append('member_id', ''); // Kosong untuk member baru
+          formData.append('slot_id', state.selectedSlot.slot_id.toString());
+          formData.append('parent_name', state.parentName);
+          formData.append('child_name', childName);
+
+          console.log('🚀 STEP 2: API1+ADD1 - Menambahkan anggota...');
+          console.log('📝 Form Data:', {
+            token: API_PRIMARY_TOKEN ? API_PRIMARY_TOKEN.substring(0, 10) + '...' : 'KOSONG',
+            id_parent: formattedPengelola,
+            msisdn: formattedAnggota,
+            member_id: '',
+            slot_id: state.selectedSlot.slot_id.toString(),
+            parent_name: state.parentName,
+            child_name: childName
+          });
+
+          const response = await axios.post(API_PRIMARY_BASE + API_PRIMARY_ADD_ENDPOINT, formData, {
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            timeout: 30000
+          });
+
+          console.log('🔍 ADD1 Response:', JSON.stringify(response.data, null, 2));
+
+          let responseText = `➕ <b>HASIL TAMBAH ANGGOTA - API1+CEKSLOT1+ADD1</b>\n\n`;
+          responseText += `📞 <b>Pengelola:</b> ${state.pengelola}\n`;
+          responseText += `🎯 <b>Slot:</b> Slot ${state.selectedSlot.slot_id}\n`;
+          responseText += `👤 <b>Anggota Baru:</b> ${state.anggota}\n`;
+          responseText += `📡 <b>Parent Name:</b> ${state.parentName}\n`;
+          responseText += `📝 <b>Child Name:</b> ${childName}\n`;
+          responseText += `📡 <b>Sumber API:</b> 🟢 KHFY API1\n\n`;
+          
+          if (response.data?.status === 'success' || response.data?.status === true) {
+            responseText += `✅ <b>BERHASIL MENAMBAHKAN ANGGOTA!</b>\n\n`;
+            responseText += `🎉 <b>Pesan:</b> ${response.data.message || 'Anggota berhasil ditambahkan'}\n\n`;
+            
+            responseText += `👤 <b>Detail Anggota Baru:</b>\n`;
+            responseText += `├ 📞 Nomor: ${formattedAnggota}\n`;
+            responseText += `├ 📝 Nama: ${childName}\n`;
+            responseText += `├ 🎯 Slot: ${state.selectedSlot.slot_id}\n`;
+            responseText += `├ 📡 Parent: ${state.parentName}\n`;
+            responseText += `└ 📊 Kuota Awal: 0.00 GB\n\n`;
+            
+            responseText += `📊 <b>Sisa Add:</b> ${state.sisaAdd - 1} kesempatan\n\n`;
+          } else {
+            responseText += `❌ <b>GAGAL MENAMBAHKAN ANGGOTA</b>\n\n`;
+            responseText += `🔍 <b>Error:</b> ${response.data?.message || response.data?.description || 'Gagal menambahkan anggota'}\n\n`;
+            
+            responseText += `💡 <b>Solusi:</b>\n`;
+            responseText += `• Pastikan nomor belum terdaftar di operator lain\n`;
+            responseText += `• Pastikan slot masih kosong\n`;
+            responseText += `• Coba lagi dalam beberapa saat\n\n`;
+          }
+          
+          responseText += `⚡ <b>COMBO API1:</b> API1+CEKSLOT1+ADD1\n`;
+          responseText += `🎯 <b>API Digunakan:</b> 🟢 KHFY API1\n`;
+          responseText += `🔥 <b>Keunggulan:</b> Auto-slot selection, presisi tinggi`;
+          
           await bot.editMessageText(responseText, {
             chat_id: chatId,
             message_id: processingMsg.message_id,
             parse_mode: 'HTML'
           });
-        } catch (e) {
-          await bot.sendMessage(chatId, responseText, { parse_mode: 'HTML' });
+
+        } catch (error) {
+          console.log('❌ ADD1 Error:', error.message);
+          
+          await bot.editMessageText(
+            `❌ <b>ERROR SAAT MENAMBAHKAN ANGGOTA</b>\n\n` +
+            `📞 <b>Pengelola:</b> ${state.pengelola}\n` +
+            `👤 <b>Target:</b> ${childName} (${state.anggota})\n\n` +
+            `🔍 <b>Error:</b> ${error.message}\n\n` +
+            `💡 <b>Solusi:</b> Silakan coba lagi atau hubungi admin`,
+            {
+              chat_id: chatId,
+              message_id: processingMsg.message_id,
+              parse_mode: 'HTML'
+            }
+          );
         }
-        
+
         addStates.delete(chatId);
+        return;
       }
       
     } catch (error) {
@@ -345,5 +709,5 @@ module.exports = (bot) => {
   });
 };
 
-// Export functions untuk penggunaan internal
+// Export functions untuk penggunaan internal  
 module.exports.addMemberAPI1Only = addMemberAPI1Only;
