@@ -191,7 +191,7 @@ const addKickComboAPI1Only = async (nomor_hp, availableSlot, nomor_tumbal) => {
       // Fallback: ambil fresh slot info lagi untuk dapat member_id
       console.log('🔄 Fallback: Get fresh member_id from CEKSLOT1...');
       const freshSlotResult = await getSlotInfoAPI1Only(nomor_hp);
-      if (freshSlotResult.success) {
+      if (freshSlotResult.success && freshSlotResult.members && freshSlotResult.members.length > 0) {
         const targetSlot = freshSlotResult.members.find(member => 
           member.slot_id === availableSlot.slot_id && 
           member.msisdn === formatNomorToInternational(nomor_tumbal)
@@ -255,6 +255,17 @@ const kickAnggota = async (nomor_hp, member_id) => {
 // Function untuk proses massal add-kick dengan auto slot selection
 const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, bot) => {
   try {
+    console.log(`🚀 ADDKICK MASSAL START - ${nomor_pengelola_list?.length || 0} pengelola, tumbal: ${nomor_tumbal}`);
+    
+    // Validasi input
+    if (!nomor_pengelola_list || !Array.isArray(nomor_pengelola_list) || nomor_pengelola_list.length === 0) {
+      throw new Error('Daftar nomor pengelola tidak valid atau kosong');
+    }
+    
+    if (!nomor_tumbal) {
+      throw new Error('Nomor tumbal tidak valid');
+    }
+    
     // Buat status tracker untuk setiap nomor
     const statusTracker = {};
     nomor_pengelola_list.forEach(nomor => {
@@ -291,7 +302,7 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
       
       statusText += `\n🎯 <b>Progress:</b> ${currentIndex + 1}/${nomor_pengelola_list.length} pengelola`;
       statusText += `\n🚀 <b>API Strategy:</b> API1+CEKSLOT1+ADD1(30s)+KICK1`;
-      statusText += `\n🎯 <b>Filter:</b> Slot kosong dengan limit = 2`;
+      statusText += `\n🎯 <b>Filter:</b> Slot kosong dengan add_chances = 2`;
       return statusText;
     };
 
@@ -310,50 +321,53 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
     for (let i = 0; i < nomor_pengelola_list.length; i++) {
       const nomor_hp = nomor_pengelola_list[i];
       
-      // STEP 1: Get slot info dengan API1+CEKSLOT1
-      const slotResult = await getSlotInfoAPI1Only(nomor_hp);
-      if (!slotResult.success || !slotResult.members.length) {
-        // Mark as failed - no slots
-        statusTracker[nomor_hp] = { 
-          status: 'failed', 
-          reason: 'no_slots_or_cekslot1_failed',
-          source: '🟢 KHFY API1'
-        };
+      try {
+        console.log(`🔄 Processing pengelola ${i+1}/${nomor_pengelola_list.length}: ${nomor_hp}`);
         
-        // Update live status
-        try {
-          await bot.editMessageText(
-            createStatusList(i),
-            {
-              chat_id: chatId,
-              message_id: statusMsg.message_id,
-              parse_mode: 'HTML'
-            }
-          );
-        } catch (e) {
-          // Silent error handling
+        // STEP 1: Get slot info dengan API1+CEKSLOT1
+        const slotResult = await getSlotInfoAPI1Only(nomor_hp);
+        if (!slotResult.success || !slotResult.members || !slotResult.members.length) {
+          // Mark as failed - no slots
+          statusTracker[nomor_hp] = { 
+            status: 'failed', 
+            reason: 'no_slots_or_cekslot1_failed',
+            source: '🟢 KHFY API1'
+          };
+          
+          // Update live status
+          try {
+            await bot.editMessageText(
+              createStatusList(i),
+              {
+                chat_id: chatId,
+                message_id: statusMsg.message_id,
+                parse_mode: 'HTML'
+              }
+            );
+          } catch (e) {
+            // Silent error handling
+          }
+          continue;
         }
-        continue;
-      }
 
       // Filter slot dengan kriteria ketat:
       // 1. slot_id ada dan bukan 0 (bukan pengelola)
       // 2. alias kosong (slot belum terisi)
       // 3. msisdn kosong (belum ada anggota)
-      // 4. limit = 2 (HANYA slot dengan limit 2)
-      const availableSlots = slotResult.members.filter(member => {
+      // 4. add_chances = 2 (HANYA slot dengan add_chances = 2)
+      const availableSlots = (slotResult.members || []).filter(member => {
         const slotId = member.slot_id;
         const alias = member.alias || '';
         const msisdn = member.msisdn || '';
-        const limit = parseInt(member.limit) || 0;
+        const addChances = parseInt(member.add_chances) || 0;
         
-        console.log(`🔍 FILTER CHECK - Slot ${slotId}: alias='${alias}', msisdn='${msisdn}', limit=${limit}`);
+        console.log(`🔍 FILTER CHECK - Slot ${slotId}: alias='${alias}', msisdn='${msisdn}', add_chances=${addChances}`);
         
-        // Slot kosong dengan limit = 2: slot_id ada, bukan 0, alias + msisdn kosong, dan limit = 2
-        const isValid = slotId && slotId !== '0' && slotId !== 0 && !alias.trim() && !msisdn.trim() && limit === 2;
+        // Slot kosong dengan add_chances = 2: slot_id ada, bukan 0, alias + msisdn kosong, dan add_chances = 2
+        const isValid = slotId && slotId !== '0' && slotId !== 0 && !alias.trim() && !msisdn.trim() && addChances === 2;
         
         if (isValid) {
-          console.log(`✅ SLOT VALID - Slot ${slotId} memenuhi kriteria (limit=2, kosong)`);
+          console.log(`✅ SLOT VALID - Slot ${slotId} memenuhi kriteria (add_chances=2, kosong)`);
         } else {
           console.log(`❌ SLOT SKIP - Slot ${slotId} tidak memenuhi kriteria`);
         }
@@ -361,14 +375,14 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
         return isValid;
       });
       
-      console.log(`📊 FILTER RESULT - ${availableSlots.length} slot tersedia dari ${slotResult.members.length} total slot`);
+      console.log(`📊 FILTER RESULT - ${availableSlots.length} slot tersedia dari ${(slotResult.members || []).length} total slot`);
 
       // Hanya proses pengelola dengan slot tersedia
       if (!availableSlots.length) {
-        // Mark as failed - no available slots with limit = 2
+        // Mark as failed - no available slots with add_chances = 2
         statusTracker[nomor_hp] = { 
           status: 'failed', 
-          reason: 'no_slots_limit_2',
+          reason: 'no_slots_add_chances_2',
           source: '🟢 KHFY API1'
         };
         
@@ -474,6 +488,31 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
       } catch (e) {
         // Silent error handling
       }
+      
+      } catch (pengelolaError) {
+        console.error(`❌ Error processing pengelola ${nomor_hp}:`, pengelolaError);
+        // Mark as failed
+        statusTracker[nomor_hp] = { 
+          status: 'failed', 
+          reason: 'processing_error',
+          source: '🟢 KHFY API1',
+          error: pengelolaError.message
+        };
+        
+        // Update live status
+        try {
+          await bot.editMessageText(
+            createStatusList(i),
+            {
+              chat_id: chatId,
+              message_id: statusMsg.message_id,
+              parse_mode: 'HTML'
+            }
+          );
+        } catch (e) {
+          // Silent error handling
+        }
+      }
     }
 
     // Final status update - mark all as completed
@@ -547,7 +586,7 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
     finalMessage += `\n⏰ <b>Waktu total:</b> ~${totalSlotProcessed * 65} detik (~${Math.round(totalSlotProcessed * 65 / 60)} menit)`;
     finalMessage += `\n🚀 <b>Strategy:</b> API1 Only (KHFY-Store)`;
     finalMessage += `\n⚡ <b>Combo timing:</b> CEKSLOT1 + ADD1 + 30s wait + KICK1 + 35s interval`;
-    finalMessage += `\n🎯 <b>Filter:</b> Hanya slot kosong dengan limit = 2`;
+    finalMessage += `\n🎯 <b>Filter:</b> Hanya slot kosong dengan add_chances = 2`;
     
     await bot.sendMessage(chatId, finalMessage, { parse_mode: 'HTML' });
 
@@ -583,7 +622,7 @@ module.exports = (bot) => {
           `📝 <b>Fitur Baru:</b>\n` +
           `• API1 Only Strategy (KHFY-Store)\n` +
           `• Full API1 Combo Pattern\n` +
-          `• Slot detection: kosong + limit = 2\n` +
+          `• Slot detection: kosong + add_chances = 2\n` +
           `• Add tumbal → tunggu 30s → kick tumbal\n` +
           `• Progress tracking real-time\n` +
           `• member_id tracking untuk kick\n\n` +
@@ -594,8 +633,8 @@ module.exports = (bot) => {
           `• Step 4: API1+KICK1 (kick tumbal)\n\n` +
           `🎯 <b>Filter Slot Ketat:</b>\n` +
           `• Hanya slot kosong (tanpa alias/msisdn)\n` +
-          `• Hanya slot dengan limit = 2\n` +
-          `• Skip slot limit 0, 1, atau 3\n\n` +
+          `• Hanya slot dengan add_chances = 2\n` +
+          `• Skip slot add_chances 0, 1, atau 3\n\n` +
           `⚡ <b>Mulai proses?</b>`;
 
         // Cek apakah message memiliki caption (dari photo message)
@@ -678,8 +717,8 @@ module.exports = (bot) => {
           `• member_id tracking untuk kick\n` +
           `• 30 detik wait setelah ADD\n\n` +
           `🎯 <b>Filter Ketat:</b>\n` +
-          `• Hanya proses slot kosong dengan limit = 2\n` +
-          `• Skip slot limit 0, 1, atau 3\n\n` +
+          `• Hanya proses slot kosong dengan add_chances = 2\n` +
+          `• Skip slot add_chances 0, 1, atau 3\n\n` +
           `⚠️ <b>Pastikan semua nomor sudah login!</b>\n\n` +
           `💡 Ketik "exit" untuk membatalkan`,
           { parse_mode: 'HTML' }
@@ -835,8 +874,8 @@ module.exports = (bot) => {
           `1. Slot harus punya slot_id (bukan 0)\n` +
           `2. Alias kosong (slot belum terisi)\n` +
           `3. MSISDN kosong (belum ada anggota)\n` +
-          `4. Limit = 2 (HANYA slot dengan limit 2)\n` +
-          `5. Skip slot limit 0, 1, atau 3\n` +
+          `4. Add_chances = 2 (HANYA slot dengan add_chances = 2)\n` +
+          `5. Skip slot add_chances 0, 1, atau 3\n` +
           `6. Fresh data dari CEKSLOT1 setiap combo\n\n` +
           `⏰ <b>Timing Detail:</b>\n` +
           `• CEKSLOT1: instant\n` +
