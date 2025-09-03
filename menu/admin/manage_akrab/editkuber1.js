@@ -191,19 +191,17 @@ module.exports = (bot) => {
         pengelolaInfo += `<b>Pengelola:</b>\n\n`;
         
         slotResult.slots.forEach((slot, index) => {
-          // Coba ambil kuota dari berbagai field yang mungkin ada
-          const quotaMB = slot.quota_allocated || slot.kuota || slot.limit || slot.allocation || 0;
-          const quotaGB = quotaMB ? (parseInt(quotaMB) / 1024).toFixed(1) : '0.0';
           const slotId = slot.slot_id || (index + 1);
           const addChances = slot.add_chances || 0;
           const alias = slot.alias || 'Unknown';
+          const quotaAllocated = slot.quota_allocated_gb || '0.00';
+          const quotaUsed = slot.quota_used_gb || '0.00';
+          const quotaRemaining = slot.quota_remaining_gb || '0.00';
           
           pengelolaInfo += `Slot ${index + 1} : ${slotId} : ${addChances} : ${alias}\n`;
           
-          // Create keyboard button dengan format: msisdn : quota_gb : alias  
-          // Jika tidak ada data kuota, tampilkan "N/A"
-          const quotaDisplay = quotaMB ? `${quotaGB}GB` : 'N/A';
-          const buttonText = `${slot.msisdn} : ${quotaDisplay} : ${slot.alias}`;
+          // Create keyboard button dengan format: msisdn : quota_allocated_gb : alias  
+          const buttonText = `${slot.msisdn} : ${quotaAllocated}GB : ${slot.alias}`;
           
           keyboard.push([{
             text: buttonText,

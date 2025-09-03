@@ -80,9 +80,15 @@ const getSlotInfoAPI1Only = async (nomor_hp) => {
         slot_id: member.slot_id !== undefined ? member.slot_id : index,
         add_chances: member.add_chances || member.sisa_add || member['sisa-add'] || 0,
         member_type: member.member_type || 'UNKNOWN',
-        // Quota/kuber fields - coba berbagai kemungkinan field name
-        quota_allocated: member.quota_allocated || member.kuota || member.limit || member.allocation || member.quota || 0,
-        kuota: member.quota_allocated || member.kuota || member.limit || member.allocation || member.quota || 0,
+        // Quota fields - convert dari bytes ke GB
+        quota_allocated: member.usage?.quota_allocated || member.quota_allocated || 0,
+        quota_used: member.usage?.quota_used || member.quota_used || 0,
+        quota_allocated_gb: (member.usage?.quota_allocated || member.quota_allocated) ? 
+          (parseFloat(member.usage?.quota_allocated || member.quota_allocated) / 1073741824).toFixed(2) : '0.00',
+        quota_used_gb: (member.usage?.quota_used || member.quota_used) ? 
+          (parseFloat(member.usage?.quota_used || member.quota_used) / 1073741824).toFixed(2) : '0.00',
+        quota_remaining_gb: (member.usage?.quota_allocated || member.quota_allocated) && (member.usage?.quota_used || member.quota_used) ? 
+          ((parseFloat(member.usage?.quota_allocated || member.quota_allocated) - parseFloat(member.usage?.quota_used || member.quota_used)) / 1073741824).toFixed(2) : '0.00',
         // Additional fields for compatibility
         nama: member.alias || member.name || member.nama || '-',
         nomor: member.msisdn || member.phone || member.nomor || '-',
@@ -250,16 +256,17 @@ module.exports = (bot) => {
             responseText += `✨ Anggota: ${alias}\n`;
             responseText += `📧 Nomor: ${msisdn}\n`;
             responseText += `⚡ Slot ID: ${slotID}\n`;
-            responseText += `♻️ Limit: ${addChances}\n\n`;
+            responseText += `♻️ Limit: ${addChances}\n`;
+            
+            // Tambahkan informasi kuota
+            const quotaAllocated = slot.quota_allocated_gb || '0.00';
+            const quotaUsed = slot.quota_used_gb || '0.00';
+            const quotaRemaining = slot.quota_remaining_gb || '0.00';
+            
+            responseText += `📊 Kuota Awal: ${quotaAllocated} GB\n`;
+            responseText += `📈 Kuota Terpakai: ${quotaUsed} GB\n`;
+            responseText += `📉 Kuota Sisa: ${quotaRemaining} GB\n\n`;
           });
-          
-          responseText += `📊 <b>RINGKASAN:</b>\n`;
-          responseText += `• Total Anggota: ${result.slots.length} (tidak termasuk pengelola)\n`;
-          responseText += `• Total Limit Add: ${result.slots.reduce((sum, slot) => sum + (slot.add_chances || 0), 0)}\n`;
-          if (result.parent_info?.parent_add_chances !== undefined) {
-            responseText += `• Limit Pengelola: ${result.parent_info.parent_add_chances}\n`;
-          }
-          responseText += `\n`;
         } else {
           responseText += `❌ <b>TIDAK ADA SLOT DITEMUKAN</b>\n\n`;
           responseText += `🔍 <b>Kemungkinan:</b>\n`;
@@ -271,10 +278,6 @@ module.exports = (bot) => {
           }
           responseText += `\n`;
         }
-        
-        responseText += `⚡ <b>COMBO API1:</b> ${result.combo}\n`;
-        responseText += `🎯 <b>API Digunakan:</b> ${result.source}\n`;
-        responseText += `🔥 <b>Keunggulan:</b> Presisi tinggi, data akurat`;
         
         try {
           await bot.editMessageText(responseText, {
