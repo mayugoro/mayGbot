@@ -189,13 +189,44 @@ module.exports = (bot) => {
       return;
     }
 
-    // Handle filled slot (non-clickable)
-    if (data === 'slot_filled') {
-      await bot.answerCallbackQuery(id, { text: '❌ Slot sudah terisi, tidak bisa dipilih!' });
+    // Handle filled slot (bisa diklik tapi menampilkan alert)
+    if (data.startsWith('slot_filled_')) {
+      const state = addStates.get(chatId);
+      if (state && state.allSlots) {
+        const slotIndex = parseInt(data.replace('slot_filled_', ''));
+        const filledSlot = state.allSlots[slotIndex];
+        
+        if (filledSlot) {
+          await bot.answerCallbackQuery(id, { 
+            text: `❌ Sudah ada anggota, tidak dapat menambah anggota ke slot ini.\n\nSlot ${filledSlot.slot_id}: ${filledSlot.msisdn} (${filledSlot.alias})`,
+            show_alert: true
+          });
+        } else {
+          await bot.answerCallbackQuery(id, { 
+            text: '❌ Sudah ada anggota, tidak dapat menambah anggota ke slot ini.',
+            show_alert: true
+          });
+        }
+      } else {
+        await bot.answerCallbackQuery(id, { 
+          text: '❌ Sudah ada anggota, tidak dapat menambah anggota ke slot ini.',
+          show_alert: true
+        });
+      }
       return;
     }
 
-    // Handle add to new slot
+    // Handle filled slot (fallback untuk callback_data lama)
+    if (data === 'slot_filled') {
+      await bot.answerCallbackQuery(id, { 
+        text: '❌ Sudah ada anggota, tidak dapat menambah anggota ke slot ini.',
+        show_alert: true
+      });
+      return;
+    }
+
+    /*
+    // Handle add to new slot - TIDAK DIGUNAKAN LAGI
     if (data === 'add_new_slot') {
       const state = addStates.get(chatId);
       if (!state || !state.allSlots) {
@@ -231,6 +262,7 @@ module.exports = (bot) => {
       await bot.answerCallbackQuery(id);
       return;
     }
+    */
 
     // Handle cancel add
     if (data === 'cancel_add') {
@@ -328,19 +360,23 @@ module.exports = (bot) => {
             return;
           }
 
-          // Create slot list - hanya slot yang benar-benar ada dari API response
+          // Create slot list - semua slot dari API response dengan status berdasarkan alias
           const allSlots = [];
           
-          // Add HANYA slot yang ada di response API dan memiliki slot_id
+          // Add semua slot yang ada di response API
           if (slotResult.slots && slotResult.slots.length > 0) {
             slotResult.slots.forEach((slot, index) => {
               // Hanya tambahkan jika ada slot_id yang valid dari API
               if (slot.slot_id && slot.slot_id !== null && slot.slot_id !== undefined) {
+                // Tentukan status berdasarkan alias
+                const alias = slot.alias || slot.nama || '-';
+                const isEmptySlot = alias === '-' || alias === '' || alias === null || alias === undefined;
+                
                 allSlots.push({
                   slot_id: slot.slot_id,
-                  status: 'filled',
-                  msisdn: slot.msisdn || slot.nomor,
-                  alias: slot.alias || slot.nama || '-',
+                  status: isEmptySlot ? 'empty' : 'filled',
+                  msisdn: slot.msisdn || slot.nomor || '-',
+                  alias: alias,
                   quota_allocated_gb: slot.quota_allocated_gb || '0.00',
                   family_member_id: slot.family_member_id
                 });
@@ -392,17 +428,23 @@ module.exports = (bot) => {
             return;
           }
 
-          // Check apakah ada kemungkinan slot kosong berdasarkan jumlah slot vs maksimal
-          const maxPossibleSlots = 10; // Asumsi maksimal 10 slot per keluarga
-          const hasEmptySlots = allSlots.length < maxPossibleSlots && sisaAdd > 0;
-
-          // Create inline keyboard
+          // Create inline keyboard berdasarkan slot_id dan status dari alias
           const keyboard = [];
           
-          // Tampilkan slot yang ada dari API
+          // Tampilkan semua slot dari API dengan status berdasarkan alias
           allSlots.forEach((slot, index) => {
-            const buttonText = `❗ Slot ${slot.slot_id} : ${slot.msisdn} : ${slot.alias}`;
-            const callbackData = 'slot_filled'; // Non-clickable
+            let buttonText;
+            let callbackData;
+            
+            if (slot.status === 'empty') {
+              // Slot kosong - bisa dipilih
+              buttonText = `✅ Slot ${slot.slot_id} : KOSONG : Tersedia`;
+              callbackData = `add_slot_${index}`;
+            } else {
+              // Slot terisi - bisa diklik tapi akan menampilkan alert
+              buttonText = `❗ Slot ${slot.slot_id} : ${slot.msisdn} : ${slot.alias}`;
+              callbackData = `slot_filled_${index}`;
+            }
             
             keyboard.push([{ 
               text: buttonText, 
@@ -410,35 +452,31 @@ module.exports = (bot) => {
             }]);
           });
 
-          // Jika masih bisa add dan belum mencapai batas maksimal, tampilkan opsi add
-          if (hasEmptySlots) {
-            keyboard.push([{ 
-              text: `✅ TAMBAH KE SLOT BARU (${allSlots.length + 1})`, 
-              callback_data: `add_new_slot`
-            }]);
-          }
-
           // Tambah tombol batal
           keyboard.push([{ text: '❌ BATAL', callback_data: 'cancel_add' }]);
 
+          // Hitung slot kosong dan terisi
+          const emptySlots = allSlots.filter(s => s.status === 'empty');
+          const filledSlots = allSlots.filter(s => s.status === 'filled');
+
           let statusMessage;
-          if (hasEmptySlots) {
-            statusMessage = `➕ <b>PILIH AKSI UNTUK ANGGOTA BARU</b>\n\n` +
+          if (emptySlots.length > 0 && sisaAdd > 0) {
+            statusMessage = `➕ <b>PILIH SLOT KOSONG UNTUK ANGGOTA BARU</b>\n\n` +
               `📞 <b>Pengelola:</b> ${cleanNumber}\n` +
               `📊 <b>Sisa Add:</b> ${sisaAdd} kesempatan\n` +
-              `📈 <b>Slot Aktif:</b> ${allSlots.length}/${maxPossibleSlots}\n\n` +
-              `🔍 <b>SLOT YANG TERISI:</b>\n\n` +
-              `❗ = Slot terisi (dari API)\n` +
-              `✅ = Tambah ke slot baru\n\n` +
-              `💡 <b>Klik "TAMBAH KE SLOT BARU" untuk menambah anggota</b>`;
+              `📈 <b>Slot Status:</b> ${filledSlots.length} terisi, ${emptySlots.length} kosong\n\n` +
+              `🎯 <b>Pilih slot kosong untuk menambah anggota:</b>\n\n` +
+              `✅ = Slot kosong (bisa dipilih)\n` +
+              `❗ = Slot terisi (klik untuk info detail)\n\n` +
+              `💡 <b>Status ditentukan dari field alias</b>`;
           } else {
             statusMessage = `❌ <b>TIDAK BISA MENAMBAH ANGGOTA</b>\n\n` +
               `📞 <b>Pengelola:</b> ${cleanNumber}\n` +
               `📊 <b>Sisa Add:</b> ${sisaAdd} kesempatan\n` +
-              `📈 <b>Slot Aktif:</b> ${allSlots.length}/${maxPossibleSlots}\n\n` +
-              `🔍 <b>SLOT YANG TERISI:</b>\n\n` +
-              `❗ = Slot terisi (dari API)\n\n` +
-              `💡 <b>Semua slot penuh atau tidak ada kesempatan add</b>`;
+              `📈 <b>Slot Status:</b> ${filledSlots.length} terisi, ${emptySlots.length} kosong\n\n` +
+              `🔍 <b>SEMUA SLOT:</b>\n\n` +
+              `❗ = Slot terisi (klik untuk info detail)\n\n` +
+              `💡 <b>Tidak ada slot kosong atau habis kesempatan add</b>`;
           }
 
           await bot.editMessageText(statusMessage, {
