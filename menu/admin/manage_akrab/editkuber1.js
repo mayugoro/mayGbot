@@ -269,18 +269,22 @@ module.exports = (bot) => {
           // STEP 2: API1+EDITKUBER1 langsung dengan data dari state
           const formattedPengelola = formatNomorToInternational(state.pengelola);
           
+          // Convert GB to bytes (kuberNumber * 1073741824)
+          const kuberInBytes = kuberNumber * 1073741824;
+          
           const formData = new URLSearchParams();
           formData.append('token', API_PRIMARY_TOKEN);
           formData.append('id_parent', formattedPengelola);
           formData.append('member_id', state.selectedMember.family_member_id);
-          formData.append('new_allocation', kuberNumber.toString());
+          formData.append('new_allocation', kuberInBytes.toString());
 
           console.log('🚀 STEP 2: API1+EDITKUBER1 - Editing kuber...');
           console.log('📝 Form Data:', {
             token: API_PRIMARY_TOKEN ? API_PRIMARY_TOKEN.substring(0, 10) + '...' : 'KOSONG',
             id_parent: formattedPengelola,
             member_id: state.selectedMember.family_member_id,
-            new_allocation: kuberNumber.toString()
+            new_allocation: kuberInBytes.toString(),
+            new_allocation_gb: kuberNumber.toString() + ' GB'
           });
 
           const response = await axios.post(API_PRIMARY_BASE + API_PRIMARY_EDITKUBER_ENDPOINT, formData, {
