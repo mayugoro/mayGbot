@@ -16,6 +16,7 @@ const ADMIN_MENU_KEYBOARD = [
     { text: '⚙️ ATUR PRODUK', callback_data: 'atur_produk' },
     { text: '⚡ MASSAL', callback_data: 'menu_massal' }
   ],
+  [{ text: '👺 AKRAB', callback_data: 'manage_akrab' }],
   [{ text: '🔙 KEMBALI', callback_data: 'back_to_menu' }]
 ];
 
@@ -231,6 +232,7 @@ module.exports = (bot) => {
   try {
     require('./otphide')(bot); // Load OTP HIDE handler
     require('./otpkhfy')(bot); // Load OTP KHFY handler
+    require('./manage_akrab')(bot); // Load AKRAB handler
     require('./pengaturan/atur_harga')(bot);
     require('./pengaturan/atur_deskripsi')(bot);
     require('./pengaturan/atur_kuota')(bot);
