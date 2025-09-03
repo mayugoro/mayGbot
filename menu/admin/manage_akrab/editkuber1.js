@@ -88,7 +88,8 @@ module.exports = (bot) => {
         `📊 <b>MASUKKAN KUBER BARU (GB)</b>\n\n` +
         `Ketik jumlah kuber baru dalam GB:\n\n` +
         `💡 <b>Contoh:</b> <code>50</code> (untuk 50 GB)\n` +
-        `💡 <b>Format:</b> Angka saja (1-999)\n\n` +
+        `💡 <b>Format:</b> Angka 0-400 GB\n` +
+        `💡 <b>Khusus:</b> <code>0</code> untuk reset kuota\n\n` +
         `💡 Ketik "keluar" untuk membatalkan`,
         { parse_mode: 'HTML' }
       );
@@ -233,10 +234,13 @@ module.exports = (bot) => {
         const kuberInput = text.replace(/\D/g, '');
         const kuberNumber = parseInt(kuberInput);
         
-        if (!kuberInput || kuberNumber < 1 || kuberNumber > 999) {
+        // Validasi: 0-400 GB (termasuk 0 untuk reset kuota)
+        if (kuberInput === '' || isNaN(kuberNumber) || kuberNumber < 0 || kuberNumber > 400) {
           await bot.sendMessage(chatId,
             `❌ <b>Kuber tidak valid!</b>\n\n` +
-            `Kuber harus berupa angka 1-999 GB.\n` +
+            `Kuber harus berupa angka 0-400 GB.\n` +
+            `• <code>0</code> = Reset kuota (0 GB)\n` +
+            `• <code>1-400</code> = Alokasi kuota baru\n\n` +
             `Coba lagi atau ketik "keluar" untuk batal.`,
             { parse_mode: 'HTML' }
           );
