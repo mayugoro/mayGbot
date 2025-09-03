@@ -650,21 +650,30 @@ module.exports = (bot) => {
           const formattedPengelola = formatNomorToInternational(state.pengelola);
           const formattedAnggota = formatNomorToInternational(state.anggota);
           
+          // Untuk slot kosong, family_member_id mungkin kosong/null - ini normal
+          const memberIdToSend = state.selectedSlot.family_member_id || '';
+          
           const formData = new URLSearchParams();
           formData.append('token', API_PRIMARY_TOKEN);
           formData.append('id_parent', formattedPengelola);
           formData.append('msisdn', formattedAnggota);
-          formData.append('member_id', ''); // Kosong untuk member baru
+          formData.append('member_id', memberIdToSend);
           formData.append('slot_id', state.selectedSlot.slot_id.toString());
           formData.append('parent_name', state.parentName);
           formData.append('child_name', childName);
 
           console.log('🚀 STEP 2: API1+ADD1 - Menambahkan anggota...');
+          console.log('📝 Selected Slot Info:', {
+            slot_id: state.selectedSlot.slot_id,
+            family_member_id: state.selectedSlot.family_member_id,
+            status: state.selectedSlot.status,
+            alias: state.selectedSlot.alias
+          });
           console.log('📝 Form Data:', {
             token: API_PRIMARY_TOKEN ? API_PRIMARY_TOKEN.substring(0, 10) + '...' : 'KOSONG',
             id_parent: formattedPengelola,
             msisdn: formattedAnggota,
-            member_id: '',
+            member_id: memberIdToSend,
             slot_id: state.selectedSlot.slot_id.toString(),
             parent_name: state.parentName,
             child_name: childName
