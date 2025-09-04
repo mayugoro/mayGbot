@@ -122,7 +122,7 @@ const generateMainKeyboard = (userId) => {
       { text: '⚡ BELI BEKASAN', callback_data: 'menu_bekasan' }
     ],
     [
-      { text: '✨ PAKET LAINNYA ✨', callback_data: 'paket_lainnya' }
+      { text: '✨ AKRAB GLOBAL ✨', callback_data: 'menu_akrab_global' }
     ],
     [
       { text: '💌 CEK SIDOMPUL 💌', callback_data: 'cek_sidompul' }
@@ -153,7 +153,7 @@ const MAIN_KEYBOARD = [
     { text: '⚡ BELI BEKASAN', callback_data: 'menu_bekasan' }
   ],
   [
-    { text: '✨ PAKET LAINNYA ✨', callback_data: 'paket_lainnya' }
+    { text: '✨ AKRAB GLOBAL ✨', callback_data: 'menu_akrab_global' }
   ],
   [
     { text: '💌 CEK SIDOMPUL 💌', callback_data: 'cek_sidompul' }
@@ -307,7 +307,7 @@ bot.on('callback_query', async (query) => {
   }
 
   // Handler untuk paket lainnya (memanggil produk.js)
-  if (data === 'paket_lainnya') {
+  if (data === 'menu_akrab_global') {
     try {
       // Panggil handler produk untuk menampilkan daftar produk
       const produkModule = require('./produk_lainnya');
@@ -317,8 +317,7 @@ bot.on('callback_query', async (query) => {
       return;
 
     } catch (error) {
-      console.error('Error in paket_lainnya callback:', error);
-      
+      console.error('Error in menu_akrab_global callback:', error);
       return bot.answerCallbackQuery(id, {
         text: "❌ Terjadi kesalahan saat memuat produk",
         show_alert: true

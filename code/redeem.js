@@ -68,7 +68,7 @@ const autoRestoreMenu = async (bot, chatId, userId, state) => {
             { text: '⚡ BELI BEKASAN', callback_data: 'menu_bekasan' }
           ],
           [
-            { text: '✨ PAKET LAINNYA ✨', callback_data: 'paket_lainnya' }
+            { text: '✨ AKRAB GLOBAL ✨', callback_data: 'menu_akrab_global' }
           ],
           [
             { text: '💌 CEK SIDOMPUL 💌', callback_data: 'cek_sidompul' }
