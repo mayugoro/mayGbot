@@ -30,6 +30,32 @@ function formatNomorTo628(nomor) {
   return cleanNomor;
 }
 
+// === HELPER FUNCTION: FORMAT NOMOR TO 08 FORMAT FOR DISPLAY/LOGGER ===
+function formatNomorTo08(nomor) {
+  // Remove all non-digit characters
+  let cleanNomor = nomor.replace(/\D/g, '');
+  
+  // Convert to 08 format for display
+  if (cleanNomor.startsWith('628')) {
+    // 628xxxxxxxx -> 08xxxxxxxx
+    cleanNomor = '08' + cleanNomor.substring(3);
+  } else if (cleanNomor.startsWith('62') && cleanNomor.length > 10) {
+    // 62xxxxxxxx -> 08xxxxxxxx
+    cleanNomor = '08' + cleanNomor.substring(2);
+  } else if (cleanNomor.startsWith('08')) {
+    // Already in 08 format
+    cleanNomor = cleanNomor;
+  } else if (cleanNomor.startsWith('8')) {
+    // 8xxxxxxxx -> 08xxxxxxxx
+    cleanNomor = '08' + cleanNomor;
+  } else {
+    // Unknown format, try to make it 08
+    cleanNomor = '08' + cleanNomor;
+  }
+  
+  return cleanNomor;
+}
+
 // === MAIN KEYBOARD GENERATOR ===
 const generateMainKeyboard = (userId) => {
   const keyboard = [
@@ -324,9 +350,9 @@ module.exports = (bot) => {
             const { logTransaction } = require('../../../transaction_logger');
             await logTransaction(bot, {
               userId: userId,
-              username: userInfo.username,
+              username: msg.from?.username,
               kategori: `BEKASAN GLOBAL ${tipe.toUpperCase()} ${hari}H`,
-              nomor: normalizedNumber, // Nomor customer/pembeli
+              nomor: formatNomorTo08(normalizedNumber), // Nomor customer/pembeli dalam format 08
               pengelola: 'AKRAB_GLOBAL', // Provider
               status: 'completed',
               harga: hargaValue,
@@ -368,9 +394,9 @@ module.exports = (bot) => {
             const { logTransaction } = require('../../../transaction_logger');
             await logTransaction(bot, {
               userId: userId,
-              username: userInfo.username,
+              username: msg.from?.username,
               kategori: `BEKASAN GLOBAL ${tipe.toUpperCase()} ${hari}H`,
-              nomor: normalizedNumber, // Nomor customer/pembeli
+              nomor: formatNomorTo08(normalizedNumber), // Nomor customer/pembeli dalam format 08
               pengelola: 'AKRAB_GLOBAL', // Provider
               status: 'pending',
               harga: hargaValue,
@@ -408,9 +434,9 @@ module.exports = (bot) => {
             const { logTransaction } = require('../../../transaction_logger');
             await logTransaction(bot, {
               userId: userId,
-              username: userInfo.username,
+              username: msg.from?.username,
               kategori: `BEKASAN GLOBAL ${tipe.toUpperCase()} ${hari}H`,
-              nomor: normalizedNumber, // Nomor customer/pembeli
+              nomor: formatNomorTo08(normalizedNumber), // Nomor customer/pembeli dalam format 08
               pengelola: 'AKRAB_GLOBAL', // Provider
               status: 'validation_failed',
               harga: 0, // Tidak ada potongan saldo
@@ -453,9 +479,9 @@ module.exports = (bot) => {
             const { logTransaction } = require('../../../transaction_logger');
             await logTransaction(bot, {
               userId: userId,
-              username: userInfo.username,
+              username: msg.from?.username,
               kategori: `BEKASAN GLOBAL ${tipe.toUpperCase()} ${hari}H`,
-              nomor: normalizedNumber, // Nomor customer/pembeli
+              nomor: formatNomorTo08(normalizedNumber), // Nomor customer/pembeli dalam format 08
               pengelola: 'AKRAB_GLOBAL', // Provider
               status: 'failed',
               harga: biayaGagalValue,
@@ -591,9 +617,9 @@ module.exports = (bot) => {
         const { logTransaction } = require('../../../transaction_logger');
         await logTransaction(bot, {
           userId: userId,
-          username: userInfo.username,
+          username: msg.from?.username,
           kategori: `BEKASAN GLOBAL ${state.tipe.toUpperCase()} ${state.hari}H`,
-          nomor: state.nomor, // Nomor customer/pembeli
+          nomor: formatNomorTo08(state.nomor), // Nomor customer/pembeli dalam format 08
           pengelola: 'AKRAB_GLOBAL', // Provider
           status: 'failed',
           harga: 0, // Tidak ada potongan saldo untuk error jaringan
