@@ -473,10 +473,12 @@ const checkSlotKosong = async (chatId) => {
 
     // AUTO SELECT SLOT KOSONG PERTAMA (menggunakan field 'slot_id' dari API1)
     const selectedSlot = kosong[0].slot_id;
+    const selectedSlotData = kosong[0]; // SIMPAN DATA LENGKAP SLOT untuk SET_KUBER nanti
     
-    // Update state dengan slot yang dipilih otomatis
+    // Update state dengan slot yang dipilih otomatis + SIMPAN SLOT DATA LENGKAP
     state.step = 'input_nomor';
     state.nomor_slot = selectedSlot;
+    state.selectedSlotData = selectedSlotData; // ✅ SIMPAN DATA SLOT LENGKAP (termasuk family_member_id)
     stateBulanan.set(chatId, state);
 
     // Update session state
@@ -904,20 +906,24 @@ module.exports = (bot) => {
     const addStartTime = Date.now();
     
     try {
-      // === API1 KHFY-Store ADD MEMBER ===
+      // === API1 KHFY-Store ADD MEMBER (FULL PARAMETERS) ===
       const formattedParent = formatNomorToInternational(nomor_hp);
       console.log(`🔄 ADD: Processing ${nomor_hp} -> ${formattedParent}, slot: ${nomor_slot}`);
+      console.log(`🔄 ADD: MSISDN validated via KMSP DOMPUL: ${normalizedNumber}`);
       
-      const requestBody = new URLSearchParams({
-        id_parent: formattedParent,
-        slot: nomor_slot,
-        phone: normalizedNumber, // Gunakan nomor yang sudah dinormalisasi
-        name: `${msg.from.username || msg.from.first_name || 'USER'} ${paket.toUpperCase()}`, // Gunakan username Telegram
-        token: process.env.APIKEY1
-      }).toString();
+      const formData = new URLSearchParams();
+      formData.append('token', process.env.APIKEY1);
+      formData.append('id_parent', formattedParent);
+      formData.append('msisdn', normalizedNumber);                    // ✅ Sesuai ADD1.js - nomor yang sudah divalidasi KMSP DOMPUL
+      formData.append('member_id', '');                               // ✅ Kosong untuk slot kosong
+      formData.append('slot_id', nomor_slot.toString());              // ✅ Sesuai ADD1.js  
+      formData.append('parent_name', 'XL');                           // ✅ Hardcode ke "XL"
+      formData.append('child_name', `${msg.from.username || msg.from.first_name || 'USER'} ${paket.toUpperCase()}`); // ✅ Sesuai ADD1.js
+      
+      const requestBody = formData.toString();
       
       const res = await axios.post(
-        `${process.env.API1}/change_member_akrab_v2`,
+        `${process.env.API1}/${process.env.ADD1}`,  // ✅ Gunakan endpoint dari .env (change_member_akrab_v2)
         requestBody,
         {
           headers: {
@@ -928,6 +934,23 @@ module.exports = (bot) => {
       );
 
       const addExecutionTime = Math.floor((Date.now() - addStartTime) / 1000);
+      
+      // ✅ LOG RESPONSE ADD untuk debugging dan cari family_member_id
+      console.log('🔍 ADD Response:', JSON.stringify(res.data, null, 2));
+      
+      // ✅ COBA AMBIL FAMILY_MEMBER_ID dari response ADD jika ada
+      let addedMemberFamilyId = null;
+      if (res.data?.data?.details?.["member-id"] || res.data?.data?.details?.family_member_id) {
+        addedMemberFamilyId = res.data.data.details["member-id"] || res.data.data.details.family_member_id;
+        console.log(`✅ ADD Response: Found family_member_id = ${addedMemberFamilyId}`);
+        
+        // UPDATE state dengan family_member_id dari ADD response
+        if (!state.selectedSlotData) {
+          state.selectedSlotData = {};
+        }
+        state.selectedSlotData.family_member_id = addedMemberFamilyId;
+        stateBulanan.set(chatId, state);
+      }
       
       const { getHargaPaket, getHargaGagal } = require('../../db');
       const harga = await getHargaPaket(paket);
@@ -1101,23 +1124,54 @@ module.exports = (bot) => {
       }, 2000); // 2 detik delay untuk memberi waktu user membaca hasil
 
       // Auto edit kuota setelah 10 detik untuk bulanan (hanya jika SUKSES)
-      if (addExecutionTime >= 15) {
+      if (addExecutionTime >= 8) {
         setTimeout(async () => {
           try {
             // === API1 KHFY-Store SET_KUBER ===
             const formattedParent = formatNomorToInternational(nomor_hp);
-            console.log(`⚙️ SET_KUBER: Setting quota ${kuotaGB}GB for ${nomor_hp} -> ${formattedParent}, slot: ${nomor_slot}`);
             
-            const requestBody = new URLSearchParams({
-              id_parent: formattedParent,
-              slot: nomor_slot,
-              kuota: kuotaGB,
-              token: process.env.APIKEY1
-            }).toString();
+            // ✅ AMBIL FAMILY_MEMBER_ID dari data CEKSLOT1 yang sudah disimpan
+            const { selectedSlotData } = state;
+            let familyMemberId = selectedSlotData?.family_member_id;
+            
+            // ✅ FALLBACK: Jika tidak ada family_member_id, coba gunakan slot_id atau hitung berdasarkan slot
+            if (!familyMemberId) {
+              console.warn(`⚠️ SET_KUBER: No family_member_id found, trying slot_id fallback`);
+              
+              // Option 1: Gunakan slot_id jika ada
+              if (selectedSlotData?.slot_id !== undefined) {
+                familyMemberId = selectedSlotData.slot_id.toString();
+                console.log(`✅ SET_KUBER: Using slot_id as fallback: ${familyMemberId}`);
+              } 
+              // Option 2: Gunakan nomor_slot sebagai last resort
+              else if (nomor_slot !== undefined) {
+                familyMemberId = nomor_slot.toString();
+                console.log(`✅ SET_KUBER: Using nomor_slot as last resort: ${familyMemberId}`);
+              } 
+              // Option 3: Skip SET_KUBER jika tidak ada ID sama sekali
+              else {
+                console.warn(`⚠️ SET_KUBER: No member identifier found for ${nomor_hp}, skipping SET_KUBER`);
+                return;
+              }
+            }
+            
+            // ✅ KONVERSI GB KE BYTES (bilangan utuh * 1073741824)
+            const kuotaGBInt = parseInt(kuotaGB);
+            const kuberInBytes = kuotaGBInt * 1073741824;
+            
+            console.log(`⚙️ SET_KUBER: Setting quota ${kuotaGB}GB (${kuberInBytes} bytes) for ${nomor_hp} -> ${formattedParent}`);
+            console.log(`⚙️ SET_KUBER: Using member_id: ${familyMemberId}`);
+            
+            // ✅ FORMULIR API YANG BENAR
+            const formData = new URLSearchParams();
+            formData.append('token', process.env.APIKEY1);
+            formData.append('id_parent', formattedParent);
+            formData.append('member_id', familyMemberId);                     // ✅ BENAR: member_id bukan slot
+            formData.append('new_allocation', kuberInBytes.toString());       // ✅ BENAR: new_allocation dalam bytes
             
             await axios.post(
               `${process.env.API1}/set_kuber_akrab`,
-              requestBody,
+              formData,
               {
                 headers: {
                   'Content-Type': 'application/x-www-form-urlencoded'
@@ -1125,6 +1179,8 @@ module.exports = (bot) => {
                 timeout: 60000 // 1 menit timeout untuk edit kuota
               }
             );
+            
+            console.log(`✅ SET_KUBER: Successfully set ${kuotaGB}GB quota for member ${familyMemberId}`);
           } catch (err) {
             console.warn(`⚠️ Edit kuota bulanan gagal untuk ${nomor_hp} SLOT ${nomor_slot}:`, err.message);
           }
@@ -1196,18 +1252,49 @@ module.exports = (bot) => {
           try {
             // === API1 KHFY-Store SET_KUBER ===
             const formattedParent = formatNomorToInternational(nomor_hp);
-            console.log(`⚙️ SET_KUBER (hangup): Setting quota ${kuotaGB}GB for ${nomor_hp} -> ${formattedParent}, slot: ${nomor_slot}`);
             
-            const requestBody = new URLSearchParams({
-              id_parent: formattedParent,
-              slot: nomor_slot,
-              kuota: kuotaGB,
-              token: process.env.APIKEY1
-            }).toString();
+            // ✅ AMBIL FAMILY_MEMBER_ID dari data CEKSLOT1 yang sudah disimpan
+            const { selectedSlotData } = state;
+            let familyMemberId = selectedSlotData?.family_member_id;
+            
+            // ✅ FALLBACK: Jika tidak ada family_member_id, coba gunakan slot_id atau hitung berdasarkan slot
+            if (!familyMemberId) {
+              console.warn(`⚠️ SET_KUBER (hangup): No family_member_id found, trying slot_id fallback`);
+              
+              // Option 1: Gunakan slot_id jika ada
+              if (selectedSlotData?.slot_id !== undefined) {
+                familyMemberId = selectedSlotData.slot_id.toString();
+                console.log(`✅ SET_KUBER (hangup): Using slot_id as fallback: ${familyMemberId}`);
+              } 
+              // Option 2: Gunakan nomor_slot sebagai last resort
+              else if (nomor_slot !== undefined) {
+                familyMemberId = nomor_slot.toString();
+                console.log(`✅ SET_KUBER (hangup): Using nomor_slot as last resort: ${familyMemberId}`);
+              } 
+              // Option 3: Skip SET_KUBER jika tidak ada ID sama sekali
+              else {
+                console.warn(`⚠️ SET_KUBER (hangup): No member identifier found for ${nomor_hp}, skipping SET_KUBER`);
+                return;
+              }
+            }
+            
+            // ✅ KONVERSI GB KE BYTES (bilangan utuh * 1073741824)
+            const kuotaGBInt = parseInt(kuotaGB);
+            const kuberInBytes = kuotaGBInt * 1073741824;
+            
+            console.log(`⚙️ SET_KUBER (hangup): Setting quota ${kuotaGB}GB (${kuberInBytes} bytes) for ${nomor_hp} -> ${formattedParent}`);
+            console.log(`⚙️ SET_KUBER (hangup): Using member_id: ${familyMemberId}`);
+            
+            // ✅ FORMULIR API YANG BENAR
+            const formData = new URLSearchParams();
+            formData.append('token', process.env.APIKEY1);
+            formData.append('id_parent', formattedParent);
+            formData.append('member_id', familyMemberId);                     // ✅ BENAR: member_id bukan slot
+            formData.append('new_allocation', kuberInBytes.toString());       // ✅ BENAR: new_allocation dalam bytes
             
             await axios.post(
               `${process.env.API1}/set_kuber_akrab`,
-              requestBody,
+              formData,
               {
                 headers: {
                   'Content-Type': 'application/x-www-form-urlencoded'
