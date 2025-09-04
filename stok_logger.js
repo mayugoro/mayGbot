@@ -56,7 +56,7 @@ const DISPLAY_MAPPING = {
 // === GENERATE STOK MESSAGE ===
 const generateStokMessage = (stokData, timestamp = null, addDot = false) => {
   try {
-    let message = `STOK AKRAB DARI BOT @bebekgorenghajislametbot\n`;
+    let message = `STOK AKRAB DARI BOT ${process.env.BOT_NAME}\n`;
     message += `├───────────────────┤\n`;
     message += `🌙 BULANAN\n\n`;
     message += `<code>`;
