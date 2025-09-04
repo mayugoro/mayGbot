@@ -1245,10 +1245,14 @@ module.exports = (bot) => {
             // ✅ LOG SET_KUBER RESPONSE
             console.log('🔍 SET_KUBER Response:', JSON.stringify(setKuberResponse.data, null, 2));
             
-            if (setKuberResponse.data.status === 'success') {
+            // ✅ PROPER SUCCESS CHECK: API returns status: true (boolean) for success
+            if (setKuberResponse.data.status === true || setKuberResponse.data.status === 'success') {
               console.log(`🎉 SET_KUBER SUCCESS: Quota ${kuotaGB}GB berhasil diset!`);
               console.log(`✅ Member ID: ${familyMemberId}`);
               console.log(`✅ Allocation: ${kuberInBytes} bytes`);
+              if (setKuberResponse.data.data?.member_allocations) {
+                console.log(`✅ Member allocations updated:`, setKuberResponse.data.data.member_allocations.length);
+              }
             } else {
               console.warn(`⚠️ SET_KUBER: Unexpected response status:`, setKuberResponse.data);
               // Tetap lanjut, mungkin berhasil walau status beda
