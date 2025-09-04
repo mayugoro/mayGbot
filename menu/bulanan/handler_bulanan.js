@@ -914,10 +914,10 @@ module.exports = (bot) => {
       const formData = new URLSearchParams();
       formData.append('token', process.env.APIKEY1);
       formData.append('id_parent', formattedParent);
-      formData.append('msisdn', normalizedNumber);                    // ✅ Sesuai ADD1.js - nomor yang sudah divalidasi KMSP DOMPUL
-      formData.append('member_id', '');                               // ✅ Kosong untuk slot kosong
-      formData.append('slot_id', nomor_slot.toString());              // ✅ Sesuai ADD1.js  
-      formData.append('parent_name', 'XL');                           // ✅ Hardcode ke "XL"
+      formData.append('msisdn', normalizedNumber);         // ✅ Sesuai ADD1.js - nomor yang sudah divalidasi KMSP DOMPUL
+      formData.append('member_id', '');                    // ✅ Kosong untuk slot kosong
+      formData.append('slot_id', nomor_slot.toString());   // ✅ Sesuai ADD1.js  
+      formData.append('parent_name', 'XL');                // ✅ Hardcode ke "XL"
       formData.append('child_name', `${msg.from.username || msg.from.first_name || 'USER'} ${paket.toUpperCase()}`); // ✅ Sesuai ADD1.js
       
       const requestBody = formData.toString();
