@@ -350,7 +350,7 @@ module.exports = (bot) => {
               .trim();
 
             // Extract informasi dasar
-            let formattedResult = `├─────────────SUKSES─────────────┤\n\n`;
+            let formattedResult = `├──────────SUKSES──────────┤\n\n`;
 
             // Extract dan format nomor
             const msisdnMatch = rawData.match(/MSISDN:\s*(\d+)/);
@@ -521,18 +521,57 @@ module.exports = (bot) => {
               processedKuota.unshift(smallestKuotaBersama); // Add to beginning
             }
 
+            // Sort processedKuota in specific order: Kuota Bersama -> Kuota Nasional -> Kuota Lokal 2/3/4 -> My Reward
+            processedKuota.sort((a, b) => {
+              const getOrder = (name) => {
+                if (name === 'Kuota Bersama') return 1;
+                if (name === 'Kuota Nasional') return 2;
+                if (name === 'Kuota Lokal 2') return 3;
+                if (name === 'Kuota Lokal 3') return 4;
+                if (name === 'Kuota Lokal 4') return 5;
+                if (name === 'My Reward') return 6;
+                return 7; // Others at the end
+              };
+              return getOrder(a.name) - getOrder(b.name);
+            });
+
             // Format kuota data from Paket Akrab with <code> for alignment
             if (processedKuota.length > 0) {
               let maxNameLength = 0;
+              let maxValueLength = 0;
+              
+              // Find max lengths for name and value alignment
               for (const kuota of processedKuota) {
                 if (kuota.name.length > maxNameLength) {
                   maxNameLength = kuota.name.length;
+                }
+                
+                // Extract number part for alignment (remove unit like GB, MB, KB)
+                let valueOnly = kuota.sisa === '0' ? '0' : kuota.sisa.replace(/\s*(GB|MB|KB)$/i, '');
+                if (valueOnly.length > maxValueLength) {
+                  maxValueLength = valueOnly.length;
                 }
               }
               
               for (const kuota of processedKuota) {
                 const paddedName = kuota.name.padEnd(maxNameLength);
-                formattedResult += `<code>🔖 ${paddedName} : ${kuota.sisa}/${kuota.total}</code>\n`;
+                
+                // Format sisa with aligned GB
+                let sisaFormatted;
+                if (kuota.sisa === '0') {
+                  sisaFormatted = '0'.padStart(maxValueLength) + ' GB';
+                } else {
+                  const valueMatch = kuota.sisa.match(/^(.*?)\s*(GB|MB|KB)?$/i);
+                  if (valueMatch) {
+                    const value = valueMatch[1];
+                    const unit = valueMatch[2] || 'GB';
+                    sisaFormatted = value.padStart(maxValueLength) + ' ' + unit;
+                  } else {
+                    sisaFormatted = kuota.sisa.padStart(maxValueLength + 3); // fallback
+                  }
+                }
+                
+                formattedResult += `<code>🔖 ${paddedName} : ${sisaFormatted}</code>\n`;
               }
             }
 
@@ -580,21 +619,46 @@ module.exports = (bot) => {
               // Format kuota for this package
               if (otherKuotaData.length > 0) {
                 let maxNameLength = 0;
+                let maxValueLength = 0;
+                
+                // Find max lengths for name and value alignment
                 for (const kuota of otherKuotaData) {
                   if (kuota.name.length > maxNameLength) {
                     maxNameLength = kuota.name.length;
+                  }
+                  
+                  // Extract number part for alignment (remove unit like GB, MB, KB)
+                  let valueOnly = kuota.sisa === '0' ? '0' : kuota.sisa.replace(/\s*(GB|MB|KB)$/i, '');
+                  if (valueOnly.length > maxValueLength) {
+                    maxValueLength = valueOnly.length;
                   }
                 }
                 
                 for (const kuota of otherKuotaData) {
                   const paddedName = kuota.name.padEnd(maxNameLength);
-                  formattedResult += `<code>🔖 ${paddedName} : ${kuota.sisa}/${kuota.total}</code>\n`;
+                  
+                  // Format sisa with aligned GB
+                  let sisaFormatted;
+                  if (kuota.sisa === '0') {
+                    sisaFormatted = '0'.padStart(maxValueLength) + ' GB';
+                  } else {
+                    const valueMatch = kuota.sisa.match(/^(.*?)\s*(GB|MB|KB)?$/i);
+                    if (valueMatch) {
+                      const value = valueMatch[1];
+                      const unit = valueMatch[2] || 'GB';
+                      sisaFormatted = value.padStart(maxValueLength) + ' ' + unit;
+                    } else {
+                      sisaFormatted = kuota.sisa.padStart(maxValueLength + 3); // fallback
+                    }
+                  }
+                  
+                  formattedResult += `<code>🔖 ${paddedName} : ${sisaFormatted}</code>\n`;
                 }
               }
             }
             
             // Add footer
-            formattedResult += `━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+            formattedResult += `├──────────────────────────┤\n\n`;
             formattedResult += `⌚️ <b>Last Update:</b> ${new Date().toLocaleString('sv-SE').replace('T', ' ')}\n`;
             
             await bot.sendMessage(chatId, formattedResult, { parse_mode: 'HTML' });
