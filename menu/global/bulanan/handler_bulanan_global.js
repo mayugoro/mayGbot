@@ -313,7 +313,7 @@ module.exports = (bot) => {
           const saldoAwal = saldoAkhir + hargaValue;
           
           teksHasil = `✅ Sukses !!\n\n` +
-            `Detail         : Sukses AKRAB GLOBAL 🌍\n` +
+            `<code>Detail         : Sukses AKRAB GLOBAL 🌍\n` +
             `Jenis paket    : ${paket.toUpperCase()}\n` +
             `Nomor          : ${normalizedNumber}\n` +
             `TRX ID         : ${trxId}\n` +
@@ -321,7 +321,7 @@ module.exports = (bot) => {
             `Saldo awal     : Rp.${saldoAwal.toLocaleString('id-ID')}\n` +
             `Saldo terpotong: Rp.${hargaValue.toLocaleString('id-ID')}\n` +
             `Saldo akhir    : Rp.${saldoAkhir.toLocaleString('id-ID')}\n` +
-            `Waktu eksekusi : ${executionTime} detik ✅`;
+            `Waktu eksekusi : ${executionTime} detik ✅</code>`;
             
         } else if (status === 'pending' || message.toLowerCase().includes('pending')) {
           // ⏳ PENDING - Potong saldo penuh (karena kemungkinan akan berhasil)
@@ -336,7 +336,7 @@ module.exports = (bot) => {
           const saldoAwal = saldoAkhir + hargaValue;
           
           teksHasil = `⏳ Pending !!\n\n` +
-            `Detail         : Sedang diproses\n` +
+            `<code>Detail         : Sedang diproses\n` +
             `Jenis paket    : ${paket.toUpperCase()}\n` +
             `Nomor          : ${normalizedNumber}\n` +
             `TRX ID         : ${trxId}\n` +
@@ -345,7 +345,7 @@ module.exports = (bot) => {
             `Saldo terpotong: Rp.${hargaValue.toLocaleString('id-ID')}\n` +
             `Saldo akhir    : Rp.${saldoAkhir.toLocaleString('id-ID')}\n` +
             `Waktu eksekusi : ${executionTime} detik ⏳\n` +
-            `Status         : ${message}`;
+            `Status         : ${message}</code>`;
             
         } else if (status === 'Tujuan Diluar Wilayah' || message === 'Tujuan Diluar Wilayah') {
           // 🚫 TUJUAN DILUAR WILAYAH - TIDAK POTONG SALDO SAMA SEKALI
@@ -356,7 +356,7 @@ module.exports = (bot) => {
           const saldoUser = await getUserSaldo(userId);
           
           teksHasil = `🚫 Tujuan Diluar Wilayah !!\n\n` +
-            `Detail         : Nomor diluar coverage\n` +
+            `<code>Detail         : Nomor diluar coverage\n` +
             `Jenis paket    : ${paket.toUpperCase()}\n` +
             `Nomor          : ${normalizedNumber}\n` +
             `TRX ID         : ${trxId}\n` +
@@ -364,7 +364,7 @@ module.exports = (bot) => {
             `Saldo          : Rp.${saldoUser.toLocaleString('id-ID')} (tidak terpotong)\n` +
             `Waktu eksekusi : ${executionTime} detik 🚫\n` +
             `Info           : ${message}\n\n` +
-            `💡 Silakan gunakan nomor yang berada dalam wilayah coverage`;
+            `💡 Silakan gunakan nomor yang berada dalam wilayah coverage</code>`;
             
         } else {
           // ❌ GAGAL LAINNYA - Potong biaya gagal
@@ -380,7 +380,7 @@ module.exports = (bot) => {
           const saldoAwal = saldoAkhir + biayaGagalValue;
           
           teksHasil = `❌ Gagal !!\n\n` +
-            `Detail         : ${message}\n` +
+            `<code>Detail         : ${message}\n` +
             `Jenis paket    : ${paket.toUpperCase()}\n` +
             `Nomor          : ${normalizedNumber}\n` +
             `TRX ID         : ${trxId}\n` +
@@ -388,7 +388,7 @@ module.exports = (bot) => {
             `Saldo awal     : Rp.${saldoAwal.toLocaleString('id-ID')}\n` +
             `Saldo terpotong: Rp.${biayaGagalValue.toLocaleString('id-ID')}\n` +
             `Saldo akhir    : Rp.${saldoAkhir.toLocaleString('id-ID')}\n` +
-            `Waktu eksekusi : ${executionTime} detik ❌`;
+            `Waktu eksekusi : ${executionTime} detik ❌</code>`;
         }
       } else {
         // Response tidak sesuai format
