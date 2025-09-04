@@ -8,7 +8,7 @@ const BEKASAN_GLOBAL_MENU_KEYBOARD = [
   [{ text: '📱 ANGGOTA XXL', callback_data: 'bekasan_global_anggota_xxl' }],
   [
     { text: 'KEMBALI', callback_data: 'akrab_global' },
-    { text: 'STOK GLOBAL', callback_data: 'cek_stok_global' }
+    { text: 'STOK GLOBAL', callback_data: 'cek_stok_bekasan_global_redirect' }
   ]
 ];
 
@@ -41,7 +41,7 @@ function generatePaketKeyboard(tipe, stokData) {
     keyboard.push([{ text: text, callback_data: `bekasan_global_${tipe}_${days}` }]);
   });
 
-  // Tambahkan tombol kembali
+  // Tambahkan tombol kembali saja (hapus tombol CEK STOK)
   keyboard.push([
     { text: 'KEMBALI', callback_data: 'cek_stok_bekasan_global' }
   ]);

@@ -1,6 +1,6 @@
 // Handler untuk cek stok global
 // Berinteraksi dengan API AKRAB GLOBAL untuk mendapatkan stok akrab
-// Hanya menampilkan paket bulanan (non-BPA)
+// Handler untuk stok bulanan (non-BPA) dan backup redirect message
 
 const axios = require('axios');
 
@@ -69,35 +69,22 @@ module.exports = (bot) => {
   bot.on('callback_query', async (query) => {
     const { data, id } = query;
 
-    // === CEK STOK BULANAN GLOBAL ===
+    // === CEK STOK BULANAN GLOBAL (NON-BPA) ===
     if (data === 'cek_stok_global') {
       try {
-        // Fetch stok dari API
         const stokString = await fetchStokGlobal();
         const stokData = parseStokGlobal(stokString);
         
-        // Hanya tampilkan paket bulanan (BUKAN mengandung BPA)
         let info = '🌍 STOK BULANAN GLOBAL\n\n';
         
         // Filter hanya paket bulanan (non-BPA)
-        const paketBulanan = {};
         Object.keys(stokData).forEach(kode => {
           if (!kode.includes('BPA')) {
-            paketBulanan[kode] = stokData[kode];
+            const stok = stokData[kode];
+            const nama = stok.nama.replace(/\s+/g, ' ').trim();
+            info += `${nama} = ${stok.jumlah === 0 ? '-' : stok.jumlah}\n`;
           }
         });
-
-        // Tampilkan detail paket bulanan
-        const bulananKeys = Object.keys(paketBulanan);
-        if (bulananKeys.length > 0) {
-          bulananKeys.forEach(kode => {
-            const stok = paketBulanan[kode];
-            const nama = stok.nama.trim();
-            info += `${nama} = ${stok.jumlah === 0 ? '-' : stok.jumlah}\n`;
-          });
-        } else {
-          info += 'Tidak ada paket bulanan tersedia\n';
-        }
 
         info += '\n✅ Tekan OK untuk keluar';
 
@@ -107,12 +94,20 @@ module.exports = (bot) => {
         });
 
       } catch (err) {
-        console.error('Error cek stok global:', err);
+        console.error('Error cek stok bulanan global:', err);
         await bot.answerCallbackQuery(id, {
-          text: '❌ Gagal mengambil stok global.\n\nPesan error: ' + err.message,
+          text: '❌ Error: ' + err.message,
           show_alert: true
         });
       }
+    }
+
+    // === REDIRECT MESSAGE (BACKUP) ===
+    if (data === 'cek_stok_bekasan_global_redirect') {
+      await bot.answerCallbackQuery(id, {
+        text: '🌍 BEKASAN GLOBAL\n\nMasuk submenu bekasan untuk melihat stok per tipe (L/XL/XXL).\n\n✅ OK',
+        show_alert: true
+      });
     }
   });
 };
