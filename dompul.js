@@ -387,16 +387,28 @@ module.exports = (bot) => {
               formattedResult += `📶 <b>Jaringan       :</b> ${status4gMatch[1]}\n`;
             }
 
-            // Calculate tenggang (masa berakhir - sekarang)
+            // Calculate tenggang (masa berakhir - sekarang) with accurate calculation
             const masaBerakhirMatch = rawData.match(/Masa Berakhir Tenggang:\s*([^\n]+)/);
             if (masaBerakhirMatch) {
               try {
                 const [year, month, day] = masaBerakhirMatch[1].split('-');
                 const tenggangDate = new Date(year, month - 1, day);
                 const now = new Date();
+                
+                // Set time for accurate comparison
+                now.setHours(0, 0, 0, 0); // Start of current day
+                tenggangDate.setHours(23, 59, 59, 999); // End of tenggang day
+                
                 const diffTime = tenggangDate - now;
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                formattedResult += `⚡ <b>Tenggang     :</b> ${diffDays} Hari lagi\n\n`;
+                
+                if (diffDays > 0) {
+                  formattedResult += `⚡ <b>Tenggang     :</b> ${diffDays} Hari lagi\n\n`;
+                } else if (diffDays === 0) {
+                  formattedResult += `⚡ <b>Tenggang     :</b> Hari ini\n\n`;
+                } else {
+                  formattedResult += `⚡ <b>Tenggang     :</b> Sudah habis\n\n`;
+                }
               } catch (e) {
                 formattedResult += `⚡ <b>Tenggang     :</b> ${masaBerakhirMatch[1]}\n\n`;
               }
@@ -463,11 +475,38 @@ module.exports = (bot) => {
               
               // Use first expiry date for merged display
               let expiry = akrabPackages[0].expiry;
+              let remainingDays = '';
+              
               if (expiry.match(/\d{4}-\d{2}-\d{2}/)) {
                 const [year, month, day] = expiry.split(' ')[0].split('-');
+                
+                // Calculate remaining days
+                try {
+                  const expiryDate = new Date(year, month - 1, day);
+                  const now = new Date();
+                  now.setHours(0, 0, 0, 0); // Set to start of day for accurate comparison
+                  expiryDate.setHours(23, 59, 59, 999); // Set to end of expiry day
+                  
+                  const diffTime = expiryDate - now;
+                  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                  
+                  if (diffDays > 0) {
+                    remainingDays = `(⚡${diffDays} HARI)`;
+                  } else if (diffDays === 0) {
+                    remainingDays = `(⚡HARI INI)`;
+                  } else {
+                    remainingDays = `(⚡EXPIRED)`;
+                  }
+                } catch (e) {
+                  remainingDays = `(⚡30 HARI)`;
+                }
+                
                 expiry = `${day}/${month}/${year}`;
+              } else {
+                remainingDays = `(⚡30 HARI)`;
               }
-              formattedResult += `🌙 <b>Aktif Hingga :</b> ${expiry} (⚡30 HARI)\n\n`;
+              
+              formattedResult += `🌙 <b>Aktif Hingga :</b> ${expiry} ${remainingDays}\n\n`;
             }
 
             // Process kuota data - filter Kuota Bersama to keep only the smallest one
@@ -580,11 +619,38 @@ module.exports = (bot) => {
               formattedResult += `\n✨ <b>${otherPkg.name} :</b>\n`;
               
               let expiry = otherPkg.expiry;
+              let remainingDays = '';
+              
               if (expiry.match(/\d{4}-\d{2}-\d{2}/)) {
                 const [year, month, day] = expiry.split(' ')[0].split('-');
+                
+                // Calculate remaining days
+                try {
+                  const expiryDate = new Date(year, month - 1, day);
+                  const now = new Date();
+                  now.setHours(0, 0, 0, 0); // Set to start of day for accurate comparison
+                  expiryDate.setHours(23, 59, 59, 999); // Set to end of expiry day
+                  
+                  const diffTime = expiryDate - now;
+                  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                  
+                  if (diffDays > 0) {
+                    remainingDays = `(⚡${diffDays} HARI)`;
+                  } else if (diffDays === 0) {
+                    remainingDays = `(⚡HARI INI)`;
+                  } else {
+                    remainingDays = `(⚡EXPIRED)`;
+                  }
+                } catch (e) {
+                  remainingDays = `(⚡30 HARI)`;
+                }
+                
                 expiry = `${day}/${month}/${year}`;
+              } else {
+                remainingDays = `(⚡30 HARI)`;
               }
-              formattedResult += `🌙 <b>Aktif Hingga :</b> ${expiry} (⚡30 HARI)\n\n`;
+              
+              formattedResult += `🌙 <b>Aktif Hingga :</b> ${expiry} ${remainingDays}\n\n`;
               
               // Get kuota for this specific package
               let otherKuotaData = [];
