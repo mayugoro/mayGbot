@@ -234,19 +234,7 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
             stokCount
           });
 
-          // Langsung tampilkan input nomor (tanpa loading message)
-          const inputText = `🌍 <b>INPUT NOMOR HP</b>\n\n` +
-            `📝 Silakan masukkan nomor HP yang akan diisi paket:\n\n` +
-            `💡 <b>Format yang diterima:</b>\n` +
-            `• 081234567890\n` +
-            `• 08123456789\n` +
-            `• +6281234567890\n\n` +
-            `⚠️ <i>Pastikan nomor aktif dan benar!</i>`;
-
-          await bot.sendMessage(chatId, inputText, {
-            parse_mode: 'HTML'
-          });
-
+          // Handler akan mengirim pesan input nomor sendiri
           await bot.answerCallbackQuery(id);
 
         } catch (err) {
