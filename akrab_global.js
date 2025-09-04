@@ -1,5 +1,5 @@
 // Handler untuk AKRAB GLOBAL
-const { getUserSaldo } = require('./db');
+const { getUserSaldo, getKonfigurasi } = require('./db');
 
 // Fungsi format uptime (sama seperti main.js)
 function formatUptime(ms) {
@@ -87,6 +87,27 @@ module.exports = function(bot) {
     // Handle callback untuk menampilkan menu AKRAB GLOBAL
     if (data === 'akrab_global') {
       try {
+        // Cek saldo user sebelum masuk menu global
+        let saldo = 0;
+        try {
+          saldo = await getUserSaldo(userId, from.username);
+        } catch (e) {}
+
+        // Ambil minimal saldo dari database
+        const minSaldo = await getKonfigurasi('min_saldo_global');
+        const minSaldoValue = minSaldo ? parseInt(minSaldo) : 150000;
+
+        // Pop-up alert untuk penolakan akses
+        if (saldo < minSaldoValue) {
+          const pesanTolak = await getKonfigurasi('pesan_tolak_global') || 
+            'Saldo tidak cukup untuk akses menu global\n\n⏤͟͟ᴍᴀʏᴜɢᴏʀᴏ';
+          
+          return bot.answerCallbackQuery(id, {
+            text: pesanTolak,
+            show_alert: true
+          });
+        }
+
         await showAkrabGlobalMenu(bot, chatId, messageId, userId, from.username);
         await bot.answerCallbackQuery(id);
         return;

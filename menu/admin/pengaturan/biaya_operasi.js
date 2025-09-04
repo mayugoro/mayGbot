@@ -15,8 +15,10 @@ const BIAYA_OPERASI_KEYBOARD = [
   [{ text: '❌ BIAYA TRX GAGAL', callback_data: 'set_biaya_gagal' }],
   [{ text: '💰 MIN SALDO BEKASAN', callback_data: 'set_min_saldo_bekasan' }],
   [{ text: '💎 MIN SALDO BULANAN', callback_data: 'set_min_saldo_bulanan' }],
+  [{ text: '🌍 MIN SALDO GLOBAL', callback_data: 'set_min_saldo_global' }],
   [{ text: '📝 PESAN TOLAK BEKASAN', callback_data: 'set_pesan_bekasan' }],
   [{ text: '📋 PESAN TOLAK BULANAN', callback_data: 'set_pesan_bulanan' }],
+  [{ text: '🌍 PESAN TOLAK GLOBAL', callback_data: 'set_pesan_global' }],
   [{ text: '🔙 KEMBALI', callback_data: 'atur_produk' }]
 ];
 
@@ -29,8 +31,10 @@ module.exports = (bot) => {
     require('./biaya/biaya_gagal')(bot);
     require('./biaya/minimal_bekasan')(bot);
     require('./biaya/minimal_bulanan')(bot);
+    require('./biaya/minimal_global')(bot);
     require('./biaya/tolak_bekasan')(bot);
     require('./biaya/tolak_bulanan')(bot);
+    require('./biaya/tolak_global')(bot);
   } catch (error) {
     console.error('❌ Error loading biaya handlers:', error.message);
   }
