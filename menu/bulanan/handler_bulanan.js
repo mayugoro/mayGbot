@@ -1,8 +1,21 @@
+// akan menggunakan full api1
+
 const axios = require('axios');
 const { freezeStok, getKuotaPaket } = require('../../db');
 const { normalizePhoneNumber, isValidIndonesianPhone } = require('../../utils/normalize');
 
 const stateBulanan = new Map();
+
+// === HELPER FUNCTION: FORMAT NOMOR TO INTERNATIONAL ===
+function formatNomorToInternational(nomor) {
+  let cleanNomor = nomor.replace(/\D/g, '');
+  if (cleanNomor.startsWith('08')) {
+    cleanNomor = '628' + cleanNomor.substring(2);
+  } else if (cleanNomor.startsWith('8') && !cleanNomor.startsWith('62')) {
+    cleanNomor = '62' + cleanNomor;
+  }
+  return cleanNomor;
+}
 
 // === MAIN KEYBOARD GENERATOR ===
 const generateMainKeyboard = (userId) => {
@@ -337,21 +350,33 @@ const checkSlotKosong = async (chatId) => {
   }
 
   try {
-    // === HIT API PERTAMA ===
-    const res = await axios.post("https://api.hidepulsa.com/api/akrab", {
-      action: "info",
-      id_telegram: process.env.ADMIN_ID,
-      password: process.env.PASSWORD,
-      nomor_hp
-    }, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: process.env.API_KEY
+    // === HIT API1 KHFY-Store PERTAMA ===
+    const formattedNomor = formatNomorToInternational(nomor_hp);
+    console.log(`📋 CEKSLOT1: Checking slot for ${nomor_hp} -> ${formattedNomor}`);
+    
+    const requestBody = new URLSearchParams({
+      id_parent: formattedNomor,
+      token: process.env.APIKEY1
+    }).toString();
+    
+    const res = await axios.post(
+      `${process.env.API1}/member_info_akrab`,
+      requestBody,
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        timeout: 10000
       }
-    });
+    );
 
+    console.log(`📋 CEKSLOT1: Raw API Response:`, JSON.stringify(res.data, null, 2));
+    
     let data = res.data?.data;
-    let slotList = data?.data_slot || [];
+    let slotList = data?.member_info?.members || [];
+    
+    console.log(`📋 CEKSLOT1: Parsed data:`, data);
+    console.log(`📋 CEKSLOT1: SlotList length:`, slotList.length);
 
     // === RETRY MECHANISM ===
     // Jika hit pertama tidak menghasilkan data slot, coba hit kedua
@@ -379,24 +404,26 @@ const checkSlotKosong = async (chatId) => {
         // Delay sebentar sebelum retry
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        // === HIT API KEDUA ===
-        const retryRes = await axios.post("https://api.hidepulsa.com/api/akrab", {
-          action: "info",
-          id_telegram: process.env.ADMIN_ID,
-          password: process.env.PASSWORD,
-          nomor_hp
-        }, {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: process.env.API_KEY
+        // === HIT API1 KHFY-Store KEDUA ===
+        const retryRes = await axios.post(
+          `${process.env.API1}/member_info_akrab`,
+          requestBody,
+          {
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            timeout: 10000
           }
-        });
+        );
+
+        console.log(`📋 CEKSLOT1 RETRY: Raw API Response:`, JSON.stringify(retryRes.data, null, 2));
 
         // Gunakan hasil dari hit kedua
         const retryData = retryRes.data?.data;
         if (retryData) {
           data = retryData;
-          slotList = retryData?.data_slot || [];
+          slotList = retryData?.member_info?.members || [];
+          console.log(`📋 CEKSLOT1 RETRY: Updated slotList length:`, slotList.length);
         }
 
       } catch (retryErr) {
@@ -405,7 +432,17 @@ const checkSlotKosong = async (chatId) => {
       }
     }
 
-    const kosong = slotList.filter(s => !s.nomor || s.nomor === "");
+    // Filter slot kosong berdasarkan API1 format (msisdn kosong = slot kosong)
+    console.log(`📋 CEKSLOT1: All slots:`, JSON.stringify(slotList, null, 2));
+    
+    // Gabungkan members dan additional_members untuk mendapatkan semua slot
+    const additionalMembers = data?.member_info?.additional_members || [];
+    const allSlots = [...slotList, ...additionalMembers];
+    console.log(`📋 CEKSLOT1: All slots (including additional):`, allSlots.length);
+    
+    const kosong = allSlots.filter(s => !s.msisdn || s.msisdn === "");
+    console.log(`📋 CEKSLOT1: Available slots (empty msisdn):`, kosong.length);
+    console.log(`📋 CEKSLOT1: Available slots details:`, JSON.stringify(kosong, null, 2));
 
     if (!kosong.length) {
       // RELEASE LOCK karena tidak ada slot kosong
@@ -434,8 +471,8 @@ const checkSlotKosong = async (chatId) => {
       return;
     }
 
-    // AUTO SELECT SLOT KOSONG PERTAMA (sama seperti bekasan)
-    const selectedSlot = kosong[0]["slot-ke"];
+    // AUTO SELECT SLOT KOSONG PERTAMA (menggunakan field 'slot_id' dari API1)
+    const selectedSlot = kosong[0].slot_id;
     
     // Update state dengan slot yang dipilih otomatis
     state.step = 'input_nomor';
@@ -557,109 +594,111 @@ const isXLAxisNumber = (nomor) => {
   return result;
 };
 
-// === HELPER FUNCTION: VALIDASI NOMOR DENGAN API DOMPUL ===
+// === HELPER FUNCTION: VALIDASI NOMOR DENGAN API KMSP DOMPUL ===
 const validateNomorWithDompul = async (nomorPembeli) => {
   try {
-    const response = await axios.post("https://api.hidepulsa.com/api/tools", {
-      action: "cek_dompul",
-      id_telegram: process.env.ADMIN_ID,
-      password: process.env.PASSWORD,
-      nomor_hp: nomorPembeli
-    }, {
+    // Format nomor ke format 08xxx seperti di dompul.js
+    let formattedMsisdn = nomorPembeli.replace(/\D/g, '');
+    if (formattedMsisdn.startsWith('62')) {
+      formattedMsisdn = '0' + formattedMsisdn.substring(2);
+    }
+    if (!formattedMsisdn.startsWith('0') && formattedMsisdn.length >= 10 && formattedMsisdn.length <= 11) {
+      formattedMsisdn = '0' + formattedMsisdn;
+    }
+    
+    console.log(`🔍 DOMPUL: Validating ${nomorPembeli} -> ${formattedMsisdn}`);
+    
+    const params = {
+      msisdn: formattedMsisdn,
+      isJSON: 'true',
+      _: Date.now().toString()
+    };
+
+    const response = await axios.get("https://apigw.kmsp-store.com/sidompul/v4/cek_kuota", {
+      params,
       headers: {
-        "Content-Type": "application/json",
-        Authorization: process.env.API_KEY
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7,ja;q=0.6",
+        "Authorization": "Basic c2lkb21wdWxhcGk6YXBpZ3drbXNw",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Origin": "https://sidompul.kmsp-store.com",
+        "Priority": "u=1, i",
+        "Referer": "https://sidompul.kmsp-store.com/",
+        "Sec-CH-UA": '"Not;A=Brand";v="99", "Google Chrome";v="139", "Chromium";v="139"',
+        "Sec-CH-UA-Mobile": "?0",
+        "Sec-CH-UA-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-site",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+        "X-API-Key": "60ef29aa-a648-4668-90ae-20951ef90c55",
+        "X-App-Version": "4.0.0"
       },
-      timeout: 15000 // 15 detik timeout untuk stabilitas
+      timeout: 30000 // 30 detik timeout seperti di dompul.js
     });
+
+    console.log(`🔍 DOMPUL: Raw response:`, JSON.stringify(response.data, null, 2));
 
     const responseData = response.data;
     
-    // Cek apakah response sukses dan ada data
-    if (responseData.status === 'success' && responseData.data) {
-      const dompulData = responseData.data;
+    if (responseData && responseData.data && responseData.data.hasil) {
+      // Clean up HTML tags dari hasil
+      let resultText = responseData.data.hasil
+        .replace(/<br>/g, '\n')
+        .replace(/<[^>]*>/g, '') // Remove HTML tags
+        .replace(/&nbsp;/g, ' ') // Replace HTML space
+        .trim();
       
-      // Parse data dari response yang nested (sesuai struktur response nyata)
-      // Path: responseData.data.data.data.packageInfo
-      const data = dompulData.data && dompulData.data.data ? dompulData.data.data : null;
+      console.log(`🔍 DOMPUL: Cleaned result text:`, resultText);
       
-      // Cek paket aktif dari packageInfo
-      if (data && data.packageInfo && Array.isArray(data.packageInfo)) {
-        const akrabPackages = [];
-        
-        // Loop melalui packageInfo untuk mencari paket akrab
-        data.packageInfo.forEach((packageGroup, groupIndex) => {
-          if (Array.isArray(packageGroup)) {
-            packageGroup.forEach((packageItem, itemIndex) => {
-              if (packageItem.packages && packageItem.packages.name) {
-                const packageName = packageItem.packages.name;
-                // Cek apakah ada paket dengan nama "akrab" atau "Akrab"
-                if (packageName.toLowerCase().includes('akrab')) {
-                  akrabPackages.push(packageName);
-                }
-              }
-            });
-          }
-        });
-
-        if (akrabPackages.length > 0) {
-          return {
-            valid: false,
-            reason: 'akrab_package_exists',
-            packages: akrabPackages
-          };
-        } else {
-          return {
-            valid: true,
-            reason: 'no_akrab_packages'
-          };
-        }
+      // Cek apakah ada keyword "akrab" dalam hasil
+      const lowerResultText = resultText.toLowerCase();
+      const hasAkrab = lowerResultText.includes('akrab') || 
+                     lowerResultText.includes('family') ||
+                     lowerResultText.includes('keluarga');
+      
+      if (hasAkrab) {
+        console.log(`🔍 DOMPUL: ❌ VALIDATION FAILED - Akrab package found in results`);
+        return {
+          valid: false,
+          reason: 'akrab_package_exists',
+          packages: ['Detected from dompul results: akrab package exists']
+        };
       } else {
-        // Tidak ada packageInfo atau struktur tidak sesuai - anggap aman, lanjut proses
+        console.log(`🔍 DOMPUL: ✅ VALIDATION PASSED - No akrab packages found in results`);
         return {
           valid: true,
-          reason: 'no_package_info'
+          reason: 'no_akrab_packages'
         };
       }
-
-    } else if (responseData.status === 'error' && responseData.data && responseData.data.text) {
-      // Handle kasus nomor tidak memiliki paket (dari struktur dompul.js)
-      try {
-        const textData = JSON.parse(responseData.data.text);
-        if (textData && textData.message && textData.message.includes('tidak memiliki paket')) {
-          return {
-            valid: true,
-            reason: 'no_packages_active'
-          };
-        } else {
-          // Error lain dari API - lanjut proses tanpa validasi
-          return {
-            valid: true, // Ubah ke true agar tidak block proses
-            reason: 'api_error_proceed',
-            error: textData.message || 'Unknown API error'
-          };
-        }
-      } catch (parseError) {
-        // Parse error - lanjut proses tanpa validasi
-        return {
-          valid: true, // Ubah ke true agar tidak block proses
-          reason: 'parse_error_proceed',
-          error: parseError.message
-        };
-      }
+      
     } else {
-      // Response tidak sesuai ekspektasi - lanjut proses tanpa validasi
+      // Tidak ada hasil atau struktur tidak sesuai - anggap aman, lanjut proses
+      console.log(`🔍 DOMPUL: ✅ VALIDATION PASSED - No results data found`);
       return {
-        valid: true, // Ubah ke true agar tidak block proses
-        reason: 'unexpected_response_proceed',
-        error: responseData.message || 'Unexpected API response'
+        valid: true,
+        reason: 'no_results_data'
       };
     }
 
   } catch (error) {
-    // Semua error di catch - lanjut proses tanpa validasi
+    console.log(`🔍 DOMPUL: ✅ VALIDATION PASSED - Error occurred, proceeding anyway:`, error.message);
+    
+    // Jika error dari response, cek apakah ada pesan khusus
+    if (error.response && error.response.data && error.response.data.message) {
+      const errorMessage = error.response.data.message.toLowerCase();
+      if (errorMessage.includes('tidak memiliki paket') || errorMessage.includes('no package')) {
+        return {
+          valid: true,
+          reason: 'no_packages_active'
+        };
+      }
+    }
+    
+    // Semua error lainnya - lanjut proses tanpa validasi
     return {
-      valid: true, // Ubah ke true agar tidak block proses
+      valid: true,
       reason: 'validation_error_proceed',
       error: error.message
     };
@@ -865,22 +904,28 @@ module.exports = (bot) => {
     const addStartTime = Date.now();
     
     try {
-      const res = await axios.post("https://api.hidepulsa.com/api/akrab", {
-        action: "add",
-        id_telegram: process.env.ADMIN_ID,
-        password: process.env.PASSWORD,
-        nomor_hp,
-        nomor_slot,
-        nomor_anggota: normalizedNumber, // Gunakan nomor yang sudah dinormalisasi
-        nama_anggota: `${msg.from.username || msg.from.first_name || 'USER'} ${paket.toUpperCase()}`, // Gunakan username Telegram
-        nama_admin: "XL"
-      }, {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: process.env.API_KEY
-        },
-        timeout: 300000 // 5 menit timeout untuk menghindari socket hang up
-      });
+      // === API1 KHFY-Store ADD MEMBER ===
+      const formattedParent = formatNomorToInternational(nomor_hp);
+      console.log(`🔄 ADD: Processing ${nomor_hp} -> ${formattedParent}, slot: ${nomor_slot}`);
+      
+      const requestBody = new URLSearchParams({
+        id_parent: formattedParent,
+        slot: nomor_slot,
+        phone: normalizedNumber, // Gunakan nomor yang sudah dinormalisasi
+        name: `${msg.from.username || msg.from.first_name || 'USER'} ${paket.toUpperCase()}`, // Gunakan username Telegram
+        token: process.env.APIKEY1
+      }).toString();
+      
+      const res = await axios.post(
+        `${process.env.API1}/change_member_akrab_v2`,
+        requestBody,
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          timeout: 300000 // 5 menit timeout untuk menghindari socket hang up
+        }
+      );
 
       const addExecutionTime = Math.floor((Date.now() - addStartTime) / 1000);
       
@@ -1059,20 +1104,27 @@ module.exports = (bot) => {
       if (addExecutionTime >= 15) {
         setTimeout(async () => {
           try {
-            await axios.post("https://api.hidepulsa.com/api/akrab", {
-              action: "edit",
-              id_telegram: process.env.ADMIN_ID,
-              password: process.env.PASSWORD,
-              nomor_hp,
-              nomor_slot,
-              input_gb: kuotaGB
-            }, {
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: process.env.API_KEY
-              },
-              timeout: 60000 // 1 menit timeout untuk edit kuota
-            });
+            // === API1 KHFY-Store SET_KUBER ===
+            const formattedParent = formatNomorToInternational(nomor_hp);
+            console.log(`⚙️ SET_KUBER: Setting quota ${kuotaGB}GB for ${nomor_hp} -> ${formattedParent}, slot: ${nomor_slot}`);
+            
+            const requestBody = new URLSearchParams({
+              id_parent: formattedParent,
+              slot: nomor_slot,
+              kuota: kuotaGB,
+              token: process.env.APIKEY1
+            }).toString();
+            
+            await axios.post(
+              `${process.env.API1}/set_kuber_akrab`,
+              requestBody,
+              {
+                headers: {
+                  'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                timeout: 60000 // 1 menit timeout untuk edit kuota
+              }
+            );
           } catch (err) {
             console.warn(`⚠️ Edit kuota bulanan gagal untuk ${nomor_hp} SLOT ${nomor_slot}:`, err.message);
           }
@@ -1142,18 +1194,24 @@ module.exports = (bot) => {
         // Auto edit kuota untuk socket hang up yang dianggap sukses
         setTimeout(async () => {
           try {
-            await axios.post("https://api.hidepulsa.com/api/akrab", {
-              action: "edit",
-              id_telegram: process.env.ADMIN_ID,
-              password: process.env.PASSWORD,
-              nomor_hp,
-              nomor_slot,
-              input_gb: kuotaGB
-            }, {
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: process.env.API_KEY
-              },
+            // === API1 KHFY-Store SET_KUBER ===
+            const formattedParent = formatNomorToInternational(nomor_hp);
+            console.log(`⚙️ SET_KUBER (hangup): Setting quota ${kuotaGB}GB for ${nomor_hp} -> ${formattedParent}, slot: ${nomor_slot}`);
+            
+            const requestBody = new URLSearchParams({
+              id_parent: formattedParent,
+              slot: nomor_slot,
+              kuota: kuotaGB,
+              token: process.env.APIKEY1
+            }).toString();
+            
+            await axios.post(
+              `${process.env.API1}/set_kuber_akrab`,
+              requestBody,
+              {
+                headers: {
+                  'Content-Type': 'application/x-www-form-urlencoded'
+                },
               timeout: 60000 // 1 menit timeout untuk edit kuota
             });
           } catch (editErr) {

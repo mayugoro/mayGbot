@@ -1,5 +1,3 @@
-// akan menggunakan full api1
-
 const axios = require('axios');
 const { freezeStok, getKuotaPaket } = require('../../db');
 const { normalizePhoneNumber, isValidIndonesianPhone } = require('../../utils/normalize');
