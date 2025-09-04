@@ -17,7 +17,7 @@ const BULANAN_GLOBAL_MENU_KEYBOARD = [
 // Preload keyboard untuk detail paket global
 const generateDetailPaketGlobalKeyboard = (paket) => [
   [
-    { text: 'KEMBALI', callback_data: 'cek_stok_bulanan_global' },
+    { text: 'KEMBALI', callback_data: 'menu_bulanan_global' },
     { text: '✅LANJUT BELI', callback_data: `proses_bulanan_global_${paket}` }
   ]
 ];
@@ -106,7 +106,7 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
 
     try {
       // === BULANAN GLOBAL MENU ===
-      if (data === 'cek_stok_bulanan_global') {
+      if (data === 'menu_bulanan_global') {
         // Cek saldo user sebelum masuk menu bulanan global
         let saldo = 0;
         try {

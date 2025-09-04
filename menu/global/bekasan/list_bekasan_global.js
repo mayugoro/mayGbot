@@ -43,7 +43,7 @@ function generatePaketKeyboard(tipe, stokData) {
 
   // Tambahkan tombol kembali saja (hapus tombol CEK STOK)
   keyboard.push([
-    { text: 'KEMBALI', callback_data: 'cek_stok_bekasan_global' }
+    { text: 'KEMBALI', callback_data: 'menu_bekasan_global' }
   ]);
 
   return keyboard;
@@ -116,7 +116,7 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
 
     try {
       // === BEKASAN GLOBAL MENU ===
-      if (data === 'cek_stok_bekasan_global') {
+      if (data === 'menu_bekasan_global') {
         // Cek saldo user
         let saldo = 0;
         try {
