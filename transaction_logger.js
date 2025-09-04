@@ -254,57 +254,11 @@ const testLogging = async (bot) => {
   }
 };
 
-// Function untuk statistik harian
-const sendDailyStats = async (bot) => {
-  if (!LOG_ENABLED || !LOG_CHAT_ID || !bot) {
-    return;
-  }
-
-  try {
-    const today = new Date().toISOString().split('T')[0];
-    const logFile = path.join(__dirname, 'logs', `transactions_${today}.log`);
-    
-    if (!fs.existsSync(logFile)) {
-      return;
-    }
-
-    const logs = fs.readFileSync(logFile, 'utf8').split('\n').filter(line => line);
-    const transactions = logs.map(line => {
-      try {
-        return JSON.parse(line);
-      } catch {
-        return null;
-      }
-    }).filter(t => t);
-
-    const completed = transactions.filter(t => t.status === 'completed').length;
-    const failed = transactions.filter(t => t.status === 'failed').length;
-    const total = transactions.length;
-
-    let statsMessage = `📊 <b>STATISTIK TRANSAKSI HARI INI</b>\n\n`;
-    statsMessage += `📅 <b>Tanggal:</b> ${today}\n`;
-    statsMessage += `✅ <b>Berhasil:</b> ${completed}\n`;
-    statsMessage += `❌ <b>Gagal:</b> ${failed}\n`;
-    statsMessage += `📊 <b>Total:</b> ${total}\n`;
-    statsMessage += `📈 <b>Success Rate:</b> ${total > 0 ? ((completed/total)*100).toFixed(1) : 0}%\n`;
-    statsMessage += `⏰ <b>Waktu:</b> ${formatTime()}`;
-
-    await bot.sendMessage(LOG_CHAT_ID, statsMessage, {
-      parse_mode: 'HTML',
-      message_thread_id: LOG_TOPIC_SUCCESS
-    });
-
-  } catch (error) {
-    console.error('❌ Error sending daily stats:', error.message);
-  }
-};
-
 module.exports = {
   logTransaction,
   logRedeemTransaction,
   logError,
   testLogging,
-  sendDailyStats,
   LOG_ENABLED,
   LOG_CHAT_ID
 };
