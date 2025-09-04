@@ -45,12 +45,12 @@ async function showAkrabGlobalMenu(bot, chatId, messageId, userId, username) {
     // Keyboard untuk AKRAB GLOBAL
     const akrabGlobalKeyboard = [
       [
-        { text: '📦 STOK BULANAN', callback_data: 'cek_stok_bulanan' },
-        { text: '📦 STOK BEKASAN', callback_data: 'cek_stok' }
+        { text: '📦 BULANAN GLOBAL', callback_data: 'cek_stok_bulanan_global' },
+        { text: '📦 BEKASAN GLOBAL', callback_data: 'cek_stok_bekasan_global' }
       ],
       [
-        { text: '🌙 BELI BULANAN', callback_data: 'menu_bulanan' },
-        { text: '⚡ BELI BEKASAN', callback_data: 'menu_bekasan' }
+        { text: '🌙 BELI BULANAN', callback_data: 'menu_bulanan_global' },
+        { text: '⚡ BELI BEKASAN', callback_data: 'menu_bekasan_global' }
       ],
       [
         { text: '🔙 KEMBALI', callback_data: 'back_to_menu' }

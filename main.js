@@ -433,6 +433,14 @@ require('./code/create')(bot);
 require('./code/redeem')(bot);
 require('./delete')(bot);
 require('./akrab_global')(bot);
+require('./menu/cek_stok_global')(bot);
+
+// === MENU GLOBAL HANDLERS ===
+require('./menu/global/bulanan/list_bulanan_global')(bot, formatUptime, BOT_START_TIME);
+require('./menu/global/bulanan/handler_bulanan_global')(bot);
+require('./menu/global/bekasan/list_bekasan_global')(bot, formatUptime, BOT_START_TIME);
+require('./menu/global/bekasan/handler_bekasan_global')(bot);
+
 require('./dompul')(bot);
 
 // Transaction logger sudah berjalan otomatis, tidak perlu admin commands
