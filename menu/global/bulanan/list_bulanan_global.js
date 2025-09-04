@@ -220,23 +220,34 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
             });
           }
           
-          // Kirim loading message
-          const loadingMsg = await bot.sendMessage(chatId, '🌍 <b>Mengecek slot global...</b> 🌍', { parse_mode: 'HTML' });
-          
           // Import handler bulanan global
           const handlerBulananGlobal = require('./handler_bulanan_global');
           const setStateBulananGlobal = handlerBulananGlobal.setStateBulananGlobal;
           
           // Set state untuk handler bulanan global
           setStateBulananGlobal(chatId, {
-            step: 'pilih_slot_global',
+            step: 'input_nomor_global', // Langsung ke input nomor
             paket,
             kodePaket,
             userId: from.id,
-            loadingMessageId: loadingMsg.message_id,
             originalMessageId: msgId,
             stokCount
           });
+
+          // Langsung tampilkan input nomor (tanpa loading message)
+          const inputText = `🌍 <b>INPUT NOMOR HP</b>\n\n` +
+            `📝 Silakan masukkan nomor HP yang akan diisi paket:\n\n` +
+            `💡 <b>Format yang diterima:</b>\n` +
+            `• 081234567890\n` +
+            `• 08123456789\n` +
+            `• +6281234567890\n\n` +
+            `⚠️ <i>Pastikan nomor aktif dan benar!</i>`;
+
+          await bot.sendMessage(chatId, inputText, {
+            parse_mode: 'HTML'
+          });
+
+          await bot.answerCallbackQuery(id);
 
         } catch (err) {
           console.error('Error in proses bulanan global:', err);

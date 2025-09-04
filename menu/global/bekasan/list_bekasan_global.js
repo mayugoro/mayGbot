@@ -265,24 +265,44 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
             });
           }
           
-          // Kirim loading message
-          const loadingMsg = await bot.sendMessage(chatId, '🌍 <b>Mengecek slot bekasan global...</b> 🌍', { parse_mode: 'HTML' });
-          
           // Import handler bekasan global
           const handlerBekasanGlobal = require('./handler_bekasan_global');
           const setStateBekasanGlobal = handlerBekasanGlobal.setStateBekasanGlobal;
           
           // Set state untuk handler bekasan global
           setStateBekasanGlobal(chatId, {
-            step: 'pilih_slot_bekasan_global',
+            step: 'input_nomor_bekasan_global', // Langsung ke input nomor
             tipe,
             hari,
             kodePaket,
             userId: from.id,
-            loadingMessageId: loadingMsg.message_id,
             originalMessageId: msgId,
             stokCount
           });
+
+          // Langsung tampilkan input nomor (tanpa loading message)
+          const tipeNames = {
+            'l': 'ANGGOTA L',
+            'xl': 'ANGGOTA XL',
+            'xxl': 'ANGGOTA XXL'
+          };
+
+          const tipeName = tipeNames[tipe] || tipe.toUpperCase();
+
+          const inputText = `🌍 <b>INPUT NOMOR HP</b>\n\n` +
+            `📦 Paket: ${tipeName} ${hari} HARI\n\n` +
+            `📝 Silakan masukkan nomor HP yang akan diisi paket:\n\n` +
+            `💡 <b>Format yang diterima:</b>\n` +
+            `• 081234567890\n` +
+            `• 08123456789\n` +
+            `• +6281234567890\n\n` +
+            `⚠️ <i>Pastikan nomor aktif dan benar!</i>`;
+
+          await bot.sendMessage(chatId, inputText, {
+            parse_mode: 'HTML'
+          });
+
+          await bot.answerCallbackQuery(id);
 
         } catch (err) {
           console.error('Error in proses bekasan global:', err);
