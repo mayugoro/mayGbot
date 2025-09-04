@@ -34,11 +34,11 @@ module.exports = (bot) => {
       const response = await axios.post('https://api.hidepulsa.com/api/tools', {
         action: "cek_saldo",
         id_telegram: process.env.ADMIN_ID,
-        password: process.env.PASSWORD
+        password: process.env.PASSWORD2
       }, {
         headers: {
           "Content-Type": "application/json",
-          Authorization: process.env.API_KEY
+          Authorization: process.env.APIKEY2
         },
         timeout: 15000 // Timeout 15 detik
       });
@@ -174,11 +174,11 @@ module.exports = (bot) => {
       const response = await axios.post('https://api.hidepulsa.com/api/tools', {
         action: "cek_saldo",
         id_telegram: process.env.ADMIN_ID,
-        password: process.env.PASSWORD
+        password: process.env.PASSWORD2
       }, {
         headers: {
           "Content-Type": "application/json",
-          Authorization: process.env.API_KEY
+          Authorization: process.env.APIKEY2  
         },
         timeout: 10000
       });
