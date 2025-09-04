@@ -342,82 +342,170 @@ module.exports = (bot) => {
         
         try {
           if (result.success && result.data && result.data.data && result.data.data.hasil) {
-            // Clean up HTML tags dan format hasil
-            let resultText = result.data.data.hasil
+            // Parse dan format hasil sesuai format yang diinginkan
+            let rawData = result.data.data.hasil
               .replace(/<br>/g, '\n')
               .replace(/<[^>]*>/g, '') // Remove HTML tags
               .replace(/&nbsp;/g, ' ') // Replace HTML space
               .trim();
+
+            // Extract informasi dasar
+            let formattedResult = `<b>SUKSES</b>\n`;
             
-            // Handle duplicate "24jam di semua jaringan" - keep the smaller value
-            const lines = resultText.split('\n');
-            const processedLines = [];
+            // Extract dan format nomor
+            const msisdnMatch = rawData.match(/MSISDN:\s*(\d+)/);
+            if (msisdnMatch) {
+              let displayNumber = msisdnMatch[1];
+              if (displayNumber.startsWith('62')) {
+                displayNumber = '0' + displayNumber.substring(2);
+              }
+              formattedResult += `💌 <b>Nomor          :</b> ${displayNumber}\n`;
+            }
+
+            // Extract tipe kartu
+            const tipeKartuMatch = rawData.match(/Tipe Kartu:\s*([^\n]+)/);
+            if (tipeKartuMatch) {
+              formattedResult += `📧 <b>Tipe              :</b> ${tipeKartuMatch[1]} (PREPAID)\n`;
+            }
+
+            // Extract dukcapil
+            const dukcapilMatch = rawData.match(/Status Dukcapil:\s*([^\n]+)/);
+            if (dukcapilMatch) {
+              formattedResult += `📧 <b>Dukcapil       :</b> ${dukcapilMatch[1]} ✅\n`;
+            }
+
+            // Extract umur kartu
+            const umurKartuMatch = rawData.match(/Umur Kartu:\s*([^\n]+)/);
+            if (umurKartuMatch) {
+              let umur = umurKartuMatch[1].replace(/\s*0 Bulan/g, '').trim();
+              formattedResult += `📧 <b>Umur Kartu  :</b> ${umur}\n`;
+            }
+
+            // Extract jaringan (dari Status 4G)
+            const status4gMatch = rawData.match(/Status 4G:\s*([^\n]+)/);
+            if (status4gMatch) {
+              formattedResult += `📶 <b>Jaringan       :</b> ${status4gMatch[1]}\n`;
+            }
+
+            // Calculate tenggang (masa berakhir - sekarang)
+            const masaBerakhirMatch = rawData.match(/Masa Berakhir Tenggang:\s*([^\n]+)/);
+            if (masaBerakhirMatch) {
+              try {
+                const [year, month, day] = masaBerakhirMatch[1].split('-');
+                const tenggangDate = new Date(year, month - 1, day);
+                const now = new Date();
+                const diffTime = tenggangDate - now;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                formattedResult += `⚡ <b>Tenggang     :</b> ${diffDays} Hari lagi\n\n`;
+              } catch (e) {
+                formattedResult += `⚡ <b>Tenggang     :</b> ${masaBerakhirMatch[1]}\n\n`;
+              }
+            }
+
+            // Extract quota info
+            const quotaSections = rawData.split('🎁 Quota:').slice(1);
+            let bonusPackages = [];
+            let kuotaData = [];
             
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i];
+            for (const section of quotaSections) {
+              const quotaNameMatch = section.match(/^([^\n]+)/);
+              const aktifHinggaMatch = section.match(/🍂 Aktif Hingga:\s*([^\n]+)/);
               
-              // Check for duplicate "24jam di semua jaringan" benefit
-              if (line.includes('🎁 Benefit: 24jam di semua jaringan')) {
-                // Look for the next occurrence of the same benefit
-                let foundDuplicate = false;
-                let duplicateIndex = -1;
+              if (quotaNameMatch && aktifHinggaMatch) {
+                bonusPackages.push(quotaNameMatch[1].trim());
                 
-                for (let j = i + 1; j < lines.length; j++) {
-                  if (lines[j].includes('🎁 Benefit: 24jam di semua jaringan')) {
-                    foundDuplicate = true;
-                    duplicateIndex = j;
-                    break;
-                  }
-                  if (lines[j].includes('🎁 Quota:') || lines[j].includes('=====')) {
-                    break;
-                  }
-                }
+                // Extract benefits dari section ini
+                const benefits = section.split('🎁 Benefit:').slice(1);
                 
-                if (foundDuplicate) {
-                  // Get quota values from both benefits
-                  const firstQuotaLine = lines[i + 2] || '';
-                  const secondQuotaLine = lines[duplicateIndex + 2] || '';
-                  
-                  // Extract quota values
-                  const firstQuota = parseFloat(firstQuotaLine.replace(/[^\d.]/g, '')) || 0;
-                  const secondQuota = parseFloat(secondQuotaLine.replace(/[^\d.]/g, '')) || 0;
-                  
-                  // Keep the one with smaller quota value (more realistic)
-                  if (firstQuota > secondQuota) {
-                    // Skip the first one, keep the second
-                    i += 3; // Skip current benefit (4 lines)
-                    continue;
-                  } else {
-                    // Keep the first one, mark duplicate for skipping
-                    processedLines.push(line);
-                    processedLines.push(lines[i + 1] || ''); // Tipe Kuota
-                    processedLines.push(lines[i + 2] || ''); // Kuota
-                    processedLines.push(lines[i + 3] || ''); // Sisa Kuota
-                    i += 3;
+                for (const benefit of benefits) {
+                  const benefitNameMatch = benefit.match(/^([^\n]+)/);
+                  const tipeKuotaMatch = benefit.match(/🎁 Tipe Kuota:\s*([^\n]+)/);
+                  const kuotaMatch = benefit.match(/🎁 Kuota:\s*([^\n]+)/);
+                  const sisaKuotaMatch = benefit.match(/🌲 Sisa Kuota:\s*([^\n]+)/);
+
+                  if (benefitNameMatch && tipeKuotaMatch && tipeKuotaMatch[1] === 'DATA' && kuotaMatch && sisaKuotaMatch) {
+                    let benefitName = benefitNameMatch[1].trim();
+                    let totalKuota = kuotaMatch[1];
+                    let sisaKuota = sisaKuotaMatch[1];
                     
-                    // Mark duplicate lines to be skipped
-                    for (let k = duplicateIndex; k < duplicateIndex + 4 && k < lines.length; k++) {
-                      lines[k] = '__SKIP__';
+                    // Mapping nama benefit ke format yang lebih sederhana
+                    if (benefitName.includes('24jam di semua jaringan')) {
+                      benefitName = 'Kuota Bersama';
+                    } else if (benefitName.includes('Nasional')) {
+                      benefitName = 'Kuota Nasional';
+                    } else if (benefitName.includes('myRewards')) {
+                      benefitName = 'My Reward';
+                    } else if (benefitName.includes('Lokal')) {
+                      // Keep Lokal naming as is
                     }
-                    continue;
+                    
+                    kuotaData.push({
+                      name: benefitName,
+                      total: totalKuota,
+                      sisa: sisaKuota
+                    });
                   }
                 }
               }
+            }
+
+            // Format bonus packages
+            if (bonusPackages.length > 0) {
+              formattedResult += `✨ <b>${bonusPackages.join(' + ')} :</b>\n`;
               
-              // Skip lines marked for removal
-              if (line === '__SKIP__') {
-                continue;
+              // Get expiry date from first section
+              const firstSection = quotaSections[0];
+              const aktifHinggaMatch = firstSection.match(/🍂 Aktif Hingga:\s*([^\n]+)/);
+              if (aktifHinggaMatch) {
+                let expiry = aktifHinggaMatch[1];
+                // Convert to DD/MM/YYYY format
+                if (expiry.match(/\d{4}-\d{2}-\d{2}/)) {
+                  const [year, month, day] = expiry.split(' ')[0].split('-');
+                  expiry = `${day}/${month}/${year}`;
+                }
+                formattedResult += `🌙 <b>Aktif Hingga :</b> ${expiry} (⚡30 HARI)\n\n`;
               }
-              
-              processedLines.push(line);
+            }
+
+            // Process kuota data - filter Kuota Bersama to keep only the smallest one
+            let processedKuota = [];
+            let kuotaBersamaEntries = [];
+            
+            for (const kuota of kuotaData) {
+              if (kuota.name === 'Kuota Bersama') {
+                kuotaBersamaEntries.push(kuota);
+              } else {
+                processedKuota.push(kuota);
+              }
             }
             
-            const cleanResultText = processedLines.join('\n');
+            // If there are multiple Kuota Bersama entries, keep only the one with smallest total
+            if (kuotaBersamaEntries.length > 0) {
+              let smallestKuotaBersama = kuotaBersamaEntries[0];
+              
+              for (const kuota of kuotaBersamaEntries) {
+                // Parse total kuota untuk comparison (remove GB/MB and convert to number)
+                const currentTotal = parseFloat(kuota.total.replace(/[^\d.]/g, ''));
+                const smallestTotal = parseFloat(smallestKuotaBersama.total.replace(/[^\d.]/g, ''));
+                
+                if (currentTotal < smallestTotal) {
+                  smallestKuotaBersama = kuota;
+                }
+              }
+              
+              processedKuota.unshift(smallestKuotaBersama); // Add to beginning
+            }
+
+            // Format kuota data
+            for (const kuota of processedKuota) {
+              formattedResult += `🔖 <b>${kuota.name.padEnd(13)} :</b> ${kuota.sisa}/${kuota.total}\n`;
+            }
             
-            // Tambahkan header dengan nomor dan progress
-            const headerText = `✅ <b>NOMOR ${result.index + 1}/${uniqueNumbers.length}</b> <code>[${completedCount}/${uniqueNumbers.length}]</code>\n\n${cleanResultText}`;
+            // Add footer
+            formattedResult += `━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+            formattedResult += `⌚️ <b>Last Update:</b> ${new Date().toLocaleString('sv-SE').replace('T', ' ')}\n`;
             
-            await bot.sendMessage(chatId, headerText, { parse_mode: 'HTML' });
+            await bot.sendMessage(chatId, formattedResult, { parse_mode: 'HTML' });
             totalSuccess++;
             
           } else {
