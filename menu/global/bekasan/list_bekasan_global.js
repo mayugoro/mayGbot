@@ -117,13 +117,29 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
     try {
       // === BEKASAN GLOBAL MENU ===
       if (data === 'cek_stok_bekasan_global') {
-        // Ambil data user untuk ditampilkan
+        // Cek saldo user
         let saldo = 0;
         try {
           saldo = await getUserSaldo(from.id, from.username);
         } catch (e) {}
 
+        // Ambil minimal saldo dari database (gunakan config global)
+        const minSaldo = await getKonfigurasi('min_saldo_global');
+        const minSaldoValue = minSaldo ? parseInt(minSaldo) : 150000;
+
+        // Pop-up alert untuk penolakan akses
+        if (saldo < minSaldoValue) {
+          const pesanTolak = await getKonfigurasi('pesan_tolak_global') || 'Saldo tidak cukup untuk akses menu bekasan global\n\n⏤͟͟ᴍᴀʏᴜɢᴏʀᴏ';
+          
+          return bot.answerCallbackQuery(id, {
+            text: pesanTolak,
+            show_alert: true
+          });
+        }
+
         const keyboard = BEKASAN_GLOBAL_MENU_KEYBOARD;
+
+        // Ambil data user untuk ditampilkan
         const uptime = formatUptime(Date.now() - BOT_START_TIME);
         const detail = generateUserDetail(from.id, from.username, saldo, uptime);
 
