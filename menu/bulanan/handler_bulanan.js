@@ -955,6 +955,12 @@ module.exports = (bot) => {
         }
         state.selectedSlotData.family_member_id = addedMemberFamilyId;
         stateBulanan.set(chatId, state);
+        
+        console.log(`📋 ADD SUCCESS: Updated state with new family_member_id from ADD response`);
+        console.log(`📋 ADD SUCCESS: CEKSLOT1 family_member_id: ${familyMemberId} → ADD response family_member_id: ${addedMemberFamilyId}`);
+      } else {
+        console.warn(`⚠️ ADD Response: No family_member_id found in response - will use CEKSLOT1 data for SET_KUBER`);
+        console.log(`📋 ADD Response details:`, JSON.stringify(res.data?.data?.details, null, 2));
       }
       
       const { getHargaPaket, getHargaGagal } = require('../../db');
@@ -1128,39 +1134,34 @@ module.exports = (bot) => {
         }
       }, 2000); // 2 detik delay untuk memberi waktu user membaca hasil
 
-      // Auto edit kuota setelah 10 detik untuk bulanan (hanya jika SUKSES)
+      // Auto edit kuota setelah 30 detik untuk bulanan (hanya jika SUKSES) - INCREASED DELAY
       if (addExecutionTime >= 8) {
         setTimeout(async () => {
           try {
-            // === API1 KHFY-Store SET_KUBER ===
+            // === LANGSUNG SET_KUBER DENGAN ROBUST APPROACH ===
             const formattedParent = formatNomorToInternational(nomor_hp);
+            console.log(`🎯 SET_KUBER: Starting direct SET_KUBER after ADD success...`);
             
-            // ✅ AMBIL FAMILY_MEMBER_ID dari data CEKSLOT1 yang sudah disimpan
-            const { selectedSlotData } = state;
-            let familyMemberId = selectedSlotData?.family_member_id;
+            // ✅ LANGSUNG HIT member_info_akrab untuk mendapat fresh member_id
+            const recheckBody = new URLSearchParams({
+              id_parent: formattedParent,
+              token: process.env.APIKEY1
+            }).toString();
             
-            // ✅ FALLBACK: Jika tidak ada family_member_id, coba gunakan slot_id atau hitung berdasarkan slot
-            if (!familyMemberId) {
-              console.warn(`⚠️ SET_KUBER: No family_member_id found, trying slot_id fallback`);
-              
-              // Option 1: Gunakan slot_id jika ada
-              if (selectedSlotData?.slot_id !== undefined) {
-                familyMemberId = selectedSlotData.slot_id.toString();
-                console.log(`✅ SET_KUBER: Using slot_id as fallback: ${familyMemberId}`);
-              } 
-              // Option 2: Gunakan nomor_slot sebagai last resort
-              else if (nomor_slot !== undefined) {
-                familyMemberId = nomor_slot.toString();
-                console.log(`✅ SET_KUBER: Using nomor_slot as last resort: ${familyMemberId}`);
-              } 
-              // Option 3: Skip SET_KUBER jika tidak ada ID sama sekali
-              else {
-                console.warn(`⚠️ SET_KUBER: No member identifier found for ${nomor_hp}, skipping SET_KUBER`);
-                return;
+            const recheckRes = await axios.post(
+              `${process.env.API1}/member_info_akrab`,
+              recheckBody,
+              {
+                headers: {
+                  'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                timeout: 10000
               }
-            }
+            );
             
-            // ✅ KONVERSI GB KE BYTES (bilangan utuh * 1073741824)
+            console.log(`🔄 SET_KUBER: Fresh member lookup response:`, JSON.stringify(recheckRes.data, null, 2));
+            
+            // ✅ KONVERSI GB KE BYTES DULU (sebelum member search untuk menghindari undefined error)
             const kuotaGBInt = parseInt(kuotaGB);
             let kuberInBytes = kuotaGBInt * 1073741824;
             
@@ -1170,32 +1171,100 @@ module.exports = (bot) => {
               console.log(`📋 SET_KUBER: 0GB workaround - using 1024 bytes instead of 0 (API limitation)`);
             }
             
-            console.log(`⚙️ SET_KUBER: Setting quota ${kuotaGB}GB (${kuberInBytes} bytes) for ${nomor_hp} -> ${formattedParent}`);
-            console.log(`⚙️ SET_KUBER: Using member_id: ${familyMemberId}`);
+            // ✅ ROBUST MEMBER EXTRACTION - Jangan terlalu strict dengan status
+            let freshMemberList = [];
+            let familyMemberId = null;
             
-            // ✅ FORMULIR API YANG BENAR
+            // Coba ekstrak dari berbagai kemungkinan struktur response
+            if (recheckRes.data?.data?.member_info?.members) {
+              freshMemberList = recheckRes.data.data.member_info.members;
+              console.log(`🔍 Found ${freshMemberList.length} members in member_info.members`);
+            } else if (recheckRes.data?.data && Array.isArray(recheckRes.data.data)) {
+              freshMemberList = recheckRes.data.data;
+              console.log(`🔍 Found ${freshMemberList.length} members in data array`);
+            }
+            
+            // Jika belum dapat member_id, cari dari array berdasarkan nomor HP yang di-ADD
+            if (freshMemberList.length > 0) {
+              // ✅ NORMALIZE TARGET NUMBER untuk matching
+              const targetMsisdn = normalizedNumber.startsWith('62') ? normalizedNumber : `62${normalizedNumber.slice(1)}`;
+              console.log(`🔍 Searching for member with normalized msisdn: ${targetMsisdn}`);
+              console.log(`🔍 Original input number: ${normalizedNumber}`);
+              console.log(`🔍 Available members:`, freshMemberList.map(m => ({ msisdn: m.msisdn, family_member_id: m.family_member_id?.slice(0, 20) + '...' })));
+              
+              const targetMember = freshMemberList.find(member => 
+                member.msisdn === targetMsisdn || member.msisdn === normalizedNumber
+              );
+              
+              if (targetMember) {
+                familyMemberId = targetMember.family_member_id;
+                console.log(`✅ FOUND FRESH MEMBER_ID: ${familyMemberId}`);
+                console.log(`✅ For msisdn: ${targetMember.msisdn} (matched with ${targetMsisdn})`);
+              } else {
+                console.warn(`❌ No member found with msisdn ${targetMsisdn} or ${normalizedNumber}`);
+                console.warn(`❌ Available msisdns:`, freshMemberList.map(m => m.msisdn));
+              }
+            }
+            
+            if (!familyMemberId) {
+              throw new Error(`No fresh member_id found for ${normalizedNumber} after ADD - member not found in recheck`);
+            }
+            
+            console.log(`🔍 SET_KUBER: Starting with robust member_id: ${familyMemberId}`);
+            console.log(`🔍 SET_KUBER: Target member: ${normalizedNumber}`);
+            console.log(`� SET_KUBER: Member found via robust extraction`);
+            
+            console.log(`⚙️ SET_KUBER: Setting quota ${kuotaGB}GB (${kuberInBytes} bytes)`);
+            console.log(`⚙️ SET_KUBER: Using ROBUST member_id: ${familyMemberId}`);
+            console.log(`🔍 SET_KUBER: API Parameters (4 formulir only):`);
+            console.log(`🔍 SET_KUBER:   ✅ token: [PROVIDED]`);
+            console.log(`🔍 SET_KUBER:   ✅ id_parent: ${formattedParent}`);
+            console.log(`🔍 SET_KUBER:   ✅ member_id: ${familyMemberId}`);
+            console.log(`🔍 SET_KUBER:   ✅ new_allocation: ${kuberInBytes}`);
+            
+            // ✅ FORMULIR SET_KUBER (HANYA 4 PARAMETER)
             const formData = new URLSearchParams();
             formData.append('token', process.env.APIKEY1);
             formData.append('id_parent', formattedParent);
-            formData.append('member_id', familyMemberId);                     // ✅ BENAR: member_id bukan slot
-            formData.append('new_allocation', kuberInBytes.toString());       // ✅ BENAR: 0GB → "1024", 15GB → "16106127360"
+            formData.append('member_id', familyMemberId);
+            formData.append('new_allocation', kuberInBytes.toString());
             
-            await axios.post(
+            console.log(`🚀 SET_KUBER: Executing with exact 4 parameters...`);
+            
+            const setKuberResponse = await axios.post(
               `${process.env.API1}/set_kuber_akrab`,
               formData,
               {
                 headers: {
                   'Content-Type': 'application/x-www-form-urlencoded'
                 },
-                timeout: 60000 // 1 menit timeout untuk edit kuota
+                timeout: 30000 // 30 detik timeout
               }
             );
             
-            console.log(`✅ SET_KUBER: Successfully set ${kuotaGB}GB quota for member ${familyMemberId}`);
-          } catch (err) {
-            console.warn(`⚠️ Edit kuota bulanan gagal untuk ${nomor_hp} SLOT ${nomor_slot}:`, err.message);
+            // ✅ LOG SET_KUBER RESPONSE
+            console.log('🔍 SET_KUBER Response:', JSON.stringify(setKuberResponse.data, null, 2));
+            
+            if (setKuberResponse.data.status === 'success') {
+              console.log(`🎉 SET_KUBER SUCCESS: Quota ${kuotaGB}GB berhasil diset!`);
+              console.log(`✅ Member ID: ${familyMemberId}`);
+              console.log(`✅ Allocation: ${kuberInBytes} bytes`);
+            } else {
+              console.warn(`⚠️ SET_KUBER: Unexpected response status:`, setKuberResponse.data);
+              // Tetap lanjut, mungkin berhasil walau status beda
+            }
+          } catch (setKuberErr) {
+            console.warn(`⚠️ SET_KUBER Error untuk ${nomor_hp} SLOT ${nomor_slot}:`);
+            console.warn(`   - Error: ${setKuberErr.message}`);
+            console.warn(`   - Member ID: ${familyMemberId || 'NOT_FOUND'}`);
+            console.warn(`   - Allocation: ${kuberInBytes || 'NOT_SET'} bytes`);
+            
+            // Jika error axios, log response juga
+            if (setKuberErr.response) {
+              console.warn(`   - API Response:`, setKuberErr.response.data);
+            }
           }
-        }, 10000);
+        }, 10000); // 10 detik delay sudah cukup dengan fresh member_id
       }
 
   } catch (err) {
@@ -1268,6 +1337,11 @@ module.exports = (bot) => {
             const { selectedSlotData } = state;
             let familyMemberId = selectedSlotData?.family_member_id;
             
+            console.log(`🔍 SET_KUBER (hangup) DEBUG: Starting SET_KUBER process after hangup`);
+            console.log(`🔍 SET_KUBER (hangup) DEBUG: Original CEKSLOT1 family_member_id: ${selectedSlotData?.family_member_id}`);
+            console.log(`🔍 SET_KUBER (hangup) DEBUG: Current familyMemberId: ${familyMemberId}`);
+            console.log(`🔍 SET_KUBER (hangup) DEBUG: State selectedSlotData:`, JSON.stringify(selectedSlotData, null, 2));
+            
             // ✅ FALLBACK: Jika tidak ada family_member_id, coba gunakan slot_id atau hitung berdasarkan slot
             if (!familyMemberId) {
               console.warn(`⚠️ SET_KUBER (hangup): No family_member_id found, trying slot_id fallback`);
@@ -1309,7 +1383,7 @@ module.exports = (bot) => {
             formData.append('member_id', familyMemberId);                     // ✅ BENAR: member_id bukan slot
             formData.append('new_allocation', kuberInBytes.toString());       // ✅ BENAR: 0GB → "1024", 15GB → "16106127360"
             
-            await axios.post(
+            const setKuberResponse = await axios.post(
               `${process.env.API1}/set_kuber_akrab`,
               formData,
               {
@@ -1318,6 +1392,9 @@ module.exports = (bot) => {
                 },
               timeout: 60000 // 1 menit timeout untuk edit kuota
             });
+            
+            // ✅ LOG RESPONSE SET_KUBER untuk debugging (hangup case)
+            console.log('🔍 SET_KUBER (hangup) Response:', JSON.stringify(setKuberResponse.data, null, 2));
           } catch (editErr) {
             console.warn(`⚠️ Edit kuota timeout case gagal untuk ${nomor_hp} SLOT ${nomor_slot}:`, editErr.message);
           }
