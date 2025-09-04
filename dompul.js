@@ -350,8 +350,8 @@ module.exports = (bot) => {
               .trim();
 
             // Extract informasi dasar
-            let formattedResult = `<b>SUKSES</b>\n`;
-            
+            let formattedResult = `├─────────────SUKSES─────────────┤\n\n`;
+
             // Extract dan format nomor
             const msisdnMatch = rawData.match(/MSISDN:\s*(\d+)/);
             if (msisdnMatch) {
@@ -359,7 +359,7 @@ module.exports = (bot) => {
               if (displayNumber.startsWith('62')) {
                 displayNumber = '0' + displayNumber.substring(2);
               }
-              formattedResult += `💌 <b>Nomor          :</b> ${displayNumber}\n`;
+              formattedResult += `💌 <b>Nomor          :</b> <code>${displayNumber}</code>\n`;
             }
 
             // Extract tipe kartu
@@ -496,9 +496,21 @@ module.exports = (bot) => {
               processedKuota.unshift(smallestKuotaBersama); // Add to beginning
             }
 
-            // Format kuota data
-            for (const kuota of processedKuota) {
-              formattedResult += `🔖 <b>${kuota.name.padEnd(13)} :</b> ${kuota.sisa}/${kuota.total}\n`;
+            // Format kuota data with <code> for alignment
+            if (processedKuota.length > 0) {
+              // Find the longest package name for alignment
+              let maxNameLength = 0;
+              for (const kuota of processedKuota) {
+                if (kuota.name.length > maxNameLength) {
+                  maxNameLength = kuota.name.length;
+                }
+              }
+              
+              // Format each kuota with proper alignment
+              for (const kuota of processedKuota) {
+                const paddedName = kuota.name.padEnd(maxNameLength);
+                formattedResult += `<code>🔖 ${paddedName} : ${kuota.sisa}/${kuota.total}</code>\n`;
+              }
             }
             
             // Add footer
