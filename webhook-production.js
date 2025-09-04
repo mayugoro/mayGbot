@@ -1,7 +1,7 @@
 // Production webhook server
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 const app = express();
 const PORT = process.env.PORT || 3000;

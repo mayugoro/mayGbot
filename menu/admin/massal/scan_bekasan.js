@@ -1,5 +1,5 @@
 const axios = require('axios');
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 // API Configuration dari .env
 const API_PRIMARY_BASE = process.env.API1;

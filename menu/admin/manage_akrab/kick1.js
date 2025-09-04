@@ -6,7 +6,7 @@
 // (2) API1+KICK1
 
 const axios = require('axios');
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const { getSlotInfoAPI1Only } = require('./cekslot1.js');
 
 // API1 Configuration (KHUSUS)

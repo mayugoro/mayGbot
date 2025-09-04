@@ -1,6 +1,6 @@
 // Script untuk mengelola webhook Telegram Bot
 const TelegramBot = require('node-telegram-bot-api');
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;

@@ -5,7 +5,7 @@
 // (1) API1+CEKSLOT1
 
 const axios = require('axios');
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 // API1 Configuration (KHUSUS)
 const API_PRIMARY_BASE = process.env.API1;

@@ -3,7 +3,8 @@ const path = require('path');
 
 // Load .env from parent directory (akrab folder)
 require('dotenv').config({ 
-  path: path.join(__dirname, '..', '.env')
+  path: path.join(__dirname, '..', '.env'),
+  quiet: true
 });
 
 // Fungsi untuk format nomor telepon ke format internasional

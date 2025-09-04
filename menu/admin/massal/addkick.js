@@ -1,5 +1,5 @@
 const axios = require('axios'); // MASIH PENYAKITAN (GAGAL KICK)
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const { getSlotInfoAPI1Only } = require('../../admin/manage_akrab/cekslot1.js');
 
 // API1 Configuration (KHUSUS - COMBO API1+CEKSLOT1+ADD1+KICK1)
