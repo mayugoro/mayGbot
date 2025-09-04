@@ -1162,22 +1162,23 @@ module.exports = (bot) => {
             
             // ✅ KONVERSI GB KE BYTES (bilangan utuh * 1073741824)
             const kuotaGBInt = parseInt(kuotaGB);
-            const kuberInBytes = kuotaGBInt * 1073741824;
+            let kuberInBytes = kuotaGBInt * 1073741824;
+            
+            // ✅ WORKAROUND: API KHFY tidak support new_allocation: 0, gunakan 1024 bytes sebagai pseudo 0GB
+            if (kuotaGBInt === 0) {
+              kuberInBytes = 1024; // 1024 bytes ≈ 0.000001 GB (praktis 0GB)
+              console.log(`📋 SET_KUBER: 0GB workaround - using 1024 bytes instead of 0 (API limitation)`);
+            }
             
             console.log(`⚙️ SET_KUBER: Setting quota ${kuotaGB}GB (${kuberInBytes} bytes) for ${nomor_hp} -> ${formattedParent}`);
             console.log(`⚙️ SET_KUBER: Using member_id: ${familyMemberId}`);
-            
-            // ✅ LOGGING KHUSUS UNTUK 0GB
-            if (kuotaGBInt === 0) {
-              console.log(`📋 SET_KUBER: 0GB case - new_allocation will be set to: "${kuberInBytes}" (should be "0")`);
-            }
             
             // ✅ FORMULIR API YANG BENAR
             const formData = new URLSearchParams();
             formData.append('token', process.env.APIKEY1);
             formData.append('id_parent', formattedParent);
             formData.append('member_id', familyMemberId);                     // ✅ BENAR: member_id bukan slot
-            formData.append('new_allocation', kuberInBytes.toString());       // ✅ BENAR: 0GB → "0", 15GB → "16106127360"
+            formData.append('new_allocation', kuberInBytes.toString());       // ✅ BENAR: 0GB → "1024", 15GB → "16106127360"
             
             await axios.post(
               `${process.env.API1}/set_kuber_akrab`,
@@ -1290,22 +1291,23 @@ module.exports = (bot) => {
             
             // ✅ KONVERSI GB KE BYTES (bilangan utuh * 1073741824)
             const kuotaGBInt = parseInt(kuotaGB);
-            const kuberInBytes = kuotaGBInt * 1073741824;
+            let kuberInBytes = kuotaGBInt * 1073741824;
+            
+            // ✅ WORKAROUND: API KHFY tidak support new_allocation: 0, gunakan 1024 bytes sebagai pseudo 0GB
+            if (kuotaGBInt === 0) {
+              kuberInBytes = 1024; // 1024 bytes ≈ 0.000001 GB (praktis 0GB)
+              console.log(`📋 SET_KUBER (hangup): 0GB workaround - using 1024 bytes instead of 0 (API limitation)`);
+            }
             
             console.log(`⚙️ SET_KUBER (hangup): Setting quota ${kuotaGB}GB (${kuberInBytes} bytes) for ${nomor_hp} -> ${formattedParent}`);
             console.log(`⚙️ SET_KUBER (hangup): Using member_id: ${familyMemberId}`);
-            
-            // ✅ LOGGING KHUSUS UNTUK 0GB
-            if (kuotaGBInt === 0) {
-              console.log(`📋 SET_KUBER (hangup): 0GB case - new_allocation will be set to: "${kuberInBytes}" (should be "0")`);
-            }
             
             // ✅ FORMULIR API YANG BENAR
             const formData = new URLSearchParams();
             formData.append('token', process.env.APIKEY1);
             formData.append('id_parent', formattedParent);
             formData.append('member_id', familyMemberId);                     // ✅ BENAR: member_id bukan slot
-            formData.append('new_allocation', kuberInBytes.toString());       // ✅ BENAR: 0GB → "0", 15GB → "16106127360"
+            formData.append('new_allocation', kuberInBytes.toString());       // ✅ BENAR: 0GB → "1024", 15GB → "16106127360"
             
             await axios.post(
               `${process.env.API1}/set_kuber_akrab`,
