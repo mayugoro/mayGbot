@@ -88,6 +88,21 @@ const BOT_START_TIME = Date.now();
   }
 })();
 
+// Initialize stok monitoring logger
+(async () => {
+  try {
+    const { startStokMonitoring, STOK_LOG_ENABLED, STOK_LOG_CHAT_ID, STOK_LOG_MESSAGE_ID } = require('./stok_logger');
+    
+    if (STOK_LOG_ENABLED && STOK_LOG_CHAT_ID && STOK_LOG_MESSAGE_ID) {
+      // Start monitoring with 30 second interval
+      startStokMonitoring(bot, 30000);
+      console.log('✅ Stok monitoring started');
+    }
+  } catch (error) {
+    console.error('Stok monitoring initialization failed:', error.message);
+  }
+})();
+
 // === PRELOAD INLINE KEYBOARDS ===
 // Function untuk generate main keyboard berdasarkan user ID
 const generateMainKeyboard = (userId) => {
