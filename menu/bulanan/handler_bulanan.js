@@ -1167,12 +1167,17 @@ module.exports = (bot) => {
             console.log(`⚙️ SET_KUBER: Setting quota ${kuotaGB}GB (${kuberInBytes} bytes) for ${nomor_hp} -> ${formattedParent}`);
             console.log(`⚙️ SET_KUBER: Using member_id: ${familyMemberId}`);
             
+            // ✅ LOGGING KHUSUS UNTUK 0GB
+            if (kuotaGBInt === 0) {
+              console.log(`📋 SET_KUBER: 0GB case - new_allocation will be set to: "${kuberInBytes}" (should be "0")`);
+            }
+            
             // ✅ FORMULIR API YANG BENAR
             const formData = new URLSearchParams();
             formData.append('token', process.env.APIKEY1);
             formData.append('id_parent', formattedParent);
             formData.append('member_id', familyMemberId);                     // ✅ BENAR: member_id bukan slot
-            formData.append('new_allocation', kuberInBytes.toString());       // ✅ BENAR: new_allocation dalam bytes
+            formData.append('new_allocation', kuberInBytes.toString());       // ✅ BENAR: 0GB → "0", 15GB → "16106127360"
             
             await axios.post(
               `${process.env.API1}/set_kuber_akrab`,
@@ -1290,12 +1295,17 @@ module.exports = (bot) => {
             console.log(`⚙️ SET_KUBER (hangup): Setting quota ${kuotaGB}GB (${kuberInBytes} bytes) for ${nomor_hp} -> ${formattedParent}`);
             console.log(`⚙️ SET_KUBER (hangup): Using member_id: ${familyMemberId}`);
             
+            // ✅ LOGGING KHUSUS UNTUK 0GB
+            if (kuotaGBInt === 0) {
+              console.log(`📋 SET_KUBER (hangup): 0GB case - new_allocation will be set to: "${kuberInBytes}" (should be "0")`);
+            }
+            
             // ✅ FORMULIR API YANG BENAR
             const formData = new URLSearchParams();
             formData.append('token', process.env.APIKEY1);
             formData.append('id_parent', formattedParent);
             formData.append('member_id', familyMemberId);                     // ✅ BENAR: member_id bukan slot
-            formData.append('new_allocation', kuberInBytes.toString());       // ✅ BENAR: new_allocation dalam bytes
+            formData.append('new_allocation', kuberInBytes.toString());       // ✅ BENAR: 0GB → "0", 15GB → "16106127360"
             
             await axios.post(
               `${process.env.API1}/set_kuber_akrab`,
