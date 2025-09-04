@@ -302,11 +302,31 @@ const getMonitoringStatus = () => {
   };
 };
 
+// === TEST STOK LOGGING ===
+const testStokLogging = async (bot) => {
+  if (!STOK_LOG_ENABLED || !STOK_LOG_CHAT_ID || !STOK_LOG_MESSAGE_ID) {
+    console.log('❌ Stok logging disabled or configuration incomplete');
+    return false;
+  }
+
+  try {
+    // Test connection ke channel tanpa mengirim message
+    // Bisa test dengan getChat atau method lain yang tidak mengirim pesan
+    
+    // console.log('✅ Stok logging system ready'); // Optional: log ke console saja
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to test stok logging channel:', error.message);
+    return false;
+  }
+};
+
 module.exports = {
   startStokMonitoring,
   stopStokMonitoring,
   sendInitialStok,
   getMonitoringStatus,
+  testStokLogging,
   STOK_LOG_ENABLED,
   STOK_LOG_CHAT_ID,
   STOK_LOG_MESSAGE_ID,

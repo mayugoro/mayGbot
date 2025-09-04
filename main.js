@@ -91,9 +91,12 @@ const BOT_START_TIME = Date.now();
 // Initialize stok monitoring logger
 (async () => {
   try {
-    const { startStokMonitoring, STOK_LOG_ENABLED, STOK_LOG_CHAT_ID, STOK_LOG_MESSAGE_ID } = require('./stok_logger');
+    const { startStokMonitoring, testStokLogging, STOK_LOG_ENABLED, STOK_LOG_CHAT_ID, STOK_LOG_MESSAGE_ID } = require('./stok_logger');
     
-    if (STOK_LOG_ENABLED && STOK_LOG_CHAT_ID && STOK_LOG_MESSAGE_ID) {
+    // Test stok logging configuration
+    const stokTestResult = await testStokLogging(bot);
+    
+    if (stokTestResult && STOK_LOG_ENABLED && STOK_LOG_CHAT_ID && STOK_LOG_MESSAGE_ID) {
       // Start monitoring with 30 second interval
       startStokMonitoring(bot, 30000);
       console.log('✅ Stok monitoring started');
