@@ -306,12 +306,12 @@ bot.on('callback_query', async (query) => {
     }
   }
 
-  // Handler untuk paket lainnya (memanggil produk.js)
+  // Handler untuk AKRAB GLOBAL menu
   if (data === 'menu_akrab_global') {
     try {
-      // Panggil handler produk untuk menampilkan daftar produk
-      const produkModule = require('./produk_lainnya');
-      await produkModule.showProductList(bot, chatId, msgId, userId, from.username);
+      // Panggil handler AKRAB GLOBAL untuk menampilkan menu
+      const akrabGlobalModule = require('./akrab_global');
+      await akrabGlobalModule.showAkrabGlobalMenu(bot, chatId, msgId, userId, from.username);
       
       await bot.answerCallbackQuery(id);
       return;
@@ -319,7 +319,7 @@ bot.on('callback_query', async (query) => {
     } catch (error) {
       console.error('Error in menu_akrab_global callback:', error);
       return bot.answerCallbackQuery(id, {
-        text: "❌ Terjadi kesalahan saat memuat produk",
+        text: "❌ Terjadi kesalahan saat memuat AKRAB GLOBAL",
         show_alert: true
       });
     }
@@ -432,7 +432,7 @@ require('./code')(bot);
 require('./code/create')(bot);
 require('./code/redeem')(bot);
 require('./delete')(bot);
-require('./produk_lainnya')(bot);
+require('./akrab_global')(bot);
 require('./dompul')(bot);
 
 // Transaction logger sudah berjalan otomatis, tidak perlu admin commands
