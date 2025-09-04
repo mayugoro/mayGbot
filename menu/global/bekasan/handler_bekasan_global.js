@@ -318,6 +318,26 @@ module.exports = (bot) => {
             `Saldo terpotong: Rp.${hargaValue.toLocaleString('id-ID')}\n` +
             `Saldo akhir    : Rp.${saldoAkhir.toLocaleString('id-ID')}\n` +
             `Waktu eksekusi : ${executionTime} detik ✅</code>`;
+
+          // Log transaksi sukses ke grup/channel
+          try {
+            const { logTransaction } = require('../../../transaction_logger');
+            await logTransaction(bot, {
+              userId: userId,
+              username: userInfo.username,
+              kategori: `BEKASAN GLOBAL ${tipe.toUpperCase()} ${hari}H`,
+              nomor: normalizedNumber, // Nomor customer/pembeli
+              pengelola: 'AKRAB_GLOBAL', // Provider
+              status: 'completed',
+              harga: hargaValue,
+              saldoSebelum: saldoAwal,
+              saldoSesudah: saldoAkhir,
+              trxId: trxId,
+              provider: 'AKRAB_GLOBAL'
+            });
+          } catch (logError) {
+            console.error('Warning: Failed to log successful transaction:', logError.message);
+          }
             
         } else if (status === 'pending' || message.toLowerCase().includes('pending')) {
           // ⏳ PENDING - Potong saldo penuh (karena kemungkinan akan berhasil)
@@ -342,6 +362,27 @@ module.exports = (bot) => {
             `Saldo akhir    : Rp.${saldoAkhir.toLocaleString('id-ID')}\n` +
             `Waktu eksekusi : ${executionTime} detik ⏳\n` +
             `Status         : ${message}</code>`;
+
+          // Log transaksi pending ke grup/channel
+          try {
+            const { logTransaction } = require('../../../transaction_logger');
+            await logTransaction(bot, {
+              userId: userId,
+              username: userInfo.username,
+              kategori: `BEKASAN GLOBAL ${tipe.toUpperCase()} ${hari}H`,
+              nomor: normalizedNumber, // Nomor customer/pembeli
+              pengelola: 'AKRAB_GLOBAL', // Provider
+              status: 'pending',
+              harga: hargaValue,
+              saldoSebelum: saldoAwal,
+              saldoSesudah: saldoAkhir,
+              trxId: trxId,
+              provider: 'AKRAB_GLOBAL',
+              error: `Pending: ${message}`
+            });
+          } catch (logError) {
+            console.error('Warning: Failed to log pending transaction:', logError.message);
+          }
             
         } else if (status === 'Tujuan Diluar Wilayah' || message === 'Tujuan Diluar Wilayah') {
           // 🚫 TUJUAN DILUAR WILAYAH - TIDAK POTONG SALDO SAMA SEKALI
@@ -361,6 +402,27 @@ module.exports = (bot) => {
             `Waktu eksekusi : ${executionTime} detik 🚫\n` +
             `Info           : ${message}\n\n` +
             `💡 Silakan gunakan nomor yang berada dalam wilayah coverage</code>`;
+
+          // Log transaksi ditolak ke grup/channel
+          try {
+            const { logTransaction } = require('../../../transaction_logger');
+            await logTransaction(bot, {
+              userId: userId,
+              username: userInfo.username,
+              kategori: `BEKASAN GLOBAL ${tipe.toUpperCase()} ${hari}H`,
+              nomor: normalizedNumber, // Nomor customer/pembeli
+              pengelola: 'AKRAB_GLOBAL', // Provider
+              status: 'validation_failed',
+              harga: 0, // Tidak ada potongan saldo
+              saldoSebelum: saldoUser,
+              saldoSesudah: saldoUser, // Saldo tidak berubah
+              trxId: trxId,
+              provider: 'AKRAB_GLOBAL',
+              error: 'Tujuan Diluar Wilayah - Nomor tidak dalam coverage'
+            });
+          } catch (logError) {
+            console.error('Warning: Failed to log validation failed transaction:', logError.message);
+          }
             
         } else {
           // ❌ GAGAL LAINNYA - Potong biaya gagal
@@ -385,6 +447,27 @@ module.exports = (bot) => {
             `Saldo terpotong: Rp.${biayaGagalValue.toLocaleString('id-ID')}\n` +
             `Saldo akhir    : Rp.${saldoAkhir.toLocaleString('id-ID')}\n` +
             `Waktu eksekusi : ${executionTime} detik ❌</code>`;
+
+          // Log transaksi gagal ke grup/channel
+          try {
+            const { logTransaction } = require('../../../transaction_logger');
+            await logTransaction(bot, {
+              userId: userId,
+              username: userInfo.username,
+              kategori: `BEKASAN GLOBAL ${tipe.toUpperCase()} ${hari}H`,
+              nomor: normalizedNumber, // Nomor customer/pembeli
+              pengelola: 'AKRAB_GLOBAL', // Provider
+              status: 'failed',
+              harga: biayaGagalValue,
+              saldoSebelum: saldoAwal,
+              saldoSesudah: saldoAkhir,
+              trxId: trxId,
+              provider: 'AKRAB_GLOBAL',
+              error: `API Error: ${message}`
+            });
+          } catch (logError) {
+            console.error('Warning: Failed to log failed transaction:', logError.message);
+          }
         }
       } else {
         // Response tidak sesuai format
@@ -409,7 +492,7 @@ module.exports = (bot) => {
 
       // Kirim hasil FIRST, lalu hapus processing message
       await bot.sendMessage(chatId, teksHasil, {
-        reply_to_message_id: processingMsg.message_id
+        parse_mode: 'HTML'
       });
 
       console.log('📤 Hasil final berhasil dikirim');
@@ -503,10 +586,29 @@ module.exports = (bot) => {
       console.log('=== BEKASAN GLOBAL: ERROR RESULT ===');
       console.log('Teks error:', teksError);
 
+      // Log transaksi error ke grup/channel
+      try {
+        const { logTransaction } = require('../../../transaction_logger');
+        await logTransaction(bot, {
+          userId: userId,
+          username: userInfo.username,
+          kategori: `BEKASAN GLOBAL ${state.tipe.toUpperCase()} ${state.hari}H`,
+          nomor: state.nomor, // Nomor customer/pembeli
+          pengelola: 'AKRAB_GLOBAL', // Provider
+          status: 'failed',
+          harga: 0, // Tidak ada potongan saldo untuk error jaringan
+          saldoSebelum: 0,
+          saldoSesudah: 0,
+          provider: 'AKRAB_GLOBAL',
+          error: `Network Error: ${err.message}`
+        });
+      } catch (logError) {
+        console.error('Warning: Failed to log error transaction:', logError.message);
+      }
+
       // Kirim hasil error
       await bot.sendMessage(chatId, teksError, {
-        parse_mode: 'HTML',
-        reply_to_message_id: processingMsg.message_id
+        parse_mode: 'HTML'
       });
 
       // Hapus message "Memproses..." setelah hasil terkirim
