@@ -418,12 +418,6 @@ require('./delete')(bot);
 require('./produk_lainnya')(bot);
 require('./dompul')(bot);
 
-// === API UTAMA HANDLERS ===
-require('./apiUtama/info_command')(bot);
-require('./apiUtama/add_command')(bot);
-require('./apiUtama/kick_command')(bot);
-require('./apiUtama/kuber_command')(bot);
-
 // === ADMIN COMMANDS UNTUK TRANSACTION LOGGING ===
 // Command untuk test logging channel
 bot.onText(/\/testlog$/, async (msg) => {
