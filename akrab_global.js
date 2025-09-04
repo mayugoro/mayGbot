@@ -57,9 +57,8 @@ async function showAkrabGlobalMenu(bot, chatId, messageId, userId, username) {
       ]
     ];
 
-    // Format teks untuk AKRAB GLOBAL
-    const akrabText = userDetail + '\n\n🌍 <b>AKRAB GLOBAL MENU</b>\n\n' +
-                      '🔥 <i>Pilih menu yang tersedia di bawah:</i>';
+    // Format teks untuk AKRAB GLOBAL (hanya user detail)
+    const akrabText = userDetail;
 
     // Edit message dengan menu AKRAB GLOBAL
     await bot.editMessageCaption(akrabText, {
