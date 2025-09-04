@@ -152,24 +152,103 @@ module.exports = (bot) => {
           });
         }
 
-        // TODO: Implementasi API call ke AKRAB GLOBAL untuk pembelian
-        // Sementara ini simulasi
         await bot.answerCallbackQuery(id, {
           text: '🔄 Memproses pembelian global...',
           show_alert: false
         });
 
-        const prosesText = `🌍 <b>MEMPROSES PEMBELIAN GLOBAL</b>\n\n` +
-          `📦 Paket: ${state.paket.toUpperCase()}\n` +
-          `📱 Nomor: ${state.nomorHP}\n` +
-          `🔄 Status: Sedang diproses...\n\n` +
-          `⏳ <i>Mohon tunggu, proses membutuhkan waktu 1-3 menit</i>`;
+        // Get current date in DDMMYY format
+        const now = new Date();
+        const day = String(now.getDate()).padStart(2, '0');
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const year = String(now.getFullYear()).slice(-2);
+        const timeFormat = day + month + year;
 
-        await bot.editMessageText(prosesText, {
-          chat_id: chatId,
-          message_id: message.message_id,
-          parse_mode: 'HTML'
-        });
+        // Generate unique transaction ID
+        const trxId = `TRX${Date.now()}${Math.random().toString(36).substr(2, 5)}`;
+
+        // Prepare API payload
+        const apiPayload = {
+          req: "topup",
+          produk: state.kodePaket,
+          msisdn: state.nomorHP,
+          reffid: trxId,
+          time: timeFormat,
+          kodereseller: process.env.KODERESSG,
+          password: process.env.PASSWORDG,
+          pin: process.env.PING
+        };
+
+        try {
+          const prosesText = `🌍 <b>MEMPROSES PEMBELIAN GLOBAL</b>\n\n` +
+            `📦 Paket: ${state.paket.toUpperCase()}\n` +
+            `📱 Nomor: ${state.nomorHP}\n` +
+            `🆔 TRX ID: ${trxId}\n` +
+            `🔄 Status: Mengirim ke API AKRAB GLOBAL...\n\n` +
+            `⏳ <i>Mohon tunggu, proses membutuhkan waktu 1-3 menit</i>`;
+
+          await bot.editMessageText(prosesText, {
+            chat_id: chatId,
+            message_id: message.message_id,
+            parse_mode: 'HTML'
+          });
+
+          // Call AKRAB GLOBAL API
+          const response = await axios.post(process.env.APIG_ORDER, apiPayload, {
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            timeout: 30000 // 30 second timeout
+          });
+
+          console.log('AKRAB GLOBAL API Response:', response.data);
+
+          // Process API response
+          let statusText = '';
+          let statusIcon = '';
+          
+          if (response.data && response.data.status === 'success') {
+            statusIcon = '✅';
+            statusText = 'BERHASIL';
+          } else if (response.data && response.data.status === 'pending') {
+            statusIcon = '⏳';
+            statusText = 'PENDING';
+          } else {
+            statusIcon = '❌';
+            statusText = 'GAGAL';
+          }
+
+          const resultText = `🌍 <b>HASIL PEMBELIAN GLOBAL</b>\n\n` +
+            `📦 Paket: ${state.paket.toUpperCase()}\n` +
+            `📱 Nomor: ${state.nomorHP}\n` +
+            `🆔 TRX ID: ${trxId}\n` +
+            `${statusIcon} Status: ${statusText}\n\n` +
+            `💬 Pesan: ${response.data?.message || 'Transaksi diproses'}\n\n` +
+            `🌐 <i>Powered by AKRAB GLOBAL</i>`;
+
+          await bot.editMessageText(resultText, {
+            chat_id: chatId,
+            message_id: message.message_id,
+            parse_mode: 'HTML'
+          });
+
+        } catch (error) {
+          console.error('Error calling AKRAB GLOBAL API:', error);
+          
+          const errorText = `🌍 <b>PEMBELIAN GLOBAL ERROR</b>\n\n` +
+            `📦 Paket: ${state.paket.toUpperCase()}\n` +
+            `📱 Nomor: ${state.nomorHP}\n` +
+            `🆔 TRX ID: ${trxId}\n` +
+            `❌ Status: GAGAL\n\n` +
+            `💬 Error: ${error.response?.data?.message || error.message || 'Koneksi timeout'}\n\n` +
+            `🔄 <i>Silakan coba lagi atau hubungi admin</i>`;
+
+          await bot.editMessageText(errorText, {
+            chat_id: chatId,
+            message_id: message.message_id,
+            parse_mode: 'HTML'
+          });
+        }
 
         // Clear state
         clearStateBulananGlobal(chatId);
