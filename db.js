@@ -103,11 +103,17 @@ const init = () => {
           { key: 'deskripsi_8h', value: 'AREA 1 = 8 GB\nAREA 2 = 10 GB\nAREA 3 = 15 GB\nAREA 4 = 25 GB', description: 'Deskripsi kuota BEKASAN 8H' },
           { key: 'deskripsi_9h', value: 'AREA 1 = 8 GB\nAREA 2 = 10 GB\nAREA 3 = 15 GB\nAREA 4 = 25 GB', description: 'Deskripsi kuota BEKASAN 9H' },
           { key: 'deskripsi_10h', value: 'AREA 1 = 8 GB\nAREA 2 = 10 GB\nAREA 3 = 15 GB\nAREA 4 = 25 GB', description: 'Deskripsi kuota BEKASAN 10H' },
+
+          // Fitur lainnya
           { key: 'harga_gagal', value: '700', description: 'Harga yang dipotong jika transaksi gagal' },
           { key: 'min_saldo_bekasan', value: '5000', description: 'Minimal saldo untuk akses menu bekasan' },
+          { key: 'min_saldo_bulanan', value: '100000', description: 'Minimal saldo untuk akses menu bulanan' },
+          { key: 'min_saldo_global', value: '150000', description: 'Minimal saldo untuk akses menu global' },
           { key: 'pesan_tolak_bekasan', value: 'Saldo tidak cukup untuk akses menu ini\n\n⏤͟͟ᴍᴀʏᴜɢᴏʀᴏ', description: 'Pesan penolakan akses bekasan' },
           { key: 'pesan_tolak_bulanan', value: 'Saldo tidak cukup untuk akses menu ini\n\n⏤͟͟ᴍᴀʏᴜɢᴏʀᴏ', description: 'Pesan penolakan akses bulanan' },
-          
+          { key: 'pesan_tolak_global', value: 'Saldo tidak cukup untuk akses menu global\n\n⏤͟͟ᴍᴀʏᴜɢᴏʀᴏ', description: 'Pesan penolakan akses global' },
+
+
           // Konfigurasi untuk menu BULANAN
           { key: 'harga_supermini', value: '40000', description: 'Harga paket BULANAN SUPERMINI' },
           { key: 'harga_superbig', value: '60000', description: 'Harga paket BULANAN SUPERBIG' },
@@ -134,7 +140,6 @@ const init = () => {
           { key: 'kuota_jumbo', value: '40', description: 'Kuota default BULANAN JUMBO (GB)' },
           { key: 'kuota_megabig', value: '75', description: 'Kuota default BULANAN MEGABIG (GB)' },
           { key: 'kuota_superjumbo', value: '60', description: 'Kuota default BULANAN SUPER JUMBO (GB)' },
-          { key: 'min_saldo_bulanan', value: '100000', description: 'Minimal saldo untuk akses menu bulanan' }
         ];
 
         defaultConfigs.forEach(config => {
