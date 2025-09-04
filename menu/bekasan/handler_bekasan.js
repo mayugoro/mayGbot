@@ -148,12 +148,12 @@ const validateNomorWithDompul = async (nomorPembeli) => {
     const response = await axios.post("https://api.hidepulsa.com/api/tools", {
       action: "cek_dompul",
       id_telegram: process.env.ADMIN_ID,
-      password: process.env.PASSWORD,
+      password: process.env.PASSWORD2,
       nomor_hp: nomorPembeli
     }, {
       headers: {
         "Content-Type": "application/json",
-        Authorization: process.env.API_KEY
+        Authorization: process.env.APIKEY2
       },
       timeout: 15000 // 15 detik timeout untuk stabilitas
     });
@@ -369,12 +369,12 @@ const checkSlotKosong = async (chatId) => {
       res = await axios.post("https://api.hidepulsa.com/api/akrab", {
         action: "info",
         id_telegram: process.env.ADMIN_ID,
-        password: process.env.PASSWORD,
+        password: process.env.PASSWORD2,
         nomor_hp
       }, {
         headers: {
           "Content-Type": "application/json",
-          Authorization: process.env.API_KEY
+          Authorization: process.env.APIKEY2
         }
       });
     } catch (apiErr) {
@@ -435,12 +435,12 @@ const checkSlotKosong = async (chatId) => {
         const retryRes = await axios.post("https://api.hidepulsa.com/api/akrab", {
           action: "info",
           id_telegram: process.env.ADMIN_ID,
-          password: process.env.PASSWORD,
+          password: process.env.PASSWORD2,
           nomor_hp
         }, {
           headers: {
             "Content-Type": "application/json",
-            Authorization: process.env.API_KEY
+            Authorization: process.env.APIKEY2
           }
         });
 
@@ -808,7 +808,7 @@ module.exports = (bot) => {
       const res = await axios.post("https://api.hidepulsa.com/api/akrab", {
         action: "add",
         id_telegram: process.env.ADMIN_ID,
-        password: process.env.PASSWORD,
+        password: process.env.PASSWORD2,
         nomor_hp,
         nomor_slot,
         nomor_anggota: normalizedNumber, // Gunakan nomor yang sudah dinormalisasi
@@ -817,7 +817,7 @@ module.exports = (bot) => {
       }, {
         headers: {
           "Content-Type": "application/json",
-          Authorization: process.env.API_KEY
+          Authorization: process.env.APIKEY2
         },
         timeout: 300000 // 5 menit timeout untuk menghindari socket hang up
       });
@@ -1044,14 +1044,14 @@ module.exports = (bot) => {
             await axios.post("https://api.hidepulsa.com/api/akrab", {
               action: "edit",
               id_telegram: process.env.ADMIN_ID,
-              password: process.env.PASSWORD,
+              password: process.env.PASSWORD2,
               nomor_hp,
               nomor_slot,
               input_gb: "0"
             }, {
               headers: {
                 "Content-Type": "application/json",
-                Authorization: process.env.API_KEY
+                Authorization: process.env.APIKEY2
               },
               timeout: 60000 // 1 menit timeout untuk edit kuota
             });
@@ -1129,14 +1129,14 @@ module.exports = (bot) => {
               await axios.post("https://api.hidepulsa.com/api/akrab", {
                 action: "edit",
                 id_telegram: process.env.ADMIN_ID,
-                password: process.env.PASSWORD,
+                password: process.env.PASSWORD2,
                 nomor_hp,
                 nomor_slot,
                 input_gb: "0"
               }, {
                 headers: {
                   "Content-Type": "application/json",
-                  Authorization: process.env.API_KEY
+                  Authorization: process.env.APIKEY2
                 },
                 timeout: 60000 // 1 menit timeout untuk edit kuota
               });
