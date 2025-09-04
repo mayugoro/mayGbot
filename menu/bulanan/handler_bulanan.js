@@ -8,12 +8,24 @@ const stateBulanan = new Map();
 
 // === HELPER FUNCTION: FORMAT NOMOR TO INTERNATIONAL ===
 function formatNomorToInternational(nomor) {
+  // Remove all non-digit characters
   let cleanNomor = nomor.replace(/\D/g, '');
+  
+  // Convert to international format
   if (cleanNomor.startsWith('08')) {
+    // 08xxxxxxxx -> 628xxxxxxxx
     cleanNomor = '628' + cleanNomor.substring(2);
   } else if (cleanNomor.startsWith('8') && !cleanNomor.startsWith('62')) {
-    cleanNomor = '62' + cleanNomor;
+    // 8xxxxxxxx -> 628xxxxxxxx
+    cleanNomor = '628' + cleanNomor.substring(1);
+  } else if (!cleanNomor.startsWith('62') && cleanNomor.length >= 10) {
+    // Assume it's Indonesian number without country code
+    if (cleanNomor.startsWith('1') || cleanNomor.startsWith('2') || cleanNomor.startsWith('3') || 
+        cleanNomor.startsWith('5') || cleanNomor.startsWith('7') || cleanNomor.startsWith('8') || cleanNomor.startsWith('9')) {
+      cleanNomor = '62' + cleanNomor;
+    }
   }
+  
   return cleanNomor;
 }
 
@@ -714,10 +726,12 @@ module.exports = (bot) => {
       session.lastActivity = Date.now();
     }
 
-    // NORMALISASI NOMOR INPUT
-    const normalizedNumber = normalizePhoneNumber(text);
+    // NORMALISASI NOMOR INPUT ke format internasional
+    const normalizedNumber = formatNomorToInternational(text);
     
-    if (!normalizedNumber || !isValidIndonesianPhone(normalizedNumber)) {
+    // Validasi dengan format lokal untuk kompatibilitas dengan fungsi validasi existing
+    const localFormat = normalizePhoneNumber(text);
+    if (!localFormat || !isValidIndonesianPhone(localFormat)) {
       await bot.sendMessage(chatId, '❌ Format nomor tidak valid!\n\n✅ Format yang diterima:\n• 08xxxxxxxxxx\n• 628xxxxxxxxxx\n• 8xxxxxxxxxx\n\n💡 Contoh: 08123456789 atau 628123456789');
       try {
         await bot.deleteMessage(chatId, msg.message_id);
@@ -1095,7 +1109,7 @@ module.exports = (bot) => {
         }
       }, 2000); // 2 detik delay untuk memberi waktu user membaca hasil
 
-      // Auto edit kuota setelah 30 detik untuk bulanan (hanya jika SUKSES) - INCREASED DELAY
+      // Auto edit kuota setelah ADD sukses (urutan: ADD → Wait 5s → CEKSLOT → SET_KUBER)
       if (addExecutionTime >= 8) {
         setTimeout(async () => {
           try {
@@ -1144,7 +1158,10 @@ module.exports = (bot) => {
               // ✅ NORMALIZE TARGET NUMBER untuk matching
               const targetMsisdn = normalizedNumber.startsWith('62') ? normalizedNumber : `62${normalizedNumber.slice(1)}`;
               
-              const targetMember = freshMemberList.find(member => 
+              // ✅ SKIP INDEX 0 (parent/pengelola) - member mulai dari index 1
+              const membersOnly = freshMemberList.slice(1); // Skip index 0 yang adalah parent
+              
+              const targetMember = membersOnly.find(member => 
                 member.msisdn === targetMsisdn || member.msisdn === normalizedNumber
               );
               
@@ -1152,7 +1169,8 @@ module.exports = (bot) => {
                 familyMemberId = targetMember.family_member_id;
               } else {
                 console.warn(`❌ No member found with msisdn ${targetMsisdn} or ${normalizedNumber}`);
-                console.warn(`❌ Available msisdns:`, freshMemberList.map(m => m.msisdn));
+                console.warn(`❌ Available member msisdns (excluding parent):`, membersOnly.map(m => m.msisdn));
+                console.warn(`❌ Parent msisdn (index 0):`, freshMemberList[0]?.msisdn || 'N/A');
               }
             }
             
@@ -1199,7 +1217,7 @@ module.exports = (bot) => {
               console.warn(`   - API Response:`, setKuberErr.response.data);
             }
           }
-        }, 10000); // 10 detik delay sudah cukup dengan fresh member_id
+        }, 5000); // 5 detik delay untuk mendapat fresh member_id setelah ADD
       }
 
   } catch (err) {
