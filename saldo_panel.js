@@ -9,6 +9,12 @@ module.exports = (bot) => {
     // Cek apakah user adalah admin
     if (msg.from.id.toString() !== process.env.ADMIN_ID) return;
     
+    // === PROTEKSI BROADCAST SESI ===
+    // Jika admin sedang dalam sesi broadcast, jangan proses trigger menu lain
+    if (bot.isAdminInBroadcastSession && bot.isAdminInBroadcastSession(msg)) {
+      return; // Skip processing, biarkan broadcast handler yang menangani
+    }
+    
     // Keywords untuk trigger cek saldo
     const saldoKeywords = [
       'cek saldo', 'saldo', 'balance', 'panel saldo', 'saldo panel',

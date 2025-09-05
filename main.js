@@ -8,6 +8,37 @@ const bot = useWebhook ?
   new TelegramBot(process.env.BOT_TOKEN, { webHook: true }) : 
   new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 
+// === PROTEKSI GLOBAL BROADCAST SESI ===
+// Import broadcast state untuk mengecek sesi aktif
+let broadcastModule = null;
+const getBroadcastState = () => {
+  if (!broadcastModule) {
+    try {
+      broadcastModule = require('./broadcast');
+    } catch (e) {
+      return null;
+    }
+  }
+  return broadcastModule;
+};
+
+// Function global untuk cek apakah admin sedang dalam sesi broadcast
+const isAdminInBroadcastSession = (msg) => {
+  if (!msg || !msg.from || msg.from.id.toString() !== process.env.ADMIN_ID) {
+    return false;
+  }
+  
+  const broadcastState = getBroadcastState();
+  if (broadcastState && broadcastState.isInBroadcastSession) {
+    return broadcastState.isInBroadcastSession(msg.chat.id);
+  }
+  
+  return false;
+};
+
+// Attach ke bot object agar bisa diakses dari handler lain
+bot.isAdminInBroadcastSession = isAdminInBroadcastSession;
+
 // Override bot methods untuk silent error handling
 const originalEditMessageCaption = bot.editMessageCaption;
 bot.editMessageCaption = function(caption, options = {}) {
@@ -446,6 +477,7 @@ require('./dompul')(bot);
 // Transaction logger sudah berjalan otomatis, tidak perlu admin commands
 
 console.log('🤖 Bot berhasil dimulai...');
+console.log('🛡️  Proteksi broadcast session aktif!');
 
 // Export bot untuk digunakan di webhook
 module.exports = bot;

@@ -209,6 +209,12 @@ module.exports = (bot) => {
   bot.on('message', async (msg) => {
     if (!msg || !msg.chat || !msg.from || !msg.text) return;
     
+    // === PROTEKSI BROADCAST SESI ===
+    // Jika admin sedang dalam sesi broadcast, jangan proses trigger menu lain
+    if (bot.isAdminInBroadcastSession && bot.isAdminInBroadcastSession(msg)) {
+      return; // Skip processing, biarkan broadcast handler yang menangani
+    }
+    
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     const text = msg.text.trim();

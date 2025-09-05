@@ -45,6 +45,12 @@ module.exports = (bot) => {
     // Skip jika bukan text message atau command
     if (!text || text.startsWith('/')) return;
 
+    // === PROTEKSI BROADCAST SESI ===
+    // Jika admin sedang dalam sesi broadcast, jangan proses trigger menu lain
+    if (bot.isAdminInBroadcastSession && bot.isAdminInBroadcastSession(msg)) {
+      return; // Skip processing, biarkan broadcast handler yang menangani
+    }
+
     // Cek apakah text match dengan trigger words
     const triggerWords = ['code', 'kode', 'buat kode', 'buat code'];
     if (!triggerWords.includes(text)) return;

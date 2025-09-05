@@ -3,6 +3,16 @@ const { getAllUsers, logBroadcast } = require('./db');
 const adminState = new Map();
 
 module.exports = (bot) => {
+  // Function untuk cek apakah admin sedang dalam sesi broadcast
+  const isInBroadcastSession = (chatId) => {
+    const state = adminState.get(chatId);
+    return state && state.mode === 'broadcast';
+  };
+
+  // Function untuk membersihkan sesi broadcast
+  const clearBroadcastSession = (chatId) => {
+    adminState.delete(chatId);
+  };
   // === Broadcast dengan teks biasa ===
   bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
@@ -10,69 +20,87 @@ module.exports = (bot) => {
     // Cek apakah user adalah admin
     if (msg.from.id.toString() !== process.env.ADMIN_ID) return;
     
-    // Cek apakah ini bukan command slash dan ada text
-    if (!msg.text || msg.text.startsWith('/')) return;
-    
-    // Keywords untuk trigger broadcast
-    const broadcastKeywords = [
-      'broadcast', 'pengumuman', 'announcement', 'kirim pesan', 'kirim ke semua',
-      'broadcast ke semua', 'pengumuman ke semua', 'announce', 'blast', 'mass message'
-    ];
-    
-    const messageText = msg.text.toLowerCase();
-    const isBroadcastRequest = broadcastKeywords.some(keyword => 
-      messageText.includes(keyword)
-    );
-    
-    if (!isBroadcastRequest) {
-      // Cek juga apakah sedang dalam mode broadcast
-      const state = adminState.get(chatId);
-      if (!state || state.mode !== 'broadcast' || state.step !== 'input_message') return;
-    } else {
-      // Jika trigger broadcast keyword, mulai proses broadcast
-      adminState.set(msg.chat.id, { mode: 'broadcast', step: 'input_message' });
-      
-      const inputMsg = await bot.sendMessage(msg.chat.id, '📢 <b>BROADCAST</b>\n\nKirim pesan yang akan di-broadcast:\n\n✅ <b>Support:</b>\n• Teks\n• Foto + Caption\n• Video + Caption\n• Audio/Voice\n• Document/File\n• Sticker\n• GIF/Animation\n\n💡 Ketik "exit" untuk membatalkan', {
-        parse_mode: 'HTML'
-      });
-      
-      // Auto-delete command message setelah respons dikirim
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(msg.chat.id, msg.message_id);
-        } catch (e) {}
-      }, 1000);
-      
-      // Simpan message ID untuk bisa diedit nanti
-      const currentState = adminState.get(msg.chat.id);
-      currentState.inputMessageId = inputMsg.message_id;
-      adminState.set(msg.chat.id, currentState);
-      return;
-    }
-
+    // === PRIORITAS TERTINGGI: CEK SESI BROADCAST AKTIF ===
     const state = adminState.get(chatId);
-    if (!state || state.mode !== 'broadcast' || state.step !== 'input_message') return;
-
-    // === CEK CANCEL/EXIT ===
-    if (msg.text && ['exit', 'EXIT', 'Exit'].includes(msg.text.trim())) {
-      if (state.inputMessageId) {
+    const inBroadcastSession = isInBroadcastSession(chatId);
+    
+    // Jika sedang dalam sesi broadcast, HANYA terima input broadcast atau exit
+    if (inBroadcastSession && state.step === 'input_message') {
+      
+      // === CEK CANCEL/EXIT ===
+      if (msg.text && ['exit', 'EXIT', 'Exit', '/exit', 'batal', 'cancel'].includes(msg.text.trim())) {
+        if (state.inputMessageId) {
+          try {
+            await bot.deleteMessage(chatId, state.inputMessageId);
+          } catch (e) {}
+        }
+        
+        clearBroadcastSession(chatId);
         try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {}
+          await bot.deleteMessage(chatId, msg.message_id);
+        } catch (e) {
+          if (!e.message.includes('message to delete not found')) {
+            console.error('Error deleting message:', e.message);
+          }
+        }
+        return;
       }
       
-      adminState.delete(chatId);
-      try {
-        await bot.deleteMessage(chatId, msg.message_id);
-      } catch (e) {
-        // Jangan log error jika message sudah tidak ada
-        if (!e.message.includes('message to delete not found')) {
-          console.error('Error deleting message:', e.message);
-        }
-      }
-      return;
+      // Jika dalam sesi broadcast dan bukan exit, lanjut ke proses broadcast
+      await processBroadcastMessage(msg, bot, chatId, state);
+      return; // STOP di sini, jangan lanjut ke trigger lain
     }
+    
+    // === TRIGGER BROADCAST BARU (hanya jika TIDAK sedang dalam sesi) ===
+    if (!inBroadcastSession) {
+      // Cek apakah ini bukan command slash dan ada text
+      if (!msg.text || msg.text.startsWith('/')) return;
+      
+      // Keywords untuk trigger broadcast (lebih spesifik)
+      const broadcastKeywords = [
+        'broadcast', 'broadcast ke semua', 'kirim ke semua user',
+        '/broadcast', 'pengumuman massal', 'blast message'
+      ];
+      
+      const messageText = msg.text.toLowerCase();
+      const isBroadcastRequest = broadcastKeywords.some(keyword => 
+        messageText === keyword || messageText.includes(keyword)
+      );
+      
+      if (isBroadcastRequest) {
+        // Mulai sesi broadcast baru
+        adminState.set(chatId, { mode: 'broadcast', step: 'input_message', startTime: Date.now() });
+        
+        const inputMsg = await bot.sendMessage(chatId, 
+          '📢 <b>SESI BROADCAST DIMULAI</b>\n\n' +
+          '🔒 <b>Mode:</b> Broadcast Aktif\n' +
+          '📝 Kirim pesan yang akan di-broadcast:\n\n' +
+          '✅ <b>Support:</b>\n• Teks\n• Foto + Caption\n• Video + Caption\n• Audio/Voice\n• Document/File\n• Sticker\n• GIF/Animation\n\n' +
+          '❌ <b>Keluar:</b> Ketik "exit" atau "batal"', {
+          parse_mode: 'HTML'
+        });
+        
+        // Auto-delete command message setelah respons dikirim
+        setTimeout(async () => {
+          try {
+            await bot.deleteMessage(chatId, msg.message_id);
+          } catch (e) {}
+        }, 1000);
+        
+        // Simpan message ID untuk bisa diedit nanti
+        const currentState = adminState.get(chatId);
+        currentState.inputMessageId = inputMsg.message_id;
+        adminState.set(chatId, currentState);
+        return;
+      }
+    }
+    
+    // Jika sampai sini dan tidak match broadcast trigger, biarkan handler lain memproses
+    return;
+  });
 
+  // === Function untuk memproses pesan broadcast ===
+  async function processBroadcastMessage(msg, bot, chatId, state) {
     try {
       // Ambil semua user
       const users = await getAllUsers();
@@ -93,11 +121,10 @@ module.exports = (bot) => {
           await bot.sendMessage(chatId, teksError);
         }
         
-        adminState.delete(chatId);
+        clearBroadcastSession(chatId);
         try {
           await bot.deleteMessage(chatId, msg.message_id);
         } catch (e) {
-          // Jangan log error jika message sudah tidak ada
           if (!e.message.includes('message to delete not found')) {
             console.error('Error deleting message:', e.message);
           }
@@ -112,22 +139,22 @@ module.exports = (bot) => {
 
       if (msg.text) {
         messageType = 'text';
-        broadcastData.text = msg.text; // Langsung kirim teks asli tanpa wrapper
+        broadcastData.text = msg.text;
         broadcastDescription = `Teks: ${msg.text.substring(0, 50)}${msg.text.length > 50 ? '...' : ''}`;
       } else if (msg.photo) {
         messageType = 'photo';
         broadcastData.photo = msg.photo[msg.photo.length - 1].file_id;
-        broadcastData.caption = msg.caption || ''; // Caption asli atau kosong
+        broadcastData.caption = msg.caption || '';
         broadcastDescription = `Foto${msg.caption ? ' + Caption: ' + msg.caption.substring(0, 30) + '...' : ''}`;
       } else if (msg.video) {
         messageType = 'video';
         broadcastData.video = msg.video.file_id;
-        broadcastData.caption = msg.caption || ''; // Caption asli atau kosong
+        broadcastData.caption = msg.caption || '';
         broadcastDescription = `Video${msg.caption ? ' + Caption: ' + msg.caption.substring(0, 30) + '...' : ''}`;
       } else if (msg.audio) {
         messageType = 'audio';
         broadcastData.audio = msg.audio.file_id;
-        broadcastData.caption = msg.caption || ''; // Caption asli atau kosong
+        broadcastData.caption = msg.caption || '';
         broadcastDescription = `Audio${msg.caption ? ' + Caption: ' + msg.caption.substring(0, 30) + '...' : ''}`;
       } else if (msg.voice) {
         messageType = 'voice';
@@ -136,7 +163,7 @@ module.exports = (bot) => {
       } else if (msg.document) {
         messageType = 'document';
         broadcastData.document = msg.document.file_id;
-        broadcastData.caption = msg.caption || ''; // Caption asli atau kosong
+        broadcastData.caption = msg.caption || '';
         broadcastDescription = `Document: ${msg.document.file_name || 'File'}${msg.caption ? ' + Caption' : ''}`;
       } else if (msg.sticker) {
         messageType = 'sticker';
@@ -145,14 +172,13 @@ module.exports = (bot) => {
       } else if (msg.animation) {
         messageType = 'animation';
         broadcastData.animation = msg.animation.file_id;
-        broadcastData.caption = msg.caption || ''; // Caption asli atau kosong
+        broadcastData.caption = msg.caption || '';
         broadcastDescription = `GIF/Animation${msg.caption ? ' + Caption' : ''}`;
       } else if (msg.video_note) {
         messageType = 'video_note';
         broadcastData.video_note = msg.video_note.file_id;
         broadcastDescription = 'Video Note (Circle Video)';
       } else {
-        // Unsupported message type
         await bot.sendMessage(chatId, '❌ Tipe pesan tidak didukung untuk broadcast.\n\nTipe yang didukung: teks, foto, video, audio, voice, document, sticker, GIF');
         return;
       }
@@ -268,10 +294,9 @@ module.exports = (bot) => {
           if (sentMessage && sentMessage.message_id) {
             try {
               await bot.pinChatMessage(user.user_id, sentMessage.message_id, {
-                disable_notification: true // Pin tanpa notifikasi
+                disable_notification: true
               });
             } catch (pinError) {
-              // Ignore pin errors (user mungkin tidak mengizinkan pin atau chat bukan private)
               console.log(`⚠️ Gagal pin pesan untuk user ${user.user_id}: ${pinError.message}`);
             }
           }
@@ -282,7 +307,7 @@ module.exports = (bot) => {
         }
         
         // Delay kecil untuk menghindari rate limit
-        await new Promise(resolve => setTimeout(resolve, 150)); // Tambah delay sedikit karena ada operasi pin
+        await new Promise(resolve => setTimeout(resolve, 150));
       }
       
       // Log broadcast ke database
@@ -292,8 +317,8 @@ module.exports = (bot) => {
         console.error('Gagal log broadcast:', e.message);
       }
       
-      // Kirim hasil ke admin (simple success message) dan auto-delete
-      const hasilBroadcast = `✅ Broadcast ${messageType} terkirim!.`;
+      // Kirim hasil ke admin dan auto-delete
+      const hasilBroadcast = `✅ <b>BROADCAST SELESAI!</b>\n\n📊 Target: ${targetCount} user\n✅ Berhasil: ${successCount}\n❌ Gagal: ${targetCount - successCount}\n\n🔓 Sesi broadcast berakhir.`;
       
       let resultMessageId;
       if (state.inputMessageId) {
@@ -313,17 +338,15 @@ module.exports = (bot) => {
         resultMessageId = sentMsg.message_id;
       }
       
-      // Auto-delete hasil broadcast setelah 2 detik
+      // Auto-delete hasil broadcast setelah 3 detik
       setTimeout(async () => {
         try {
           await bot.deleteMessage(chatId, resultMessageId);
-        } catch (e) {
-          // Ignore delete error jika message sudah tidak ada
-        }
-      }, 2000);
+        } catch (e) {}
+      }, 3000);
       
     } catch (error) {
-      const teksError = `❌ Gagal melakukan broadcast!\n\n🔍 <b>ERROR:</b>\n<code>${error.message}</code>\n\n⏰ Pesan ini akan hilang dalam 2 detik...`;
+      const teksError = `❌ Gagal melakukan broadcast!\n\n🔍 <b>ERROR:</b>\n<code>${error.message}</code>\n\n🔓 Sesi broadcast berakhir.\n⏰ Pesan ini akan hilang dalam 3 detik...`;
       
       let errorMessageId;
       if (state.inputMessageId) {
@@ -343,27 +366,25 @@ module.exports = (bot) => {
         errorMessageId = sentMsg.message_id;
       }
       
-      // Auto-delete error message setelah 2 detik
+      // Auto-delete error message setelah 3 detik
       setTimeout(async () => {
         try {
           await bot.deleteMessage(chatId, errorMessageId);
-        } catch (e) {
-          // Ignore delete error jika message sudah tidak ada
-        }
-      }, 2000);
+        } catch (e) {}
+      }, 3000);
     }
     
-    adminState.delete(chatId);
+    // WAJIB: Clear sesi broadcast setelah selesai
+    clearBroadcastSession(chatId);
     try {
       await bot.deleteMessage(chatId, msg.message_id);
     } catch (e) {
-      // Jangan log error jika message sudah tidak ada
       if (!e.message.includes('message to delete not found')) {
         console.error('Error deleting message:', e.message);
       }
     }
     return;
-  });
+  }
 
   // === /broadcast command (backward compatibility) ===
   bot.onText(/\/broadcast/, async (msg) => {
@@ -378,9 +399,20 @@ module.exports = (bot) => {
       return;
     }
     
-    adminState.set(msg.chat.id, { mode: 'broadcast', step: 'input_message' });
+    // Cek jika sedang dalam sesi broadcast lain
+    if (isInBroadcastSession(msg.chat.id)) {
+      await bot.sendMessage(msg.chat.id, '⚠️ Anda sedang dalam sesi broadcast aktif!\n\nKetik "exit" untuk keluar atau lanjutkan mengirim pesan broadcast.');
+      return;
+    }
     
-    const inputMsg = await bot.sendMessage(msg.chat.id, '📢 <b>BROADCAST</b>\n\nKirim pesan yang akan di-broadcast:\n\n✅ <b>Support:</b>\n• Teks\n• Foto + Caption\n• Video + Caption\n• Audio/Voice\n• Document/File\n• Sticker\n• GIF/Animation\n\n💡 Ketik "exit" untuk membatalkan', {
+    adminState.set(msg.chat.id, { mode: 'broadcast', step: 'input_message', startTime: Date.now() });
+    
+    const inputMsg = await bot.sendMessage(msg.chat.id, 
+      '📢 <b>SESI BROADCAST DIMULAI</b>\n\n' +
+      '🔒 <b>Mode:</b> Broadcast Aktif (via command)\n' +
+      '📝 Kirim pesan yang akan di-broadcast:\n\n' +
+      '✅ <b>Support:</b>\n• Teks\n• Foto + Caption\n• Video + Caption\n• Audio/Voice\n• Document/File\n• Sticker\n• GIF/Animation\n\n' +
+      '❌ <b>Keluar:</b> Ketik "exit" atau "batal"', {
       parse_mode: 'HTML'
     });
     
@@ -396,4 +428,17 @@ module.exports = (bot) => {
     currentState.inputMessageId = inputMsg.message_id;
     adminState.set(msg.chat.id, currentState);
   });
+
+  // Export function untuk cek sesi dari luar (opsional)
+  return {
+    isInBroadcastSession,
+    clearBroadcastSession
+  };
+};
+
+// Export global untuk akses dari file lain
+module.exports.adminState = adminState;
+module.exports.isInBroadcastSession = (chatId) => {
+  const state = adminState.get(chatId);
+  return state && state.mode === 'broadcast';
 };

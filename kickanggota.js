@@ -23,6 +23,12 @@ module.exports = (bot) => {
     if (!msg.text) return;
     if (msg.from.id.toString() !== process.env.ADMIN_ID) return;
     
+    // === PROTEKSI BROADCAST SESI ===
+    // Jika admin sedang dalam sesi broadcast, jangan proses trigger menu lain
+    if (bot.isAdminInBroadcastSession && bot.isAdminInBroadcastSession(msg)) {
+      return; // Skip processing, biarkan broadcast handler yang menangani
+    }
+    
     const messageText = msg.text.toLowerCase();
     
     // Check for onkick keywords

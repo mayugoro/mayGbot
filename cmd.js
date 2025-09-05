@@ -55,6 +55,12 @@ module.exports = (bot) => {
   bot.on('message', async (msg) => {
     if (!msg.text) return;
     
+    // === PROTEKSI BROADCAST SESI ===
+    // Jika admin sedang dalam sesi broadcast, jangan proses trigger menu lain
+    if (bot.isAdminInBroadcastSession && bot.isAdminInBroadcastSession(msg)) {
+      return; // Skip processing, biarkan broadcast handler yang menangani
+    }
+    
     // Cek apakah pesan adalah tepat "cmd" (case insensitive)
     const text = msg.text.trim();
     if (['cmd', 'CMD', 'Cmd'].includes(text)) {
