@@ -68,7 +68,7 @@ module.exports = (bot) => {
       // Keywords untuk trigger broadcast (lebih spesifik)
       const broadcastKeywords = [
         'broadcast', 'broadcast ke semua', 'kirim ke semua user',
-        '/broadcast', 'pengumuman massal', 'blast message'
+        '/broadcast', 'pengumuman', 'blast message'
       ];
       
       const messageText = msg.text.toLowerCase();
