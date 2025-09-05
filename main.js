@@ -119,9 +119,9 @@ bot.on('callback_query', async (query) => {
     const stokTestResult = await testStokLogging(bot);
     
     if (stokTestResult && STOK_LOG_ENABLED && STOK_LOG_CHAT_ID && STOK_LOG_MESSAGE_ID) {
-      // Start monitoring with 30 second interval
-      startStokMonitoring(bot, 30000);
-      console.log('✅ Stok monitoring started');
+      // Start monitoring with 5 second interval (optimal real-time)
+      startStokMonitoring(bot, 5000);
+      console.log('✅ Stok monitoring started with 5s interval');
     }
   } catch (error) {
     console.error('Stok monitoring initialization failed:', error.message);
