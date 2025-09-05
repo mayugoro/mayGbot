@@ -3,6 +3,15 @@ const { getAllUsers, logBroadcast } = require('./db');
 const adminState = new Map();
 
 module.exports = (bot) => {
+  // === SETUP GLOBAL BROADCAST PROTECTION ===
+  // Attach broadcast protection function ke bot object
+  bot.isAdminInBroadcastSession = (msg) => {
+    if (!msg || !msg.from || msg.from.id.toString() !== process.env.ADMIN_ID) {
+      return false;
+    }
+    return isInBroadcastSession(msg.chat.id);
+  };
+
   // Function untuk cek apakah admin sedang dalam sesi broadcast
   const isInBroadcastSession = (chatId) => {
     const state = adminState.get(chatId);
