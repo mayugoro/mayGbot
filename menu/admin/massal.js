@@ -13,6 +13,9 @@ const MASSAL_MENU_KEYBOARD = [
     { text: '✨ CEK PULSA', callback_data: 'cek_pulsa' }
   ],
   [
+    { text: '🗒️ CEK TANGGAL RESET', callback_data: 'reset_tanggal' }
+  ],
+  [
     { text: '🔙 KEMBALI', callback_data: 'menu_admin' }
   ]
 ];
@@ -27,7 +30,7 @@ module.exports = (bot) => {
     const msgId = message?.message_id;
 
     // === PENGECEKAN ADMIN UNTUK SEMUA FITUR MASSAL ===
-    const massalCallbacks = ['menu_massal', 'infoakrab', 'kick_massal', 'addkick_start', 'cek_pulsa'];
+    const massalCallbacks = ['menu_massal', 'infoakrab', 'kick_massal', 'addkick_start', 'cek_pulsa', 'reset_tanggal'];
     if (massalCallbacks.includes(data)) {
       if (from.id.toString() !== process.env.ADMIN_ID) {
         return bot.answerCallbackQuery(id, {
@@ -111,6 +114,7 @@ module.exports = (bot) => {
     require('./massal/kickmassal')(bot);
     require('./massal/addkick')(bot);
     require('./massal/cekpulsa')(bot);
+    require('./massal/tanggalreset')(bot);
   } catch (error) {
     console.error('Error loading massal modules:', error.message);
     console.log('📁 Pastikan folder massal/ dan file-filenya sudah dibuat:');
@@ -118,5 +122,6 @@ module.exports = (bot) => {
     console.log('   - ./massal/kickmassal.js');
     console.log('   - ./massal/addkick.js');
     console.log('   - ./massal/cekpulsa.js');
+    console.log('   - ./massal/tanggalreset.js');
   }
 };
