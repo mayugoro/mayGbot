@@ -310,7 +310,7 @@ module.exports = (bot) => {
         });
 
         // Kirim message baru untuk input (seperti scan_bekasan.js)
-        await bot.sendMessage(chatId,
+        const inputMsg = await bot.sendMessage(chatId,
           `📅 <b>SCAN TANGGAL RESET MASA AKTIF</b>\n\n` +
           `🔍 Masukan nomor, pisah dengan enter/baris baru:\n\n` +
           `📝 <b>Contoh:</b>\n` +
@@ -318,6 +318,11 @@ module.exports = (bot) => {
           `⚠️ Ketik "exit" untuk membatalkan`,
           { parse_mode: 'HTML' }
         );
+        
+        // Simpan input message ID ke state
+        const currentState = stateResetTanggal.get(chatId);
+        currentState.inputMessageId = inputMsg.message_id;
+        stateResetTanggal.set(chatId, currentState);
 
       } catch (error) {
         console.error('Error handling reset_tanggal:', error);
@@ -423,10 +428,13 @@ module.exports = (bot) => {
 
   // Handler untuk menerima nomor HP
   bot.on('message', async (msg) => {
+    if (!msg.text || !msg.from) return;
+    
     const chatId = msg.chat.id;
-    const text = msg.text;
+    const text = msg.text.trim();
     const state = stateResetTanggal.get(chatId);
 
+    // Check if this chat is in reset date input mode
     if (!state || state.step !== 'waiting_numbers') {
       return;
     }
@@ -436,174 +444,176 @@ module.exports = (bot) => {
       return;
     }
 
-    try {
-      // Check untuk exit command
-      if (text.toLowerCase() === 'exit') {
-        stateResetTanggal.delete(chatId);
-        await bot.sendMessage(chatId, 
-          '❌ <b>Scan tanggal reset dibatalkan</b>\n\n' +
-          'Silakan pilih menu lain dari daftar yang tersedia.',
-          { parse_mode: 'HTML' }
-        );
-        return;
-      }
-
-      // Parse nomor dari input
-      let nomorList = [];
-      if (text.includes('\n')) {
-        nomorList = text.split('\n').map(n => n.trim()).filter(n => n);
-      } else if (text.includes(',')) {
-        nomorList = text.split(',').map(n => n.trim()).filter(n => n);
-      } else {
-        nomorList = [text.trim()];
-      }
-
-      // Validasi nomor
-      const validNomor = [];
-      for (const nomor of nomorList) {
-        const cleanNomor = nomor.replace(/\D/g, '');
-        if (cleanNomor.length >= 10 && cleanNomor.length <= 15) {
-          if (cleanNomor.startsWith('08') || cleanNomor.startsWith('628') || cleanNomor.startsWith('62')) {
-            validNomor.push(nomor.trim());
-          }
+    // === CEK CANCEL/EXIT ===
+    if (['exit', 'EXIT', 'Exit'].includes(text)) {
+      // Hapus input form
+      if (state.inputMessageId) {
+        try {
+          await bot.deleteMessage(chatId, state.inputMessageId);
+        } catch (e) {
+          // Ignore delete error
         }
       }
+      
+      stateResetTanggal.delete(chatId);
+      await bot.deleteMessage(chatId, msg.message_id);
+      return;
+    }
 
-      if (validNomor.length === 0) {
-        await bot.sendMessage(chatId, 
-          '❌ Tidak ada nomor valid yang ditemukan.\n\n' +
-          'Pastikan format nomor benar (08xxx atau 628xxx).'
-        );
-        return;
+    const nomorList = text.split(/\n|\r/).map(s => s.trim()).filter(s => s.length > 9);
+    if (nomorList.length === 0) {
+      try {
+        await bot.sendMessage(chatId, '❌ Masukkan minimal satu nomor.');
+        await bot.deleteMessage(chatId, msg.message_id);
+      } catch (e) {
+        console.error('Error sending validation message:', e);
       }
+      return;
+    }
 
-      // Update state  
-      stateResetTanggal.set(chatId, {
-        ...state,
-        step: 'processing',
-        numbers: validNomor
-      });
+    // Hapus pesan input user dan form input
+    if (state.inputMessageId) {
+      try {
+        await bot.deleteMessage(chatId, state.inputMessageId);
+      } catch (e) {}
+    }
+    try {
+      await bot.deleteMessage(chatId, msg.message_id);
+    } catch (e) {}
 
-      // Clear rekap data
-      rekapResetData.clear();
+    stateResetTanggal.delete(chatId);
 
-      // Status tracking
-      let completedCount = 0;
-      let primaryCount = 0;
-      let secondaryCount = 0;
-      let failedCount = 0;
+    // Start concurrent scanning process
+    let currentStatusMsg = null;
+    let completedCount = 0;
+    let primaryCount = 0;
+    let secondaryCount = 0;
+    let failedCount = 0;
+    let rekapStokArray = [];
 
-      // Process each number sequentially (satu per satu)
-      for (let index = 0; index < validNomor.length; index++) {
-        const nomor = validNomor[index];
-        
-        try {
-          const result = await scanWithDualStrategy(nomor);
-          completedCount++;
+    // === CONCURRENT PROCESSING WITH REAL-TIME STREAMING ===
+    
+    // Kirim status awal
+    try {
+      currentStatusMsg = await bot.sendMessage(chatId, `📅 CONCURRENT SCAN ${nomorList.length} nomor - Dual API Strategy!`);
+    } catch (e) {
+      console.error('Error sending initial status:', e);
+    }
 
-          if (result.success) {
-            const expired = extractExpiredDate(result);
-            const source = result.source;
-            
-            // Update counters
-            if (source === 'primary') primaryCount++;
-            else if (source === 'secondary') secondaryCount++;
+    // Clear rekap data
+    rekapResetData.clear();
 
-            const displayNomor = formatNomorForDisplay(nomor);
-            const sourceIcon = getSourceIndicator(source);
-            
-            // Kirim hasil per nomor (pesan baru)
-            await bot.sendMessage(chatId, 
-              `📱 <code>${displayNomor}</code> ${sourceIcon}\n` +
-              `📅 ${expired || 'Tidak tersedia'}`,
-              { parse_mode: 'HTML' }
-            );
-            
-            if (expired && expired !== 'Tidak tersedia') {
-              // Parse expired date
-              const expiredDate = parseExpiredDate(expired);
-              if (expiredDate && !isNaN(expiredDate.getTime())) {
-                const resetDate = formatResetDate(expiredDate);
+    // Function untuk process dan kirim hasil secara real-time (seperti scan_bekasan.js)
+    const processAndSendResult = async (result, originalIndex) => {
+      completedCount++;
+      const nomor_hp = result.nomor;
+      
+      try {
+        if (result.success) {
+          const expired = extractExpiredDate(result);
+          const source = result.source;
+          
+          // Update counters
+          if (source === 'primary') primaryCount++;
+          else if (source === 'secondary') secondaryCount++;
 
-                // Grouping berdasarkan tanggal reset
-                if (!rekapResetData.has(resetDate)) {
-                  rekapResetData.set(resetDate, []);
-                }
-                rekapResetData.get(resetDate).push({
-                  nomor: displayNomor,
-                  expired: expired,
-                  source: source
-                });
+          const displayNomor = formatNomorForDisplay(nomor_hp);
+          const sourceIcon = getSourceIndicator(source);
+          
+          // 🚀 KIRIM LANGSUNG HASIL PER NOMOR (REAL-TIME!)
+          await bot.sendMessage(chatId, 
+            `📱 <code>${displayNomor}</code> ${sourceIcon}\n` +
+            `📅 ${expired || 'Tidak tersedia'}`,
+            { parse_mode: 'HTML' }
+          );
+          
+          if (expired && expired !== 'Tidak tersedia') {
+            // Parse expired date
+            const expiredDate = parseExpiredDate(expired);
+            if (expiredDate && !isNaN(expiredDate.getTime())) {
+              const resetDate = formatResetDate(expiredDate);
 
-                // Simpan juga ke global rekap data untuk tombol REKAP
-                if (!globalRekapData.has(chatId)) {
-                  globalRekapData.set(chatId, []);
-                }
-                globalRekapData.get(chatId).push({
-                  nomor: displayNomor,
-                  expired: expired,
-                  source: source
-                });
+              // Grouping berdasarkan tanggal reset
+              if (!rekapResetData.has(resetDate)) {
+                rekapResetData.set(resetDate, []);
               }
-            }
+              rekapResetData.get(resetDate).push({
+                nomor: displayNomor,
+                expired: expired,
+                source: source
+              });
 
-          } else {
-            failedCount++;
-            const displayNomor = formatNomorForDisplay(nomor);
-            
-            // Kirim hasil error per nomor
-            await bot.sendMessage(chatId, 
-              `📱 <code>${displayNomor}</code> ❌ GAGAL\n` +
-              `💥 ${result.error}`,
-              { parse_mode: 'HTML' }
-            );
+              // Simpan juga ke global rekap data untuk tombol REKAP
+              if (!globalRekapData.has(chatId)) {
+                globalRekapData.set(chatId, []);
+              }
+              globalRekapData.get(chatId).push({
+                nomor: displayNomor,
+                expired: expired,
+                source: source
+              });
+            }
           }
 
-        } catch (error) {
-          console.error('Error processing nomor:', nomor, error);
+        } else {
           failedCount++;
+          const displayNomor = formatNomorForDisplay(nomor_hp);
           
-          const displayNomor = formatNomorForDisplay(nomor);
+          // 🚀 KIRIM LANGSUNG ERROR (REAL-TIME!)
           await bot.sendMessage(chatId, 
-            `📱 <code>${displayNomor}</code> ❌ ERROR\n` +
-            `💥 ${error.message}`,
+            `📱 <code>${displayNomor}</code> ❌ GAGAL\n` +
+            `💥 ${result.error}`,
             { parse_mode: 'HTML' }
           );
         }
+
+      } catch (sendError) {
+        console.error('Error sending real-time result:', sendError);
       }
+    };
 
-      // Final completion message dengan tombol REKAP
-      await bot.sendMessage(chatId,
-        `🎉 <b>SCAN TANGGAL RESET PAKET BERHASIL</b>\n\n` +
-        `📊 Total: ${validNomor.length} nomor\n` +
-        `✅ Berhasil: ${primaryCount + secondaryCount}\n` +
-        `❌ Gagal: ${failedCount}\n\n` +
-        `👆 <b>KLIK TOMBOL REKAP UNTUK MELIHAT PENGELOMPOKAN</b>`,
-        {
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: "📅 REKAP RESET", callback_data: "rekap_reset" }
-              ],
-              [
-                { text: "🔙 KEMBALI", callback_data: "menu_admin" }
-              ]
+    // Launch semua API calls dengan real-time processing (seperti scan_bekasan.js)
+    const allPromises = nomorList.map((nomor_hp, index) => 
+      scanWithDualStrategy(nomor_hp).then(result => {
+        // Process dan kirim hasil segera setelah API call selesai
+        return processAndSendResult({...result, nomor: nomor_hp, index}, index);
+      }).catch(error => {
+        // Handle error dan kirim juga
+        const errorResult = {
+          success: false,
+          error: error.message,
+          nomor: nomor_hp,
+          index: index,
+          source: 'promise_error'
+        };
+        return processAndSendResult(errorResult, index);
+      })
+    );
+
+    // Tunggu SEMUA hasil dikirim (tapi pengiriman sudah real-time)
+    await Promise.allSettled(allPromises);
+
+    // Final completion message dengan tombol REKAP
+    await bot.sendMessage(chatId,
+      `🎉 <b>SCAN TANGGAL RESET PAKET BERHASIL</b>\n\n` +
+      `📊 Total: ${nomorList.length} nomor\n` +
+      `✅ Berhasil: ${primaryCount + secondaryCount}\n` +
+      `❌ Gagal: ${failedCount}\n\n` +
+      `👆 <b>KLIK TOMBOL REKAP UNTUK MELIHAT PENGELOMPOKAN</b>`,
+      {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "📅 REKAP RESET", callback_data: "rekap_reset" }
+            ],
+            [
+              { text: "🔙 KEMBALI", callback_data: "menu_admin" }
             ]
-          }
+          ]
         }
-      );
+      }
+    );
 
-      // Clear state
-      stateResetTanggal.delete(chatId);
-
-    } catch (error) {
-      console.error('Error processing numbers for reset tanggal:', error);
-      await bot.sendMessage(chatId, 
-        '💥 Terjadi kesalahan saat memproses nomor.\n' +
-        'Silakan coba lagi dengan format yang benar.'
-      );
-      stateResetTanggal.delete(chatId);
-    }
   });
 };
