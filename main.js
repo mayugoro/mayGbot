@@ -1,6 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
 require('dotenv').config({ debug: false, quiet: true });
-const { getUserSaldo } = require('./db');
+const { getUserSaldo, autoUnblockIfActive } = require('./db');
 
 // Deteksi mode: polling untuk development, webhook untuk production
 const useWebhook = process.env.NODE_ENV === 'production' || process.argv.includes('--webhook');
@@ -77,6 +77,28 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Simpan waktu bot start
 const BOT_START_TIME = Date.now();
+
+// === AUTO-UNBLOCK MIDDLEWARE ===
+// Middleware untuk auto-unblock user yang kembali aktif
+bot.on('message', async (msg) => {
+  if (msg.from && msg.from.id) {
+    try {
+      await autoUnblockIfActive(msg.from.id);
+    } catch (e) {
+      // Silent ignore auto-unblock errors
+    }
+  }
+});
+
+bot.on('callback_query', async (query) => {
+  if (query.from && query.from.id) {
+    try {
+      await autoUnblockIfActive(query.from.id);
+    } catch (e) {
+      // Silent ignore auto-unblock errors
+    }
+  }
+});
 
 // Initialize transaction logger
 (async () => {

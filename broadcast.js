@@ -1,4 +1,4 @@
-const { getAllUsers, logBroadcast } = require('./db');
+const { getAllUsers, logBroadcast, markUserBlocked } = require('./db');
 
 const adminState = new Map();
 
@@ -194,6 +194,9 @@ module.exports = (bot) => {
 
       // Kirim ke semua user
       let successCount = 0;
+      let blockedCount = 0;
+      let deactivatedCount = 0; 
+      let errorCount = 0;
       const targetCount = users.length;
       
       // Update status ke admin
@@ -312,7 +315,39 @@ module.exports = (bot) => {
           
           successCount++;
         } catch (error) {
-          console.log(`❌ Gagal kirim ${messageType} ke user ${user.user_id}:`, error.message);
+          // === SMART ERROR HANDLING ===
+          const errorMsg = error.message || '';
+          
+          if (errorMsg.includes('403') && errorMsg.includes('bot was blocked by the user')) {
+            // User telah memblokir bot - mark di database
+            blockedCount++;
+            console.log(`🚫 User ${user.user_id} has blocked the bot (marked & skipped)`);
+            
+            // Optional: Mark user sebagai blocked di database
+            try {
+              await markUserBlocked(user.user_id);
+            } catch (markErr) {
+              // Silent ignore mark error
+            }
+          } else if (errorMsg.includes('403') && errorMsg.includes('user is deactivated')) {
+            // Akun user deactivated/deleted
+            deactivatedCount++;
+            console.log(`👻 User ${user.user_id} account deactivated (skipped)`);
+          } else if (errorMsg.includes('403') && errorMsg.includes('chat not found')) {
+            // Chat tidak ditemukan
+            errorCount++;
+            console.log(`🔍 Chat ${user.user_id} not found (skipped)`);
+          } else if (errorMsg.includes('429')) {
+            // Rate limit - tunggu sebentar
+            console.log(`⏳ Rate limit hit for user ${user.user_id}, retrying...`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Optional: retry sekali lagi
+            errorCount++;
+          } else {
+            // Error lain yang perlu attention
+            errorCount++;
+            console.log(`❌ Unexpected error for user ${user.user_id}:`, errorMsg);
+          }
         }
         
         // Delay kecil untuk menghindari rate limit
@@ -326,8 +361,27 @@ module.exports = (bot) => {
         console.error('Gagal log broadcast:', e.message);
       }
       
-      // Kirim hasil ke admin dan auto-delete
-      const hasilBroadcast = `✅ <b>BROADCAST SELESAI!</b>\n\n📊 Target: ${targetCount} user\n✅ Berhasil: ${successCount}\n❌ Gagal: ${targetCount - successCount}\n\n🔓 Sesi broadcast berakhir.`;
+      // Kirim hasil ke admin dengan breakdown detail
+      const totalFailed = blockedCount + deactivatedCount + errorCount;
+      
+      let hasilBroadcast = `✅ <b>BROADCAST SELESAI!</b>\n\n`;
+      hasilBroadcast += `📊 <b>STATISTIK:</b>\n`;
+      hasilBroadcast += `🎯 Target: ${targetCount} user\n`;
+      hasilBroadcast += `✅ Berhasil: ${successCount}\n`;
+      hasilBroadcast += `❌ Gagal: ${totalFailed}\n\n`;
+      
+      if (totalFailed > 0) {
+        hasilBroadcast += `📋 <b>DETAIL GAGAL:</b>\n`;
+        if (blockedCount > 0) hasilBroadcast += `🚫 Blocked: ${blockedCount}\n`;
+        if (deactivatedCount > 0) hasilBroadcast += `👻 Deactivated: ${deactivatedCount}\n`;  
+        if (errorCount > 0) hasilBroadcast += `⚠️ Error lain: ${errorCount}\n\n`;
+      }
+      
+      hasilBroadcast += `🔓 Sesi broadcast berakhir.`;
+      
+      // Success rate
+      const successRate = ((successCount / targetCount) * 100).toFixed(1);
+      hasilBroadcast += `\n📈 Success Rate: ${successRate}%`;
       
       let resultMessageId;
       if (state.inputMessageId) {

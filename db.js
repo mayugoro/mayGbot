@@ -44,13 +44,23 @@ const init = () => {
         CREATE TABLE IF NOT EXISTS pengguna (
           user_id INTEGER PRIMARY KEY,
           username TEXT,
-          saldo REAL DEFAULT 0
+          saldo REAL DEFAULT 0,
+          blocked INTEGER DEFAULT 0,
+          blocked_at TEXT
         )
       `, (err) => {
         if (err) {
           console.error("Error creating pengguna table: ", err.message);
           return reject(err);
         }
+        
+        // Add blocked columns if they don't exist (for existing databases)
+        db.run(`ALTER TABLE pengguna ADD COLUMN blocked INTEGER DEFAULT 0`, (alterErr) => {
+          // Ignore error if column already exists
+        });
+        db.run(`ALTER TABLE pengguna ADD COLUMN blocked_at TEXT`, (alterErr) => {
+          // Ignore error if column already exists  
+        });
       });
 
       // Buat tabel transaction_history untuk menyimpan permanent record
@@ -281,21 +291,33 @@ const kurangiSaldo = (userId, jumlah) => {
   });
 };
 
-// === Ambil saldo pengguna (dengan auto-create user jika belum ada) ===
+// === Ambil saldo pengguna (dengan auto-create user jika belum ada + auto-unblock) ===
 const getUserSaldo = (userId, username = null) => {
   return new Promise((resolve, reject) => {
-    db.get('SELECT saldo, username FROM pengguna WHERE user_id = ?', [userId], (err, row) => {
+    db.get('SELECT saldo, username, blocked FROM pengguna WHERE user_id = ?', [userId], (err, row) => {
       if (err) return reject(err);
       
       if (!row) {
         // User belum ada, buat user baru dengan username yang benar
         const finalUsername = username || `user_${userId}`;
-        db.run('INSERT INTO pengguna (user_id, username, saldo) VALUES (?, ?, ?)', 
-          [userId, finalUsername, 0], function(err) {
+        db.run('INSERT INTO pengguna (user_id, username, saldo, blocked) VALUES (?, ?, ?, ?)', 
+          [userId, finalUsername, 0, 0], function(err) {
           if (err) return reject(err);
           resolve(0);
         });
       } else {
+        // === AUTO-UNBLOCK USER YANG KEMBALI AKTIF ===
+        if (row.blocked === 1) {
+          console.log(`🔓 Auto-unblocking user ${userId} (user is active again)`);
+          db.run('UPDATE pengguna SET blocked = 0, blocked_at = NULL WHERE user_id = ?', [userId], (unblockErr) => {
+            if (unblockErr) {
+              console.error('Error auto-unblocking user:', unblockErr);
+            } else {
+              console.log(`✅ User ${userId} has been auto-unblocked`);
+            }
+          });
+        }
+        
         // User sudah ada, update username jika berubah dan bukan default username
         if (username && username !== row.username && !username.startsWith('user_')) {
           db.run('UPDATE pengguna SET username = ? WHERE user_id = ?', [username, userId], (updateErr) => {
@@ -485,10 +507,10 @@ const addPengguna = (userId, username, saldo = 0) => {
   });
 };
 
-// === Ambil semua user untuk broadcast ===
+// === Ambil semua user untuk broadcast (exclude blocked) ===
 const getAllUsers = () => {
   return new Promise((resolve, reject) => {
-    db.all('SELECT user_id, username FROM pengguna', [], (err, rows) => {
+    db.all('SELECT user_id, username FROM pengguna WHERE blocked = 0 OR blocked IS NULL', [], (err, rows) => {
       if (err) return reject(err);
       resolve(rows);
     });
@@ -821,6 +843,100 @@ const getAllPengelolaNumbers = (kategori) => {
   });
 };
 
+// === Function untuk auto-unblock user saat ada aktivitas ===
+const autoUnblockIfActive = (userId) => {
+  return new Promise((resolve, reject) => {
+    db.get('SELECT blocked FROM pengguna WHERE user_id = ?', [userId], (err, row) => {
+      if (err) return reject(err);
+      
+      if (row && row.blocked === 1) {
+        // User di-block, tapi sedang aktif -> auto-unblock
+        db.run(`
+          UPDATE pengguna 
+          SET blocked = 0, blocked_at = NULL 
+          WHERE user_id = ?
+        `, [userId], function(unblockErr) {
+          if (unblockErr) {
+            reject(unblockErr);
+          } else {
+            console.log(`🔓 Auto-unblocked user ${userId} (detected activity)`);
+            resolve(true); // User was unblocked
+          }
+        });
+      } else {
+        resolve(false); // User was not blocked
+      }
+    });
+  });
+};
+
+// === Function untuk unblock user (saat user kembali aktif) ===
+const unblockUser = (userId) => {
+  return new Promise((resolve, reject) => {
+    db.run(`
+      UPDATE pengguna 
+      SET blocked = 0, blocked_at = NULL 
+      WHERE user_id = ?
+    `, [userId], function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(this.changes);
+      }
+    });
+  });
+};
+
+// === Function untuk mark blocked users ===
+const markUserBlocked = (userId) => {
+  return new Promise((resolve, reject) => {
+    db.run(`
+      UPDATE pengguna 
+      SET blocked = 1, blocked_at = datetime('now') 
+      WHERE user_id = ?
+    `, [userId], function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(this.changes);
+      }
+    });
+  });
+};
+
+// === Function untuk cleanup blocked users ===
+const removeBlockedUsers = () => {
+  return new Promise((resolve, reject) => {
+    db.run(`
+      DELETE FROM pengguna 
+      WHERE blocked = 1
+    `, [], function(err) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(this.changes);
+      }
+    });
+  });
+};
+
+// === Function untuk get blocked users count ===
+const getBlockedUsersCount = () => {
+  return new Promise((resolve, reject) => {
+    db.get(`
+      SELECT COUNT(*) as count 
+      FROM pengguna 
+      WHERE blocked = 1
+    `, [], (err, row) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(row.count);
+      }
+    });
+  });
+};
+
 module.exports = {
   db,
   addStok,
@@ -864,5 +980,11 @@ module.exports = {
   addKickSchedule,
   getKickSchedules,
   deleteKickSchedule,
-  completeKickSchedule
+  completeKickSchedule,
+  // Blocked users management
+  markUserBlocked,
+  removeBlockedUsers,
+  getBlockedUsersCount,
+  unblockUser,
+  autoUnblockIfActive
 };
