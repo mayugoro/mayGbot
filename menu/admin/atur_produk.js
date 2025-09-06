@@ -1,5 +1,6 @@
 // === PRELOAD INLINE KEYBOARDS ===
 const ADMIN_MENU_KEYBOARD = [
+  [{ text: '♻️ SWITCH API', callback_data: 'switch_api' }],
   [
     { text: '⚪ OTP HIDE', callback_data: 'otp_hide' },
     { text: '🟢 OTP KHFY', callback_data: 'otp_khfy' }

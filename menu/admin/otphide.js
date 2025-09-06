@@ -137,6 +137,7 @@ module.exports = (bot) => {
   bot.on('callback_query', async (query) => {
     const { data, id, from, message } = query;
     const chatId = message?.chat?.id;
+    const msgId = message?.message_id;
 
     if (data === 'otp_hide') {
       // Cek admin authorization
@@ -151,7 +152,8 @@ module.exports = (bot) => {
         // Set state untuk menunggu input nomor HP
         otpHideStates.set(chatId, {
           step: 'waiting_number',
-          userId: from.id
+          userId: from.id,
+          menuMessageId: msgId
         });
 
         const instructionText = 
@@ -160,7 +162,12 @@ module.exports = (bot) => {
           '💡 Ketik "exit" untuk membatalkan</i>';
 
         // Kirim pesan baru langsung (tidak edit)
-        await bot.sendMessage(chatId, instructionText, { parse_mode: 'HTML' });
+        const inputMsg = await bot.sendMessage(chatId, instructionText, { parse_mode: 'HTML' });
+        
+        // Simpan message ID untuk bisa dihapus nanti
+        const currentState = otpHideStates.get(chatId);
+        currentState.inputMessageId = inputMsg.message_id;
+        otpHideStates.set(chatId, currentState);
 
       } catch (error) {
         await bot.sendMessage(chatId, '❌ <b>Terjadi error, silakan coba lagi!</b>', { parse_mode: 'HTML' });
@@ -179,10 +186,23 @@ module.exports = (bot) => {
     if (!state || !isAuthorized(msg.from.id)) return;
 
     try {
-      // Handle exit command
-      if (msg.text?.toLowerCase().trim() === 'exit') {
+      // Handle exit command - bersihkan semua tanpa pesan
+      if (['exit', 'EXIT', 'Exit'].includes(msg.text?.trim())) {
+        // Hapus pesan input bot dan user
+        if (state.inputMessageId) {
+          try {
+            await bot.deleteMessage(chatId, state.inputMessageId);
+          } catch (e) {
+            // Ignore delete error
+          }
+        }
+        try {
+          await bot.deleteMessage(chatId, msg.message_id);
+        } catch (e) {
+          // Ignore delete error
+        }
+        
         otpHideStates.delete(chatId);
-        await bot.sendMessage(chatId, '❌ <b>OTP HIDE dibatalkan</b>', { parse_mode: 'HTML' });
         return;
       }
 
@@ -197,9 +217,35 @@ module.exports = (bot) => {
         // Validate phone number
         const cleanNumber = phoneNumber.replace(/\D/g, '');
         if (cleanNumber.length < 10 || cleanNumber.length > 15) {
-          await bot.sendMessage(chatId, '❌ <b>Format nomor tidak valid!</b>\nContoh: 087824020447\n\n<i>Ketik "exit" untuk batal</i>', { parse_mode: 'HTML' });
+          // Hapus pesan user yang tidak valid
+          try {
+            await bot.deleteMessage(chatId, msg.message_id);
+          } catch (e) {}
+          
+          if (state.inputMessageId) {
+            try {
+              await bot.deleteMessage(chatId, state.inputMessageId);
+            } catch (e) {}
+          }
+          
+          const errorMsg = await bot.sendMessage(chatId, '❌ <b>Format nomor tidak valid!</b>\nContoh: 087824020447\n\n<i>Ketik "exit" untuk batal</i>', { parse_mode: 'HTML' });
+          
+          // Update state dengan message ID baru
+          const currentState = otpHideStates.get(chatId);
+          currentState.inputMessageId = errorMsg.message_id;
+          otpHideStates.set(chatId, currentState);
           return;
         }
+
+        // Hapus pesan input bot dan user sebelumnya
+        if (state.inputMessageId) {
+          try {
+            await bot.deleteMessage(chatId, state.inputMessageId);
+          } catch (e) {}
+        }
+        try {
+          await bot.deleteMessage(chatId, msg.message_id);
+        } catch (e) {}
 
         // Update state dan request OTP
         otpHideStates.set(chatId, {
@@ -245,7 +291,8 @@ module.exports = (bot) => {
             ...state,
             step: 'waiting_otp',
             phoneNumber: phoneNumber,
-            otpData: result.data
+            otpData: result.data,
+            inputMessageId: tempMessage.message_id // Update input message ID
           });
 
         } else {
@@ -255,12 +302,13 @@ module.exports = (bot) => {
             '🔴 <b>OTP HIDE GAGAL DIKIRIM</b>\n' +
             `💬 Error: ${result.data?.message || result.data?.data?.message || result.message || 'Gagal kirim OTP'}`;
 
-          await bot.sendMessage(chatId, errorText, { parse_mode: 'HTML' });
+          const errorMsg = await bot.sendMessage(chatId, errorText, { parse_mode: 'HTML' });
 
-          // Reset state untuk input nomor lagi
+          // Reset state untuk input nomor lagi dengan message ID baru
           otpHideStates.set(chatId, {
             ...state,
-            step: 'waiting_number'
+            step: 'waiting_number',
+            inputMessageId: errorMsg.message_id
           });
         }
 
@@ -278,16 +326,42 @@ module.exports = (bot) => {
         // Validate OTP code
         const cleanOTP = otpCode.replace(/\D/g, '');
         if (cleanOTP.length < 4 || cleanOTP.length > 8) {
-          await bot.sendMessage(chatId, '❌ <b>Kode OTP tidak valid!</b>\nMasukkan 4-8 digit angka\n\n<i>Ketik "exit" untuk batal</i>', { parse_mode: 'HTML' });
+          // Hapus pesan user yang tidak valid
+          try {
+            await bot.deleteMessage(chatId, msg.message_id);
+          } catch (e) {}
+          
+          if (state.inputMessageId) {
+            try {
+              await bot.deleteMessage(chatId, state.inputMessageId);
+            } catch (e) {}
+          }
+          
+          const errorMsg = await bot.sendMessage(chatId, '❌ <b>Kode OTP tidak valid!</b>\nMasukkan 4-8 digit angka\n\n<i>Ketik "exit" untuk batal</i>', { parse_mode: 'HTML' });
+          
+          // Update state dengan message ID baru
+          const currentState = otpHideStates.get(chatId);
+          currentState.inputMessageId = errorMsg.message_id;
+          otpHideStates.set(chatId, currentState);
           return;
         }
 
         // Check if phoneNumber exists in state
         if (!state.phoneNumber) {
-          await bot.sendMessage(chatId, '❌ <b>Session expired!</b>\nNomor HP tidak ditemukan. Silakan mulai ulang dengan klik tombol OTP HIDE.', { parse_mode: 'HTML' });
+          const errorMsg = await bot.sendMessage(chatId, '❌ <b>Session expired!</b>\nNomor HP tidak ditemukan. Silakan mulai ulang dengan klik tombol OTP HIDE.', { parse_mode: 'HTML' });
           otpHideStates.delete(chatId);
           return;
         }
+
+        // Hapus pesan input bot dan user sebelumnya
+        if (state.inputMessageId) {
+          try {
+            await bot.deleteMessage(chatId, state.inputMessageId);
+          } catch (e) {}
+        }
+        try {
+          await bot.deleteMessage(chatId, msg.message_id);
+        } catch (e) {}
 
         // Kirim pesan loading
         const waitingMessage = await bot.sendMessage(chatId, '<i>🔄 Memverifikasi OTP Hide, mohon tunggu...</i>', { parse_mode: 'HTML' });
@@ -385,9 +459,12 @@ module.exports = (bot) => {
             `<i>Otp yg anda masukan ${displayOTP}</i>\n` +
             `💬 Error: ${result.data?.message || result.data?.data?.message || result.message || 'OTP tidak valid'}`;
 
-          await bot.sendMessage(chatId, errorText, { parse_mode: 'HTML' });
+          const errorMsg = await bot.sendMessage(chatId, errorText, { parse_mode: 'HTML' });
 
-          // Keep state untuk retry OTP input
+          // Keep state untuk retry OTP input dengan message ID baru
+          const currentState = otpHideStates.get(chatId);
+          currentState.inputMessageId = errorMsg.message_id;
+          otpHideStates.set(chatId, currentState);
           return;
         }
 
@@ -397,7 +474,19 @@ module.exports = (bot) => {
       }
 
     } catch (error) {
-      await bot.sendMessage(chatId, '❌ <b>Terjadi error, silakan coba lagi!</b>', { parse_mode: 'HTML' });
+      // Hapus pesan user jika ada
+      try {
+        await bot.deleteMessage(chatId, msg.message_id);
+      } catch (e) {}
+      
+      // Hapus pesan input bot jika ada
+      if (state?.inputMessageId) {
+        try {
+          await bot.deleteMessage(chatId, state.inputMessageId);
+        } catch (e) {}
+      }
+      
+      const errorMsg = await bot.sendMessage(chatId, '❌ <b>Terjadi error, silakan coba lagi!</b>', { parse_mode: 'HTML' });
       
       // Clean up state
       otpHideStates.delete(chatId);
