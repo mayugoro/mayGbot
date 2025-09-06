@@ -41,7 +41,40 @@ const isValidIndonesianPhone = (nomor) => {
   return phoneRegex.test(nomor);
 };
 
+/**
+ * Konversi nomor telepon ke format lokal 08 untuk tampilan logger
+ * @param {string} nomor - Nomor telepon dalam berbagai format
+ * @returns {string} - Nomor dalam format 08xxxxxxxxx untuk display logger
+ */
+const formatForLogger = (nomor) => {
+  if (!nomor || typeof nomor !== 'string') return nomor;
+  
+  // Hapus semua karakter non-digit
+  const cleanNumber = nomor.replace(/\D/g, '');
+  
+  // Jika format 628xxxxxxxxx, ubah ke 08xxxxxxxxx
+  if (cleanNumber.startsWith('628')) {
+    return '0' + cleanNumber.substring(2);
+  }
+  // Jika format 62xxxxxxxxx (tanpa 8), ubah ke 08xxxxxxxxx
+  else if (cleanNumber.startsWith('62') && !cleanNumber.startsWith('628')) {
+    return '08' + cleanNumber.substring(2);
+  }
+  // Jika sudah format 08xxxxxxxxx, kembalikan as is
+  else if (cleanNumber.startsWith('08')) {
+    return cleanNumber;
+  }
+  // Jika format 8xxxxxxxxx (tanpa 0), tambah 0 di depan
+  else if (cleanNumber.startsWith('8') && cleanNumber.length >= 10) {
+    return '0' + cleanNumber;
+  }
+  
+  // Format lain kembalikan as is
+  return nomor;
+};
+
 module.exports = {
   normalizePhoneNumber,
-  isValidIndonesianPhone
+  isValidIndonesianPhone,
+  formatForLogger
 };

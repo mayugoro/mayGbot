@@ -1,4 +1,5 @@
 // Transaction Logger untuk monitoring semua transaksi
+const { formatForLogger } = require('./utils/normalize');
 
 // Konfigurasi logging
 const LOG_CHAT_ID = process.env.LOG_CHAT_ID; // Chat ID grup/channel untuk log transaksi
@@ -71,8 +72,8 @@ const logTransaction = async (bot, transactionData) => {
     logMessage += `💌 <b>ID:</b> <code>${userId}</code>\n`;
     logMessage += `💌 <b>Username:</b> @${username || 'unknown'}\n`;
     logMessage += `🗒️ <b>Paket:</b> ${kategori.toUpperCase()}\n`;
-    logMessage += `⚡️ <b>Pengelola:</b> <code>${pengelola || nomor}</code>\n`;
-    logMessage += `⚡️ <b>Pembeli:</b> ${nomor}\n`;
+    logMessage += `⚡️ <b>Pengelola:</b> <code>${formatForLogger(pengelola || nomor)}</code>\n`;
+    logMessage += `⚡️ <b>Pembeli:</b> <code>${formatForLogger(nomor)}</code>\n`;
     
     if (harga) {
       logMessage += `💰 <b>Harga:</b> Rp ${harga.toLocaleString('id-ID')}\n`;
@@ -146,7 +147,7 @@ const logRedeemTransaction = async (bot, redeemData) => {
     logMessage += `💌 <b>Username:</b> @${username || 'unknown'}\n`;
     logMessage += `🗒️ <b>Paket:</b> REDEEM CODE\n`;
     logMessage += `⚡️ <b>Pengelola:</b> <code>${code}</code>\n`;
-    logMessage += `⚡️ <b>Pembeli:</b> @${username || 'unknown'}\n`;
+    logMessage += `⚡️ <b>Pembeli:</b> <code>@${username || 'unknown'}</code>\n`;
     
     if (amount) {
       logMessage += `💰 <b>Nominal:</b> Rp ${amount.toLocaleString('id-ID')}\n`;
@@ -197,7 +198,7 @@ const logError = async (bot, errorData) => {
     logMessage += `💌 <b>Username:</b> @${username || 'unknown'}\n`;
     logMessage += `🗒️ <b>Paket:</b> ${action}\n`;
     logMessage += `⚡️ <b>Pengelola:</b> <code>-</code>\n`;
-    logMessage += `⚡️ <b>Pembeli:</b> ${userId}\n`;
+    logMessage += `⚡️ <b>Pembeli:</b> <code>${userId}</code>\n`;
     logMessage += `❌ <b>Error:</b> ${error}\n`;
     
     if (details) {
