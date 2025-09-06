@@ -231,6 +231,7 @@ module.exports = (bot) => {
 
   // Load semua sub-pengaturan
   try {
+    require('./switch')(bot); // Load SWITCH API handler
     require('./otphide')(bot); // Load OTP HIDE handler
     require('./otpkhfy')(bot); // Load OTP KHFY handler
     require('./manage_akrab')(bot); // Load AKRAB handler
@@ -242,6 +243,7 @@ module.exports = (bot) => {
   } catch (error) {
     console.error('Error loading pengaturan modules:', error.message);
     console.log('📁 Pastikan folder pengaturan/ dan file-filenya sudah dibuat:');
+    console.log('   - ./switch.js');
     console.log('   - ./otphide.js');
     console.log('   - ./otpkhfy.js');
     console.log('   - ./pengaturan/atur_harga.js');
