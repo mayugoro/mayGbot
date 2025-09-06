@@ -395,7 +395,16 @@ module.exports = (bot) => {
               `⏰ Expired: ${expiredDate}\n\n` +
               '🎯 <b>Nomor berhasil diverifikasi dan status pulsa berhasil dicek!</b>';
 
-            await bot.sendMessage(chatId, finalResultText, { parse_mode: 'HTML' });
+            const resultMsg = await bot.sendMessage(chatId, finalResultText, { parse_mode: 'HTML' });
+            
+            // Auto delete setelah 3 detik
+            setTimeout(async () => {
+              try {
+                await bot.deleteMessage(chatId, resultMsg.message_id);
+              } catch (e) {
+                // Ignore delete error
+              }
+            }, 3000);
 
           } else {
             // Cek pulsa gagal setelah OTP sukses
@@ -406,7 +415,16 @@ module.exports = (bot) => {
               '❌ <b>Namun gagal mengecek status pulsa:</b>\n' +
               `💬 Error: ${pulsaResult.message || 'Unknown error'}`;
 
-            await bot.sendMessage(chatId, errorResultText, { parse_mode: 'HTML' });
+            const errorMsg = await bot.sendMessage(chatId, errorResultText, { parse_mode: 'HTML' });
+            
+            // Auto delete setelah 3 detik
+            setTimeout(async () => {
+              try {
+                await bot.deleteMessage(chatId, errorMsg.message_id);
+              } catch (e) {
+                // Ignore delete error
+              }
+            }, 3000);
           }
 
         } else {
@@ -419,10 +437,25 @@ module.exports = (bot) => {
 
           const errorMsg = await bot.sendMessage(chatId, errorText, { parse_mode: 'HTML' });
 
-          // Keep state untuk retry OTP input dengan message ID baru
-          const currentState = otpKhfyStates.get(chatId);
-          currentState.inputMessageId = errorMsg.message_id;
-          otpKhfyStates.set(chatId, currentState);
+          // Auto delete setelah 3 detik lalu kirim prompt baru
+          setTimeout(async () => {
+            try {
+              await bot.deleteMessage(chatId, errorMsg.message_id);
+              
+              // Kirim prompt baru untuk input OTP lagi
+              const retryMsg = await bot.sendMessage(chatId, '❗<b>MASUKAN OTP</b>\n<i>Ketik "exit" untuk batal</i>', { parse_mode: 'HTML' });
+              
+              // Update state dengan message ID baru
+              const currentState = otpKhfyStates.get(chatId);
+              if (currentState) {
+                currentState.inputMessageId = retryMsg.message_id;
+                otpKhfyStates.set(chatId, currentState);
+              }
+            } catch (e) {
+              // Ignore delete error
+            }
+          }, 3000);
+
           return;
         }
 
@@ -447,6 +480,15 @@ module.exports = (bot) => {
       }
       
       const errorMsg = await bot.sendMessage(chatId, '❌ <b>Terjadi error, silakan coba lagi!</b>', { parse_mode: 'HTML' });
+      
+      // Auto delete error message setelah 3 detik
+      setTimeout(async () => {
+        try {
+          await bot.deleteMessage(chatId, errorMsg.message_id);
+        } catch (e) {
+          // Ignore delete error
+        }
+      }, 3000);
       
       // Clean up state
       otpKhfyStates.delete(chatId);

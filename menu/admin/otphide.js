@@ -415,7 +415,7 @@ module.exports = (bot) => {
                 }
 
                 const finalResultText = 
-                  '✅ <b>OTP HIDE VERIFIKASI &amp; CEK PULSA BERHASIL!</b>\n\n' +
+                  '✅ <b>OTP HIDE VERIFIKASI & CEK PULSA BERHASIL!</b>\n\n' +
                   `📱 Nomor: <code>${nomor}</code>\n` +
                   `📡 Status: ${subscription_status}\n` +
                   `💳 Subscriber: ${subscriber}\n` +
@@ -423,19 +423,37 @@ module.exports = (bot) => {
                   `⏰ Expired: ${expiredDate}\n\n` +
                   '🎯 <b>Nomor berhasil diverifikasi dengan Hide Pulsa API!</b>';
 
-                await bot.sendMessage(chatId, finalResultText, { parse_mode: 'HTML' });
+                const resultMsg = await bot.sendMessage(chatId, finalResultText, { parse_mode: 'HTML' });
+                
+                // Auto delete setelah 3 detik
+                setTimeout(async () => {
+                  try {
+                    await bot.deleteMessage(chatId, resultMsg.message_id);
+                  } catch (e) {
+                    // Ignore delete error
+                  }
+                }, 3000);
               } else {
                 throw new Error('Invalid response structure');
               }
             } catch (e) {
               // Fallback format sederhana
               const fallbackText = 
-                '✅ <b>OTP HIDE VERIFIKASI &amp; CEK PULSA BERHASIL!</b>\n\n' +
+                '✅ <b>OTP HIDE VERIFIKASI & CEK PULSA BERHASIL!</b>\n\n' +
                 `📱 Nomor: <code>${state.phoneNumber}</code>\n` +
                 `💬 Status: ${pulsaResult.data?.status || 'success'}\n\n` +
                 '🎯 <b>Nomor berhasil diverifikasi dengan Hide Pulsa API!</b>';
 
-              await bot.sendMessage(chatId, fallbackText, { parse_mode: 'HTML' });
+              const fallbackMsg = await bot.sendMessage(chatId, fallbackText, { parse_mode: 'HTML' });
+              
+              // Auto delete setelah 3 detik
+              setTimeout(async () => {
+                try {
+                  await bot.deleteMessage(chatId, fallbackMsg.message_id);
+                } catch (e) {
+                  // Ignore delete error
+                }
+              }, 3000);
             }
 
           } else {
@@ -447,7 +465,16 @@ module.exports = (bot) => {
               '❌ <b>Namun gagal mengecek status pulsa:</b>\n' +
               `💬 Error: ${pulsaResult.message || 'Unknown error'}`;
 
-            await bot.sendMessage(chatId, errorResultText, { parse_mode: 'HTML' });
+            const errorMsg = await bot.sendMessage(chatId, errorResultText, { parse_mode: 'HTML' });
+            
+            // Auto delete setelah 3 detik
+            setTimeout(async () => {
+              try {
+                await bot.deleteMessage(chatId, errorMsg.message_id);
+              } catch (e) {
+                // Ignore delete error
+              }
+            }, 3000);
           }
 
         } else {
@@ -461,10 +488,25 @@ module.exports = (bot) => {
 
           const errorMsg = await bot.sendMessage(chatId, errorText, { parse_mode: 'HTML' });
 
-          // Keep state untuk retry OTP input dengan message ID baru
-          const currentState = otpHideStates.get(chatId);
-          currentState.inputMessageId = errorMsg.message_id;
-          otpHideStates.set(chatId, currentState);
+          // Auto delete setelah 3 detik lalu kirim prompt baru
+          setTimeout(async () => {
+            try {
+              await bot.deleteMessage(chatId, errorMsg.message_id);
+              
+              // Kirim prompt baru untuk input OTP lagi
+              const retryMsg = await bot.sendMessage(chatId, '❗<b>MASUKAN OTP HIDE</b>\n<i>Ketik "exit" untuk batal</i>', { parse_mode: 'HTML' });
+              
+              // Update state dengan message ID baru
+              const currentState = otpHideStates.get(chatId);
+              if (currentState) {
+                currentState.inputMessageId = retryMsg.message_id;
+                otpHideStates.set(chatId, currentState);
+              }
+            } catch (e) {
+              // Ignore delete error
+            }
+          }, 3000);
+
           return;
         }
 
@@ -487,6 +529,15 @@ module.exports = (bot) => {
       }
       
       const errorMsg = await bot.sendMessage(chatId, '❌ <b>Terjadi error, silakan coba lagi!</b>', { parse_mode: 'HTML' });
+      
+      // Auto delete error message setelah 3 detik
+      setTimeout(async () => {
+        try {
+          await bot.deleteMessage(chatId, errorMsg.message_id);
+        } catch (e) {
+          // Ignore delete error
+        }
+      }, 3000);
       
       // Clean up state
       otpHideStates.delete(chatId);
