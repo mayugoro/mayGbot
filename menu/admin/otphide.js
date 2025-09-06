@@ -539,7 +539,7 @@ module.exports = (bot) => {
         }
       }, 3000);
       
-      // Clean up state
+      // Clean up states
       otpHideStates.delete(chatId);
     }
   });
