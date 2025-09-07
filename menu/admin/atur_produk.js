@@ -1,6 +1,6 @@
 // === PRELOAD INLINE KEYBOARDS ===
 const ADMIN_MENU_KEYBOARD = [
-  [{ text: '♻️ SWITCH API', callback_data: 'switch_api' }],
+  [{ text: '♻️ SWITCH HANDLER', callback_data: 'switch_api' }],
   [
     { text: '⚪ OTP HIDE', callback_data: 'otp_hide' },
     { text: '🟢 OTP KHFY', callback_data: 'otp_khfy' }
@@ -172,31 +172,58 @@ module.exports = (bot) => {
       };
       
       // Panggil handler switch_api_menu secara langsung
-      await bot.editMessageText(
-        `🔄 <b>SWITCH API HANDLER</b>\n\n` +
+      const switchContent = `🔄 <b>SWITCH API HANDLER</b>\n\n` +
         `🟢 <b>KHFY API:</b> Menggunakan API KHFY untuk semua operasi\n` +
         `⚪ <b>HIDE API:</b> Menggunakan API HIDE untuk semua operasi\n\n` +
-        `💡 <b>Info:</b> Switch akan mengganti handler aktif dan membutuhkan restart bot`,
-        {
-          chat_id: chatId,
-          message_id: msgId,
-          parse_mode: 'HTML',
-          reply_markup: {
-            inline_keyboard: [
-              [
-                { text: '⚪ SWITCH KE HIDE', callback_data: 'switch_hide_menu' },
-                { text: '🟢 SWITCH KE KHFY', callback_data: 'switch_khfy_menu' }
-              ],
-              [
-                { text: '❗ STATUS HANDLER', callback_data: 'status_all_handler' }
-              ],
-              [ 
-                { text: '🔙 KEMBALI', callback_data: 'menu_admin' }
+        `💡 <b>Info:</b> Switch akan mengganti handler aktif dan membutuhkan restart bot`;
+      
+      try {
+        if (message.caption) {
+          // Message has photo, edit caption
+          await bot.editMessageCaption(switchContent, {
+            chat_id: chatId,
+            message_id: msgId,
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '⚪ SWITCH KE HIDE', callback_data: 'switch_hide_menu' },
+                  { text: '🟢 SWITCH KE KHFY', callback_data: 'switch_khfy_menu' }
+                ],
+                [
+                  { text: '❗ STATUS HANDLER', callback_data: 'status_all_handler' }
+                ],
+                [ 
+                  { text: '🔙 KEMBALI', callback_data: 'menu_admin' }
+                ]
               ]
-            ]
-          }
+            }
+          });
+        } else {
+          // Message has text, edit text
+          await bot.editMessageText(switchContent, {
+            chat_id: chatId,
+            message_id: msgId,
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '⚪ SWITCH KE HIDE', callback_data: 'switch_hide_menu' },
+                  { text: '🟢 SWITCH KE KHFY', callback_data: 'switch_khfy_menu' }
+                ],
+                [
+                  { text: '❗ STATUS HANDLER', callback_data: 'status_all_handler' }
+                ],
+                [ 
+                  { text: '🔙 KEMBALI', callback_data: 'menu_admin' }
+                ]
+              ]
+            }
+          });
         }
-      );
+      } catch (error) {
+        console.error('Error editing switch_api message:', error.message);
+      }
 
       await bot.answerCallbackQuery(id);
       return;

@@ -58,9 +58,11 @@ module.exports = (bot) => {
         }
 
         // Send result
-        await bot.editMessageText(
-          `⚪ <b>SWITCH KE HIDE API</b>\n\n${messages.join('\n')}\n\n⚡ <b>Status:</b> Bot sekarang menggunakan HIDE API\n💡 <b>Info:</b> Restart bot untuk menerapkan perubahan`,
-          {
+        const resultContent = `⚪ <b>SWITCH KE HIDE API</b>\n\n${messages.join('\n')}\n\n⚡ <b>Status:</b> Bot sekarang menggunakan HIDE API\n💡 <b>Info:</b> Restart bot untuk menerapkan perubahan`;
+        
+        if (message.caption) {
+          // Message has photo, edit caption
+          await bot.editMessageCaption(resultContent, {
             chat_id: chatId,
             message_id: message.message_id,
             parse_mode: 'HTML',
@@ -69,23 +71,50 @@ module.exports = (bot) => {
                 [{ text: '🔙 KEMBALI', callback_data: 'switch_api_menu' }]
               ]
             }
-          }
-        );
+          });
+        } else {
+          // Message has text, edit text
+          await bot.editMessageText(resultContent, {
+            chat_id: chatId,
+            message_id: message.message_id,
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔙 KEMBALI', callback_data: 'switch_api_menu' }]
+              ]
+            }
+          });
+        }
 
       } catch (error) {
-        await bot.editMessageText(
-          `❌ <b>ERROR SWITCH KE HIDE</b>\n\n${error.message}\n\n🔧 Periksa struktur file dan permission`,
-          {
-            chat_id: chatId,
-            message_id: message.message_id,
-            parse_mode: 'HTML',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '🔙 KEMBALI', callback_data: 'switch_api_menu' }]
-              ]
-            }
+        const errorContent = `❌ <b>ERROR SWITCH KE HIDE</b>\n\n${error.message}\n\n🔧 Periksa struktur file dan permission`;
+        try {
+          if (message.caption) {
+            await bot.editMessageCaption(errorContent, {
+              chat_id: chatId,
+              message_id: message.message_id,
+              parse_mode: 'HTML',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '🔙 KEMBALI', callback_data: 'switch_api_menu' }]
+                ]
+              }
+            });
+          } else {
+            await bot.editMessageText(errorContent, {
+              chat_id: chatId,
+              message_id: message.message_id,
+              parse_mode: 'HTML',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '🔙 KEMBALI', callback_data: 'switch_api_menu' }]
+                ]
+              }
+            });
           }
-        );
+        } catch (editError) {
+          console.error('Error editing error message:', editError.message);
+        }
       }
 
       try {
