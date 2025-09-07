@@ -37,6 +37,20 @@ const generateMainKeyboard = (userId) => {
   return keyboard;
 };
 
+// === SAFE DELETE MESSAGE HELPER ===
+const safeDeleteMessage = async (bot, chatId, messageId, context = '') => {
+  if (!messageId) return;
+  try {
+    await bot.deleteMessage(chatId, messageId);
+  } catch (e) {
+    // Only log non-"message not found" errors for debugging
+    if (!e.message.includes('message to delete not found') && 
+        !e.message.includes('Bad Request: message to delete not found')) {
+      console.log(`Safe delete message error (${context}):`, e.message);
+    }
+  }
+};
+
 // === LOCKING SYSTEM ===
 const activePengelolaSessions = new Map(); // key: nomor_hp, value: { userId, chatId, timestamp, step }
 const userActiveSessions = new Map();      // key: userId, value: nomor_hp
@@ -392,9 +406,12 @@ const checkSlotKosong = async (chatId) => {
           await global.bot.sendMessage(chatId, teksError, { parse_mode: 'HTML' });
           
           // Delete old loading message AFTER new message sent
-          await global.bot.deleteMessage(chatId, loadingMessageId);
+          await safeDeleteMessage(global.bot, chatId, loadingMessageId, 'api error slot check');
         } catch (e) {
-          // Ignore send/delete error
+          // Ignore send/delete error but log for debugging
+          if (!e.message.includes('message to delete not found')) {
+            console.log('Delete message error (ignored):', e.message);
+          }
         }
       } else {
         await global.bot.sendMessage(chatId, teksError, { parse_mode: 'HTML' });
@@ -417,14 +434,15 @@ const checkSlotKosong = async (chatId) => {
               parse_mode: 'HTML'
             });
             
-            // Delete old loading message AFTER new message sent
-            await global.bot.deleteMessage(chatId, loadingMessageId);
-            
-            // Update loadingMessageId untuk step berikutnya
+            // Update loadingMessageId untuk step berikutnya SEBELUM delete
             state.loadingMessageId = retryMsg.message_id;
             stateBulanan.set(chatId, state);
+            
+            // Delete old loading message safely
+            await safeDeleteMessage(global.bot, chatId, loadingMessageId, 'retry slot check');
           } catch (e) {
-            // Ignore send/delete error
+            // Ignore send/delete error - tapi tetap update state jika ada retry message
+            console.log('Retry message handling error (ignored):', e.message);
           }
         }
 
@@ -488,9 +506,12 @@ const checkSlotKosong = async (chatId) => {
           await global.bot.sendMessage(chatId, teksKosong, { parse_mode: 'HTML' });
           
           // Delete old loading/retry message AFTER new message sent
-          await global.bot.deleteMessage(chatId, loadingMessageId);
+          await safeDeleteMessage(global.bot, chatId, loadingMessageId, 'no slots available');
         } catch (e) {
-          // Ignore send/delete error
+          // Ignore send/delete error but log for debugging
+          if (!e.message.includes('message to delete not found')) {
+            console.log('Delete loading message error (ignored):', e.message);
+          }
         }
       } else {
         await global.bot.sendMessage(chatId, teksKosong, { parse_mode: 'HTML' });
@@ -519,11 +540,7 @@ const checkSlotKosong = async (chatId) => {
 
     // Hapus pesan loading setelah pesan input nomor terkirim
     if (loadingMessageId) {
-      try {
-        await global.bot.deleteMessage(chatId, loadingMessageId);
-      } catch (e) {
-        console.error('Error deleting loading message:', e);
-      }
+      await safeDeleteMessage(global.bot, chatId, loadingMessageId, 'input nomor ready');
     }
 
     // Set timer 30 detik untuk auto cancel jika tidak ada input
@@ -560,9 +577,12 @@ const checkSlotKosong = async (chatId) => {
         await global.bot.sendMessage(chatId, teksError, { parse_mode: 'HTML' });
         
         // Delete old loading message AFTER new message sent
-        await global.bot.deleteMessage(chatId, loadingMessageId);
+        await safeDeleteMessage(global.bot, chatId, loadingMessageId, 'slot check error');
       } catch (e) {
-        // Ignore send/delete error
+        // Ignore send/delete error but log for debugging
+        if (!e.message.includes('message to delete not found')) {
+          console.log('Delete error message handling (ignored):', e.message);
+        }
       }
     } else {
       await global.bot.sendMessage(chatId, teksError, { parse_mode: 'HTML' });
@@ -637,7 +657,9 @@ module.exports = (bot) => {
       await bot.sendMessage(chatId, '❌ Format nomor tidak valid!\n\n✅ Format yang diterima:\n• 08xxxxxxxxxx\n• 628xxxxxxxxxx\n• 8xxxxxxxxxx\n\n💡 Contoh: 08123456789 atau 628123456789');
       try {
         await bot.deleteMessage(chatId, msg.message_id);
-      } catch (e) {}
+      } catch (e) {
+        // Ignore delete error - user message might be already processed
+      }
       return;
     }
 
@@ -645,14 +667,7 @@ module.exports = (bot) => {
     
     // Hapus message input nomor jika ada loadingMessageId
     if (loadingMessageId) {
-      try {
-        await bot.deleteMessage(chatId, loadingMessageId);
-      } catch (e) {
-        // Jangan log error jika message sudah tidak ada
-        if (!e.message.includes('message to delete not found')) {
-          console.error('Error deleting input message:', e.message);
-        }
-      }
+      await safeDeleteMessage(bot, chatId, loadingMessageId, 'before processing');
     }
     
     // Simpan waktu mulai untuk validasi
@@ -812,7 +827,7 @@ module.exports = (bot) => {
         nomor_hp,
         nomor_slot,
         nomor_anggota: normalizedNumber, // Gunakan nomor yang sudah dinormalisasi
-        nama_anggota: `${msg.from.username || msg.from.first_name || 'USER'} BEKASAN`, // Gunakan username Telegram
+        nama_anggota: `${(msg.from.username || msg.from.first_name || 'USER').toUpperCase()} ${paket.toUpperCase()}`, // Username + nama paket yang dipilih
         nama_admin: "XL"
       }, {
         headers: {

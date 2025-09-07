@@ -1,6 +1,17 @@
 // Transaction Logger untuk monitoring semua transaksi
 const { formatForLogger } = require('./utils/normalize');
 
+// Function untuk escape HTML entities
+const escapeHTML = (text) => {
+  if (!text) return 'unknown';
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
 // Konfigurasi logging
 const LOG_CHAT_ID = process.env.LOG_CHAT_ID; // Chat ID grup/channel untuk log transaksi
 const LOG_TOPIC_SUCCESS = process.env.LOG_TOPIC_SUCCESS || 2; // Topic untuk transaksi berhasil
@@ -68,10 +79,10 @@ const logTransaction = async (bot, transactionData) => {
     }
 
     // Detail transaksi dengan format yang lebih fokus
-    logMessage += `🤖 <b>Bot:</b> ${botName || BOT_NAME}\n`;
+    logMessage += `🤖 <b>Bot:</b> ${escapeHTML(botName || BOT_NAME)}\n`;
     logMessage += `💌 <b>ID:</b> <code>${userId}</code>\n`;
-    logMessage += `💌 <b>Username:</b> @${username || 'unknown'}\n`;
-    logMessage += `🗒️ <b>Paket:</b> ${kategori.toUpperCase()}\n`;
+    logMessage += `💌 <b>Username:</b> @${escapeHTML(username)}\n`;
+    logMessage += `🗒️ <b>Paket:</b> ${escapeHTML(kategori.toUpperCase())}\n`;
     logMessage += `⚡️ <b>Pengelola:</b> <code>${formatForLogger(pengelola || nomor)}</code>\n`;
     logMessage += `⚡️ <b>Pembeli:</b> <code>${formatForLogger(nomor)}</code>\n`;
     
@@ -86,7 +97,7 @@ const logTransaction = async (bot, transactionData) => {
     }
     
     if (error) {
-      logMessage += `❌ <b>Error:</b> ${error}\n`;
+      logMessage += `❌ <b>Error:</b> ${escapeHTML(error)}\n`;
     }
     
     if (trxId) {
@@ -142,12 +153,12 @@ const logRedeemTransaction = async (bot, redeemData) => {
     let statusText = status === 'completed' ? 'BERHASIL' : 'GAGAL';
     
     let logMessage = `${emoji} <b>REDEEM CODE ${statusText}</b>\n\n`;
-    logMessage += `🤖 <b>Bot:</b> ${botName || BOT_NAME}\n`;
+    logMessage += `🤖 <b>Bot:</b> ${escapeHTML(botName || BOT_NAME)}\n`;
     logMessage += `💌 <b>ID:</b> <code>${userId}</code>\n`;
-    logMessage += `💌 <b>Username:</b> @${username || 'unknown'}\n`;
+    logMessage += `💌 <b>Username:</b> @${escapeHTML(username)}\n`;
     logMessage += `🗒️ <b>Paket:</b> REDEEM CODE\n`;
-    logMessage += `⚡️ <b>Pengelola:</b> <code>${code}</code>\n`;
-    logMessage += `⚡️ <b>Pembeli:</b> <code>@${username || 'unknown'}</code>\n`;
+    logMessage += `⚡️ <b>Pengelola:</b> <code>${escapeHTML(code)}</code>\n`;
+    logMessage += `⚡️ <b>Pembeli:</b> <code>@${escapeHTML(username)}</code>\n`;
     
     if (amount) {
       logMessage += `💰 <b>Nominal:</b> Rp ${amount.toLocaleString('id-ID')}\n`;
@@ -160,7 +171,7 @@ const logRedeemTransaction = async (bot, redeemData) => {
     }
     
     if (error) {
-      logMessage += `❌ <b>Error:</b> ${error}\n`;
+      logMessage += `❌ <b>Error:</b> ${escapeHTML(error)}\n`;
     }
     
     logMessage += `⌚️ <b>Waktu:</b> ${formatTime()}`;
@@ -193,16 +204,16 @@ const logError = async (bot, errorData) => {
     } = errorData;
 
     let logMessage = `🚨 <b>ERROR DETECTED</b>\n\n`;
-    logMessage += `🤖 <b>Bot:</b> ${botName || BOT_NAME}\n`;
+    logMessage += `🤖 <b>Bot:</b> ${escapeHTML(botName || BOT_NAME)}\n`;
     logMessage += `💌 <b>ID:</b> <code>${userId}</code>\n`;
-    logMessage += `💌 <b>Username:</b> @${username || 'unknown'}\n`;
-    logMessage += `🗒️ <b>Paket:</b> ${action}\n`;
+    logMessage += `💌 <b>Username:</b> @${escapeHTML(username)}\n`;
+    logMessage += `🗒️ <b>Paket:</b> ${escapeHTML(action)}\n`;
     logMessage += `⚡️ <b>Pengelola:</b> <code>-</code>\n`;
     logMessage += `⚡️ <b>Pembeli:</b> <code>${userId}</code>\n`;
-    logMessage += `❌ <b>Error:</b> ${error}\n`;
+    logMessage += `❌ <b>Error:</b> ${escapeHTML(error)}\n`;
     
     if (details) {
-      logMessage += `📝 <b>Details:</b> ${details}\n`;
+      logMessage += `📝 <b>Details:</b> ${escapeHTML(details)}\n`;
     }
     
     logMessage += `⌚️ <b>Waktu:</b> ${formatTime()}`;
