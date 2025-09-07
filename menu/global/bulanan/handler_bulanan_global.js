@@ -143,7 +143,6 @@ const setStateBulananGlobal = async (chatId, state) => {
                  await getKonfigurasi(`harga_${paket}`) || '0';
     const hargaValue = parseInt(harga);
     
-    console.log(`💰 Harga check - Global: ${await getKonfigurasi(`harga_global_${paket}`)}, Regular: ${await getKonfigurasi(`harga_${paket}`)}, Final: ${hargaValue}`);
     
     if (saldoUser < hargaValue) {
       // Saldo tidak cukup
@@ -160,11 +159,6 @@ const setStateBulananGlobal = async (chatId, state) => {
     return;
   }
   
-  console.log('=== BULANAN GLOBAL: MEMULAI PROSES ===');
-  console.log('Chat ID:', chatId);
-  console.log('User ID:', userId);
-  console.log('Paket:', paket);
-  console.log('Original Message ID:', state.originalMessageId);
   
   stateBulananGlobal.set(chatId, state);
   
@@ -181,9 +175,6 @@ const inputNomorHP = async (chatId) => {
 
   const { paket } = state;
   
-  console.log('=== BULANAN GLOBAL: INPUT NOMOR HP ===');
-  console.log('Chat ID:', chatId);
-  console.log('Paket:', paket);
 
   // Update state
   state.step = 'input_nomor_global';
@@ -193,7 +184,6 @@ const inputNomorHP = async (chatId) => {
   const teksInput = `❗<b>Masukan Nomor....</b>`;
   await global.bot.sendMessage(chatId, teksInput, { parse_mode: 'HTML' });
 
-  console.log('📤 Input nomor message terkirim');
 
   // Set timer 30 detik untuk auto cancel jika tidak ada input
   const timeoutId = setTimeout(() => {
@@ -208,7 +198,6 @@ const inputNomorHP = async (chatId) => {
         { parse_mode: 'HTML' }
       ).catch(err => console.error('Error sending timeout message:', err));
       
-      console.log('⌛ Session timeout untuk chat:', chatId);
     }
   }, 30000); // 30 detik
 
@@ -254,12 +243,6 @@ module.exports = (bot) => {
 
     const { userId, paket } = state;
     
-    console.log('=== BULANAN GLOBAL: USER INPUT NOMOR HP ===');
-    console.log('Chat ID:', chatId);
-    console.log('Input text:', text);
-    console.log('User ID:', userId);
-    console.log('Username:', msg.from?.username);
-    console.log('Paket:', paket);
     
     // BATALKAN TIMEOUT TIMER karena user sudah input
     if (state.timeoutId) {
@@ -269,20 +252,16 @@ module.exports = (bot) => {
 
     // NORMALISASI NOMOR INPUT ke format 628
     const normalizedNumber = formatNomorTo628(text);
-    console.log('Normalized number (628 format):', normalizedNumber);
     
     // Validasi basic nomor HP
     if (normalizedNumber.length < 12 || normalizedNumber.length > 15) {
-      console.log('❌ Nomor tidak valid - length tidak sesuai');
       await bot.sendMessage(chatId, '❌ <b>Format nomor tidak valid!</b>\n\n✅ Format yang diterima:\n• 08xxxxxxxxxx\n• 628xxxxxxxxxx\n• 8xxxxxxxxxx\n\n💡 Contoh: 08123456789 atau 628123456789', {
         parse_mode: 'HTML'
       });
       // Hapus input user untuk privacy
       try {
         await bot.deleteMessage(chatId, msg.message_id);
-        console.log('🔒 Invalid input berhasil dihapus (privacy)');
       } catch (e) {
-        console.log('❌ Gagal hapus invalid input:', e.message);
       }
       return;
     }
@@ -290,19 +269,15 @@ module.exports = (bot) => {
     // Hapus message nomor HP user untuk privacy
     try {
       await bot.deleteMessage(chatId, msg.message_id);
-      console.log('🔒 User input nomor berhasil dihapus (privacy)');
     } catch (e) {
-      console.log('❌ Gagal hapus user input:', e.message);
     }
 
     const startTime = Date.now();
     const processingMsg = await bot.sendMessage(chatId, '⏳ <b>Memproses pembelian global...</b>', { parse_mode: 'HTML' });
     
-    console.log('📤 Processing message terkirim');
 
     try {
       // === API AKRAB GLOBAL INTEGRATION ===
-      console.log('=== BULANAN GLOBAL: KIRIM API REQUEST ===');
       
       // Get current date in DDMMYY format
       const now = new Date();
@@ -310,11 +285,9 @@ module.exports = (bot) => {
       const month = String(now.getMonth() + 1).padStart(2, '0');
       const year = String(now.getFullYear()).slice(-2);
       const timeFormat = day + month + year;
-      console.log('Time format generated:', timeFormat);
 
       // Generate unique transaction ID
       const trxId = `TRX${Date.now()}${Math.random().toString(36).substr(2, 5)}`;
-      console.log('Transaction ID generated:', trxId);
 
       // Get kode paket dari mapping
       const kodePaketMap = {
@@ -325,7 +298,6 @@ module.exports = (bot) => {
         'jumbo': 'XLAJ'
       };
       const kodePaket = kodePaketMap[paket] || paket.toUpperCase();
-      console.log('Kode paket untuk API:', kodePaket);
 
       // Prepare API payload
       const apiPayload = {
@@ -339,9 +311,6 @@ module.exports = (bot) => {
         pin: process.env.PING
       };
       
-      console.log('API Payload prepared:');
-      console.log('- URL:', process.env.APIG_ORDER);
-      console.log('- Payload:', JSON.stringify(apiPayload, null, 2));
 
       // Kirim request ke AKRAB GLOBAL API
       const response = await axios.post(process.env.APIG_ORDER, apiPayload, {
@@ -352,8 +321,6 @@ module.exports = (bot) => {
       });
 
       const executionTime = Math.floor((Date.now() - startTime) / 1000);
-      console.log('API execution time:', executionTime + 's');
-      console.log('API Response:', JSON.stringify(response.data, null, 2));
 
       // === PROSES RESPONSE DAN POTONG SALDO ===
       const { getKonfigurasi, kurangiSaldo, getUserSaldo } = require('../../../db');
@@ -363,8 +330,6 @@ module.exports = (bot) => {
                    await getKonfigurasi(`harga_${paket}`) || '0';
       const hargaValue = parseInt(harga);
       
-      console.log('💰 Final harga paket:', hargaValue);
-      console.log('🔍 Harga source priority: global -> regular -> fallback');
 
       let teksHasil = '';
       let isPending = false;
@@ -375,9 +340,6 @@ module.exports = (bot) => {
         const message = response.data.message || '';
         const msg = response.data.msg || ''; // Ambil field msg untuk detail error
         
-        console.log('API Status:', status);
-        console.log('API Message:', message);
-        console.log('API Msg:', msg);
         
         if (status === 'success' || status === 'sukses') {
           // ✅ SUKSES - Ambil saldo SEBELUM potong untuk history
@@ -385,7 +347,6 @@ module.exports = (bot) => {
           
           // Potong saldo penuh
           await kurangiSaldo(userId, hargaValue);
-          console.log('✅ Saldo berhasil dipotong:', hargaValue);
           
           // Ambil saldo SETELAH dipotong untuk display
           const saldoAkhir = await getUserSaldo(userId);
@@ -432,7 +393,6 @@ module.exports = (bot) => {
           // Potong saldo penuh (karena kemungkinan akan berhasil)
           isPending = true;
           await kurangiSaldo(userId, hargaValue);
-          console.log('⏳ Saldo berhasil dipotong (PENDING):', hargaValue);
           
           // Ambil saldo SETELAH dipotong untuk display
           const saldoAkhir = await getUserSaldo(userId);
@@ -472,7 +432,6 @@ module.exports = (bot) => {
             
         } else if (status === 'Tujuan Diluar Wilayah' || message === 'Tujuan Diluar Wilayah') {
           // 🚫 TUJUAN DILUAR WILAYAH - TIDAK POTONG SALDO SAMA SEKALI
-          console.log('🚫 Tujuan diluar wilayah - saldo tidak dipotong');
           
           // Ambil saldo user (tidak berubah)
           const { getUserSaldo } = require('../../../db');
@@ -516,7 +475,6 @@ module.exports = (bot) => {
           const biayaGagalValue = parseInt(biayaGagal);
           const { kurangiSaldo } = require('../../../db');
           await kurangiSaldo(userId, biayaGagalValue);
-          console.log('❌ Saldo dipotong biaya gagal:', biayaGagalValue);
           
           // Ambil saldo user setelah dipotong biaya gagal (untuk display)
           const { getUserSaldo } = require('../../../db');
@@ -564,7 +522,6 @@ module.exports = (bot) => {
         const biayaGagal = await getKonfigurasi('harga_gagal') || '100';
         const biayaGagalValue = parseInt(biayaGagal);
         await potongSaldo(userId, biayaGagalValue, `BULANAN GLOBAL ${paket.toUpperCase()} (ERROR)`);
-        console.log('❌ Saldo dipotong biaya gagal (format error):', biayaGagalValue);
         
         teksHasil = `❌ <b>BULANAN GLOBAL ERROR</b>\n\n` +
           `📱 Nomor: ${normalizedNumber}\n` +
@@ -577,36 +534,28 @@ module.exports = (bot) => {
           `🌍 <i>Powered by AKRAB GLOBAL</i>`;
       }
 
-      console.log('=== BULANAN GLOBAL: HASIL FINAL ===');
-      console.log('Teks hasil:', teksHasil);
 
       // Kirim hasil FIRST, lalu hapus processing message
       await bot.sendMessage(chatId, teksHasil, {
         parse_mode: 'HTML'
       });
 
-      console.log('📤 Hasil final berhasil dikirim');
 
       // Hapus message "Memproses..." setelah hasil terkirim
       try {
         await bot.deleteMessage(chatId, processingMsg.message_id);
-        console.log('🗑️ Processing message berhasil dihapus');
       } catch (e) {
-        console.log('❌ Gagal hapus processing message:', e.message);
       }
 
       // Cleanup state
       stateBulananGlobal.delete(chatId);
-      console.log('🧹 State berhasil dibersihkan');
 
       // Auto restore menu setelah transaksi
       setTimeout(async () => {
         if (state.originalMessageId) {
           try {
             await bot.deleteMessage(chatId, state.originalMessageId);
-            console.log('🗑️ Original message (detail paket) berhasil dihapus');
           } catch (e) {
-            console.log('❌ Gagal hapus original message:', e.message);
           }
         }
       }, 1000); // 1 detik untuk hapus detail paket
@@ -622,13 +571,10 @@ module.exports = (bot) => {
             parse_mode: 'HTML',
             reply_markup: { inline_keyboard: keyboard }
           });
-          console.log('🔄 Main menu berhasil dikembalikan');
         } catch (e) {
-          console.log('❌ Gagal kembalikan main menu:', e.message);
         }
       }, 2000); // 2 detik delay untuk memberi waktu user membaca hasil
 
-      console.log('=== END BULANAN GLOBAL: SUCCESS ===\n');
 
     } catch (err) {
       console.error(`Error processing bulanan global: ${err.message}`);
@@ -647,7 +593,6 @@ module.exports = (bot) => {
         const harga = await getKonfigurasi(`harga_global_${paket}`) || await getKonfigurasi(`harga_${paket}`);
         const hargaValue = harga ? parseInt(harga) : 0;
         await potongSaldo(userId, hargaValue, `BULANAN GLOBAL ${paket.toUpperCase()} (TIMEOUT)`);
-        console.log('⏳ Saldo dipotong penuh (timeout):', hargaValue);
         
         teksError = `⏳ <b>BULANAN GLOBAL TIMEOUT</b>\n\n` +
           `📱 Nomor: ${normalizedNumber}\n` +
@@ -661,7 +606,6 @@ module.exports = (bot) => {
       } else {
         // Error lainnya, potong biaya gagal
         await potongSaldo(userId, biayaGagalValue, `BULANAN GLOBAL ${paket.toUpperCase()} (ERROR)`);
-        console.log('❌ Saldo dipotong biaya gagal (error):', biayaGagalValue);
         
         teksError = `❌ <b>BULANAN GLOBAL ERROR</b>\n\n` +
           `📱 Nomor: ${normalizedNumber}\n` +
@@ -673,8 +617,6 @@ module.exports = (bot) => {
           `🌍 <i>Powered by AKRAB GLOBAL</i>`;
       }
 
-      console.log('=== BULANAN GLOBAL: ERROR RESULT ===');
-      console.log('Teks error:', teksError);
 
       // Log transaksi error ke grup/channel
       try {
@@ -704,23 +646,18 @@ module.exports = (bot) => {
       // Hapus message "Memproses..." setelah hasil terkirim
       try {
         await bot.deleteMessage(chatId, processingMsg.message_id);
-        console.log('🗑️ Processing message berhasil dihapus (error case)');
       } catch (e) {
-        console.log('❌ Gagal hapus processing message (error case):', e.message);
       }
 
       // Cleanup state
       stateBulananGlobal.delete(chatId);
-      console.log('🧹 State berhasil dibersihkan (error case)');
 
       // Auto restore menu setelah error
       setTimeout(async () => {
         if (state.originalMessageId) {
           try {
             await bot.deleteMessage(chatId, state.originalMessageId);
-            console.log('🗑️ Original message berhasil dihapus (error case)');
           } catch (e) {
-            console.log('❌ Gagal hapus original message (error case):', e.message);
           }
         }
       }, 1000);
@@ -736,13 +673,10 @@ module.exports = (bot) => {
             parse_mode: 'HTML',
             reply_markup: { inline_keyboard: keyboard }
           });
-          console.log('🔄 Main menu berhasil dikembalikan (error case)');
         } catch (e) {
-          console.log('❌ Gagal kembalikan main menu (error case):', e.message);
         }
       }, 2000);
 
-      console.log('=== END BULANAN GLOBAL: ERROR ===\n');
     }
   });
 };
