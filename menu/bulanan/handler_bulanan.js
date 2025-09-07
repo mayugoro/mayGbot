@@ -439,7 +439,26 @@ const checkSlotKosong = async (chatId) => {
     const additionalMembers = data?.member_info?.additional_members || [];
     const allSlots = [...slotList, ...additionalMembers];
     
-    const kosong = allSlots.filter(s => !s.msisdn || s.msisdn === "");
+    // Pastikan add_chances bertipe number
+    allSlots.forEach(s => { 
+      if (typeof s.add_chances === 'string') s.add_chances = parseInt(s.add_chances);
+    });
+
+    // Filter slot kosong dan mengabaikan add_chances 0
+    const slotKosongValid = allSlots.filter(s => 
+      (!s.msisdn || s.msisdn === "") && (s.add_chances || 0) > 0
+    );
+
+    // Prioritaskan berdasarkan add_chances: 3 -> 2 -> 1 (mengabaikan 0)
+    const kosongChances3 = slotKosongValid.filter(s => (s.add_chances || 0) === 3);
+    const kosongChances2 = slotKosongValid.filter(s => (s.add_chances || 0) === 2);
+    const kosongChances1 = slotKosongValid.filter(s => (s.add_chances || 0) === 1);
+    
+    // Gabungkan dengan prioritas: 3 -> 2 -> 1
+    const kosong = [...kosongChances3, ...kosongChances2, ...kosongChances1];
+
+    // Debug urutan slot yang dipilih
+    // console.log('Urutan slot kosong:', kosong.map(s => ({ slot_id: s.slot_id, add_chances: s.add_chances })));
 
     if (!kosong.length) {
       // RELEASE LOCK karena tidak ada slot kosong
@@ -468,7 +487,7 @@ const checkSlotKosong = async (chatId) => {
       return;
     }
 
-    // AUTO SELECT SLOT KOSONG PERTAMA (menggunakan field 'slot_id' dari API1)
+    // AUTO SELECT SLOT KOSONG PRIORITAS ADD_CHANCES 3 -> 2 -> 1 (MENGABAIKAN 0)
     const selectedSlot = kosong[0].slot_id;
     const selectedSlotData = kosong[0]; // SIMPAN DATA LENGKAP SLOT untuk SET_KUBER nanti
     
@@ -1179,7 +1198,7 @@ module.exports = (bot) => {
             }
             
             // SET_KUBER dengan member_id yang fresh
-            console.log(`� SET_KUBER: Member found via robust extraction`);
+            // console.log(`� SET_KUBER: Member found via robust extraction`);
             
             // SET_KUBER calculation
 
