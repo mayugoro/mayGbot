@@ -1,6 +1,6 @@
 const axios = require('axios');
 require('dotenv').config({ quiet: true });
-const { getStok, addKickSchedule, getKickSchedules, deleteKickSchedule, completeKickSchedule } = require('../../../db');
+const { getStok, addKickSchedule, getKickSchedules, getAllKickSchedules, deleteKickSchedule, completeKickSchedule } = require('../../../db');
 const { getSlotInfoAPI1Only } = require('../../admin/manage_akrab/cekslot1.js');
 
 // API1 Configuration (KHUSUS - SAMA DENGAN KICK1.JS)
@@ -429,20 +429,157 @@ const getTimeRemaining = (targetTime) => {
 };
 
 module.exports = (bot) => {
+  console.log('✅ [KICKMASSAL] Module loaded and registering handlers...');
+  
+  // Function untuk auto-load jadwal saat bot startup
+  const autoLoadSchedulesOnStartup = async (bot) => {
+    try {
+      console.log('🔄 [KICKMASSAL] Auto-loading scheduled kicks from database...');
+      
+      // Get all active schedules from database (untuk semua chat)
+      const allSchedules = await getAllKickSchedules();
+      
+      if (!allSchedules || allSchedules.length === 0) {
+        console.log('📋 [KICKMASSAL] No scheduled kicks found in database');
+        return { loaded: 0, expired: 0, errors: 0 };
+      }
+      
+      let loadedCount = 0;
+      let expiredCount = 0;
+      let errorCount = 0;
+      const now = new Date();
+      
+      console.log(`📋 [KICKMASSAL] Found ${allSchedules.length} scheduled kicks in database`);
+      
+      // Group schedules by chat_id untuk efficient processing
+      const schedulesByChat = {};
+      for (const schedule of allSchedules) {
+        if (!schedulesByChat[schedule.chat_id]) {
+          schedulesByChat[schedule.chat_id] = [];
+        }
+        schedulesByChat[schedule.chat_id].push(schedule);
+      }
+      
+      // Process each chat's schedules
+      for (const [chatId, schedules] of Object.entries(schedulesByChat)) {
+        for (const schedule of schedules) {
+          try {
+            // Reconstruct target time
+            const targetTime = new Date();
+            targetTime.setHours(schedule.jam, schedule.menit, 0, 0);
+            
+            // Jika waktu sudah lewat hari ini, set untuk besok
+            if (targetTime <= now) {
+              targetTime.setDate(targetTime.getDate() + 1);
+            }
+            
+            const delay = targetTime.getTime() - now.getTime();
+            
+            // Skip if time has passed (less than 5 minutes remaining)
+            if (delay < 300000) { // 5 minutes = 300000ms
+              expiredCount++;
+              console.log(`⏰ [KICKMASSAL] Expired schedule: ${schedule.nomor_hp} at ${schedule.jam}:${schedule.menit}`);
+              
+              // Mark as completed in database
+              try {
+                await completeKickSchedule(schedule.chat_id, schedule.nomor_hp);
+              } catch (e) {
+                // Silently handle database error
+              }
+              continue;
+            }
+            
+            // Create schedule key
+            const scheduleKey = `${chatId}_${schedule.nomor_hp}`;
+            
+            // Skip if already exists in memory (shouldn't happen on startup, but safety check)
+            if (scheduledKicks.has(scheduleKey)) {
+              continue;
+            }
+            
+            // Create timeout for this schedule
+            const timeoutId = setTimeout(() => {
+              console.log(`🚀 [KICKMASSAL] Executing scheduled kick: ${schedule.nomor_hp} at ${schedule.jam}:${schedule.menit}`);
+              
+              // Execute kick for this number
+              kickSemuaAnggotaScheduled(schedule.nomor_hp, parseInt(chatId), bot).finally(() => {
+                // Clean up after completion
+                scheduledKicks.delete(scheduleKey);
+                
+                // Mark as completed in database
+                try {
+                  completeKickSchedule(schedule.chat_id, schedule.nomor_hp).catch(() => {});
+                } catch (e) {
+                  // Silently handle database error
+                }
+              });
+            }, delay);
+            
+            // Store in memory
+            scheduledKicks.set(scheduleKey, {
+              nomor_hp: schedule.nomor_hp,
+              jam: schedule.jam,
+              menit: schedule.menit,
+              targetTime: targetTime.toISOString(),
+              timeoutId,
+              type: 'individual',
+              chat_id: schedule.chat_id
+            });
+            
+            loadedCount++;
+            
+            const jamFormatted = String(schedule.jam).padStart(2, '0');
+            const menitFormatted = String(schedule.menit).padStart(2, '0');
+            const timeRemaining = getTimeRemaining(targetTime);
+            
+            console.log(`✅ [KICKMASSAL] Loaded schedule: ${schedule.nomor_hp} → ${jamFormatted}:${menitFormatted} (${timeRemaining})`);
+            
+          } catch (error) {
+            errorCount++;
+            console.log(`❌ [KICKMASSAL] Error loading schedule ${schedule.nomor_hp}:`, error.message);
+          }
+        }
+      }
+      
+      console.log(`🎯 [KICKMASSAL] Auto-load complete: ${loadedCount} loaded, ${expiredCount} expired, ${errorCount} errors`);
+      
+      return {
+        loaded: loadedCount,
+        expired: expiredCount,
+        errors: errorCount,
+        total: allSchedules.length
+      };
+      
+    } catch (error) {
+      console.log('❌ [KICKMASSAL] Error in auto-load:', error.message);
+      return { loaded: 0, expired: 0, errors: 1 };
+    }
+  };
+  
+  // Load schedules on startup first
+  autoLoadSchedulesOnStartup(bot);
+  
   // Handle callback queries
   bot.on('callback_query', async (query) => {
     const { data, message, id, from } = query;
     const chatId = message?.chat?.id;
     const userId = from.id;
     
+    // Log semua callback yang diterima (bukan hanya kickmassal)
+    if (data && (data.includes('kick') || data.includes('massal'))) {
+      console.log(`🔍 [KICKMASSAL] Related callback received: ${data} from user ${userId} in chat ${chatId}`);
+    }
+    
     if (!chatId) return;
     
     try {
       if (data === 'kick_massal') {
+        console.log(`🎯 [KICKMASSAL] Handling kick_massal callback from user ${userId}`);
         // Show kick massal manager menu
         const keyboard = [
           [{ text: '🚀 KICK MASSAL', callback_data: 'kickmassal_start' }],
           [{ text: '📋 LIHAT JADWAL', callback_data: 'kickmassal_list' }],
+          [{ text: '🔄 RE-AKTIF JADWAL', callback_data: 'kickmassal_reactivate' }],
           [{ text: '❌ BATAL JADWAL', callback_data: 'kickmassal_cancel' }],
           [{ text: '🔙 KEMBALI', callback_data: 'menu_massal' }]
         ];
@@ -615,6 +752,135 @@ module.exports = (bot) => {
           // Silently handle callback error
         }
         
+      } else if (data === 'kickmassal_reactivate') {
+        console.log(`🔄 [KICKMASSAL] Processing kickmassal_reactivate from user ${userId}`);
+        // Re-activate all scheduled kicks from database (after bot restart)
+        console.log(`🔄 [KICKMASSAL] Reactivate button clicked by user ${userId} in chat ${chatId}`);
+        
+        try {
+          const schedules = await getKickSchedules(chatId.toString());
+          console.log(`📋 [KICKMASSAL] Found ${schedules.length} schedules in database for chat ${chatId}`);
+          
+          if (schedules.length === 0) {
+            console.log(`⚠️ [KICKMASSAL] No schedules found, showing alert to user`);
+            await bot.answerCallbackQuery(id, { text: '📋 Tidak ada jadwal kick untuk diaktifkan', show_alert: true });
+            return;
+          }
+          
+          let reactivatedCount = 0;
+          let expiredCount = 0;
+          let errorCount = 0;
+          const now = new Date();
+          
+          // Process each schedule from database
+          for (const schedule of schedules) {
+            try {
+              // Reconstruct target time
+              const targetTime = new Date();
+              targetTime.setHours(schedule.jam, schedule.menit, 0, 0);
+              
+              // Jika waktu sudah lewat hari ini, set untuk besok
+              if (targetTime <= now) {
+                targetTime.setDate(targetTime.getDate() + 1);
+              }
+              
+              const delay = targetTime.getTime() - now.getTime();
+              
+              // Skip if time has passed (less than 1 minute remaining)
+              if (delay < 60000) {
+                expiredCount++;
+                // Mark as completed in database
+                await completeKickSchedule(chatId.toString(), schedule.nomor_hp);
+                continue;
+              }
+              
+              // Create schedule key
+              const scheduleKey = `${chatId}_${schedule.nomor_hp}`;
+              
+              // Skip if already active in memory
+              if (scheduledKicks.has(scheduleKey)) {
+                continue;
+              }
+              
+              // Create timeout for this schedule
+              const timeoutId = setTimeout(() => {
+                // Execute kick for this number
+                kickSemuaAnggotaScheduled(schedule.nomor_hp, chatId, bot).finally(() => {
+                  // Clean up after completion
+                  scheduledKicks.delete(scheduleKey);
+                  completeKickSchedule(chatId.toString(), schedule.nomor_hp).catch(() => {});
+                });
+              }, delay);
+              
+              // Store in memory
+              scheduledKicks.set(scheduleKey, {
+                nomor_hp: schedule.nomor_hp,
+                jam: schedule.jam,
+                menit: schedule.menit,
+                targetTime: targetTime.toISOString(),
+                timeoutId,
+                type: 'individual'
+              });
+              
+              reactivatedCount++;
+              
+            } catch (error) {
+              errorCount++;
+            }
+          }
+          
+          // Show result
+          let resultText = `🔄 <b>RE-AKTIF JADWAL SELESAI</b>\n\n`;
+          resultText += `📊 <b>Statistik:</b>\n`;
+          resultText += `✅ Berhasil diaktifkan: ${reactivatedCount}\n`;
+          resultText += `⏰ Sudah expired: ${expiredCount}\n`;
+          if (errorCount > 0) {
+            resultText += `❌ Error: ${errorCount}\n`;
+          }
+          resultText += `📋 Total jadwal: ${schedules.length}\n\n`;
+          
+          if (reactivatedCount > 0) {
+            resultText += `🎯 <b>Jadwal aktif kembali:</b>\n`;
+            
+            // Show active schedules
+            for (const [key, data] of scheduledKicks) {
+              if (key.startsWith(chatId.toString()) && data.type === 'individual') {
+                const jamFormatted = String(data.jam).padStart(2, '0');
+                const menitFormatted = String(data.menit).padStart(2, '0');
+                const waktuFormatted = `${jamFormatted}:${menitFormatted}`;
+                
+                const targetTime = new Date(data.targetTime);
+                const timeRemaining = getTimeRemaining(targetTime);
+                
+                resultText += `• ${data.nomor_hp} → ${waktuFormatted} (${timeRemaining})\n`;
+              }
+            }
+          }
+          
+          resultText += `\n💡 <b>Semua jadwal sudah dikembalikan ke memori!</b>`;
+          
+          const resultMsg = await bot.sendMessage(chatId, resultText, { parse_mode: 'HTML' });
+          
+          // Auto delete result after 8 seconds
+          setTimeout(async () => {
+            try {
+              await bot.deleteMessage(chatId, resultMsg.message_id);
+            } catch (e) {
+              // Ignore delete error
+            }
+          }, 8000);
+          
+          await bot.answerCallbackQuery(id, { 
+            text: `✅ ${reactivatedCount} jadwal berhasil diaktifkan kembali`, 
+            show_alert: false 
+          });
+          
+        } catch (error) {
+          console.error(`❌ [KICKMASSAL] Error in reactivate for chat ${chatId}:`, error.message);
+          console.error(`🔍 [KICKMASSAL] Reactivate error stack:`, error.stack);
+          await bot.answerCallbackQuery(id, { text: '❌ Error mengaktifkan jadwal', show_alert: true });
+        }
+        
       } else if (data === 'kickmassal_cancel') {
         // Cancel scheduled kick from database
         try {
@@ -701,7 +967,8 @@ module.exports = (bot) => {
       }
       
     } catch (error) {
-      // Error handled silently
+      console.error('❌ [KICKMASSAL] Callback error:', error.message);
+      console.error('🔍 [KICKMASSAL] Error stack:', error.stack);
       await bot.answerCallbackQuery(id, { text: '❌ Terjadi error, coba lagi!', show_alert: true });
     }
   });

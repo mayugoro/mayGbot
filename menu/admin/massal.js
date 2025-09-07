@@ -110,11 +110,17 @@ module.exports = (bot) => {
 
   // Load semua sub-tools massal
   try {
+    console.log('🔄 [MASSAL] Loading massal modules...');
     require('./massal/scan_bekasan')(bot);
+    console.log('✅ [MASSAL] scan_bekasan loaded');
     require('./massal/kickmassal')(bot);
+    console.log('✅ [MASSAL] kickmassal loaded');
     require('./massal/addkick')(bot);
+    console.log('✅ [MASSAL] addkick loaded');
     require('./massal/cekpulsa')(bot);
+    console.log('✅ [MASSAL] cekpulsa loaded');
     require('./massal/tanggalreset')(bot);
+    console.log('✅ [MASSAL] tanggalreset loaded');
   } catch (error) {
     console.error('Error loading massal modules:', error.message);
     console.log('📁 Pastikan folder massal/ dan file-filenya sudah dibuat:');

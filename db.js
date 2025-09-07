@@ -832,6 +832,22 @@ const getKickSchedules = (chatId) => {
   });
 };
 
+const getAllKickSchedules = () => {
+  return new Promise((resolve, reject) => {
+    db.all(`
+      SELECT * FROM kick_schedule 
+      WHERE status = 'active' 
+      ORDER BY chat_id, jam, menit
+    `, [], (err, rows) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(rows);
+      }
+    });
+  });
+};
+
 const deleteKickSchedule = (chatId, nomorHp = null) => {
   return new Promise((resolve, reject) => {
     let query = `UPDATE kick_schedule SET status = 'cancelled' WHERE chat_id = ?`;
@@ -1021,6 +1037,7 @@ module.exports = {
   // Kick schedule functions
   addKickSchedule,
   getKickSchedules,
+  getAllKickSchedules,
   deleteKickSchedule,
   completeKickSchedule,
   // Blocked users management
