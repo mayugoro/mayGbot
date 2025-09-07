@@ -210,9 +210,9 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
           
           // Ambil harga dan deskripsi dari database
           const { getKonfigurasi } = require('../../../db');
-          const harga = await getKonfigurasi(`harga_bekasan_global_${tipe}_${hari}`) || 
-                       await getKonfigurasi(`harga_bekasan_${tipe}_${hari}`) ||
-                       await getKonfigurasi(`harga_bekasan_${hari}`);
+          const harga = await getKonfigurasi(`harga_bekasan_global_${tipe}_${hari}h`) || 
+                       await getKonfigurasi(`harga_bekasan_${tipe}_${hari}h`) ||
+                       await getKonfigurasi(`harga_bekasan_${hari}h`);
           const deskripsi = await getKonfigurasi(`deskripsi_bekasan_global_${tipe}`) || 
                            await getKonfigurasi(`deskripsi_bekasan_${tipe}`);
           

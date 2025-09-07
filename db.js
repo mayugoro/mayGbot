@@ -123,7 +123,6 @@ const init = () => {
           { key: 'pesan_tolak_bulanan', value: 'Saldo tidak cukup untuk akses menu ini\n\n⏤͟͟ᴍᴀʏᴜɢᴏʀᴏ', description: 'Pesan penolakan akses bulanan' },
           { key: 'pesan_tolak_global', value: 'Saldo tidak cukup untuk akses menu global\n\n⏤͟͟ᴍᴀʏᴜɢᴏʀᴏ', description: 'Pesan penolakan akses global' },
 
-
           // Konfigurasi untuk menu BULANAN
           { key: 'harga_supermini', value: '40000', description: 'Harga paket BULANAN SUPERMINI' },
           { key: 'harga_superbig', value: '60000', description: 'Harga paket BULANAN SUPERBIG' },
@@ -141,6 +140,7 @@ const init = () => {
           { key: 'deskripsi_jumbo', value: 'AREA 1 : 66 GB\nAREA 2 : 70 GB\nAREA 3 : 83 GB\nAREA 4 : 123 GB', description: 'Deskripsi kuota BULANAN JUMBO' },
           { key: 'deskripsi_megabig', value: 'AREA 1 : 88 GB\nAREA 2 : 90 GB\nAREA 3 : 95 GB\nAREA 4 : 105 GB', description: 'Deskripsi kuota BULANAN MEGABIG' },
           { key: 'deskripsi_superjumbo', value: 'AREA 1 : 86 GB\nAREA 2 : 91 GB\nAREA 3 : 104 GB\nAREA 4 : 144 GB', description: 'Deskripsi kuota BULANAN SUPER JUMBO' },
+          
           // Konfigurasi kuota default untuk bulanan
           { key: 'kuota_supermini', value: '0', description: 'Kuota default BULANAN SUPERMINI (GB)' },
           { key: 'kuota_superbig', value: '0', description: 'Kuota default BULANAN SUPERBIG (GB)' },
@@ -150,6 +150,36 @@ const init = () => {
           { key: 'kuota_jumbo', value: '40', description: 'Kuota default BULANAN JUMBO (GB)' },
           { key: 'kuota_megabig', value: '75', description: 'Kuota default BULANAN MEGABIG (GB)' },
           { key: 'kuota_superjumbo', value: '60', description: 'Kuota default BULANAN SUPER JUMBO (GB)' },
+
+          // ====== KONFIGURASI HARGA GLOBAL ======
+          // Harga Global Bulanan
+          { key: 'harga_global_supermini', value: '42000', description: 'Harga BULANAN GLOBAL SUPERMINI' },
+          { key: 'harga_global_megabig', value: '87000', description: 'Harga BULANAN GLOBAL MEGABIG' },
+          { key: 'harga_global_mini', value: '52000', description: 'Harga BULANAN GLOBAL MINI' },
+          { key: 'harga_global_big', value: '57000', description: 'Harga BULANAN GLOBAL BIG' },
+          { key: 'harga_global_jumbo', value: '77000', description: 'Harga BULANAN GLOBAL JUMBO' },
+          { key: 'harga_global_bigplus', value: '62000', description: 'Harga BULANAN GLOBAL BIG PLUS' },
+
+          // Harga Global Bekasan L
+          { key: 'harga_bekasan_global_l_3h', value: '12000', description: 'Harga BEKASAN GLOBAL L 3H' },
+          { key: 'harga_bekasan_global_l_4h', value: '13500', description: 'Harga BEKASAN GLOBAL L 4H' },
+          { key: 'harga_bekasan_global_l_5h', value: '15000', description: 'Harga BEKASAN GLOBAL L 5H' },
+          { key: 'harga_bekasan_global_l_6h', value: '16500', description: 'Harga BEKASAN GLOBAL L 6H' },
+          { key: 'harga_bekasan_global_l_7h', value: '18000', description: 'Harga BEKASAN GLOBAL L 7H' },
+
+          // Harga Global Bekasan XL
+          { key: 'harga_bekasan_global_xl_3h', value: '15000', description: 'Harga BEKASAN GLOBAL XL 3H' },
+          { key: 'harga_bekasan_global_xl_4h', value: '17000', description: 'Harga BEKASAN GLOBAL XL 4H' },
+          { key: 'harga_bekasan_global_xl_5h', value: '19000', description: 'Harga BEKASAN GLOBAL XL 5H' },
+          { key: 'harga_bekasan_global_xl_6h', value: '21000', description: 'Harga BEKASAN GLOBAL XL 6H' },
+          { key: 'harga_bekasan_global_xl_7h', value: '23000', description: 'Harga BEKASAN GLOBAL XL 7H' },
+
+          // Harga Global Bekasan XXL  
+          { key: 'harga_bekasan_global_xxl_3h', value: '18000', description: 'Harga BEKASAN GLOBAL XXL 3H' },
+          { key: 'harga_bekasan_global_xxl_4h', value: '20500', description: 'Harga BEKASAN GLOBAL XXL 4H' },
+          { key: 'harga_bekasan_global_xxl_5h', value: '23000', description: 'Harga BEKASAN GLOBAL XXL 5H' },
+          { key: 'harga_bekasan_global_xxl_6h', value: '25500', description: 'Harga BEKASAN GLOBAL XXL 6H' },
+          { key: 'harga_bekasan_global_xxl_7h', value: '28000', description: 'Harga BEKASAN GLOBAL XXL 7H' },
         ];
 
         defaultConfigs.forEach(config => {

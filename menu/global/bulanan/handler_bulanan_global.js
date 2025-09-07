@@ -96,12 +96,17 @@ const setStateBulananGlobal = async (chatId, state) => {
   try {
     const { getUserSaldo, getKonfigurasi } = require('../../../db');
     const saldoUser = await getUserSaldo(userId);
-    const harga = await getKonfigurasi(`harga_global_${paket}`) || await getKonfigurasi(`harga_${paket}`);
-    const hargaValue = harga ? parseInt(harga) : 0;
+    
+    // Priority order untuk harga: global -> regular fallback
+    const harga = await getKonfigurasi(`harga_global_${paket}`) || 
+                 await getKonfigurasi(`harga_${paket}`) || '0';
+    const hargaValue = parseInt(harga);
+    
+    console.log(`💰 Harga check - Global: ${await getKonfigurasi(`harga_global_${paket}`)}, Regular: ${await getKonfigurasi(`harga_${paket}`)}, Final: ${hargaValue}`);
     
     if (saldoUser < hargaValue) {
       // Saldo tidak cukup
-      global.bot.sendMessage(chatId, `❗<b>Saldo tidak cukup untuk membeli produk!</b>`, {
+      global.bot.sendMessage(chatId, `❗<b>Saldo tidak cukup untuk membeli produk!</b>\n\n💰 Harga: Rp.${hargaValue.toLocaleString('id-ID')}\n💳 Saldo Anda: Rp.${saldoUser.toLocaleString('id-ID')}`, {
         parse_mode: 'HTML'
       }).catch(err => console.error('Error sending insufficient balance message:', err));
       return;
@@ -310,11 +315,15 @@ module.exports = (bot) => {
       console.log('API Response:', JSON.stringify(response.data, null, 2));
 
       // === PROSES RESPONSE DAN POTONG SALDO ===
-      const { getKonfigurasi, potongSaldo } = require('../../../db');
-      const harga = await getKonfigurasi(`harga_global_${paket}`) || await getKonfigurasi(`harga_${paket}`);
-      const hargaValue = harga ? parseInt(harga) : 0;
+      const { getKonfigurasi, kurangiSaldo, getUserSaldo } = require('../../../db');
       
-      console.log('Harga paket:', hargaValue);
+      // Priority order untuk harga: global -> regular fallback
+      const harga = await getKonfigurasi(`harga_global_${paket}`) || 
+                   await getKonfigurasi(`harga_${paket}`) || '0';
+      const hargaValue = parseInt(harga);
+      
+      console.log('💰 Final harga paket:', hargaValue);
+      console.log('🔍 Harga source priority: global -> regular -> fallback');
 
       let teksHasil = '';
       let isPending = false;
@@ -328,15 +337,15 @@ module.exports = (bot) => {
         console.log('API Message:', message);
         
         if (status === 'success' || status === 'sukses') {
-          // ✅ SUKSES - Potong saldo penuh
-          const { kurangiSaldo } = require('../../../db');
+          // ✅ SUKSES - Ambil saldo SEBELUM potong untuk history
+          const saldoAwal = await getUserSaldo(userId);
+          
+          // Potong saldo penuh
           await kurangiSaldo(userId, hargaValue);
           console.log('✅ Saldo berhasil dipotong:', hargaValue);
           
-          // Ambil saldo user setelah dipotong (untuk display)
-          const { getUserSaldo } = require('../../../db');
+          // Ambil saldo SETELAH dipotong untuk display
           const saldoAkhir = await getUserSaldo(userId);
-          const saldoAwal = saldoAkhir + hargaValue;
           
           teksHasil = `✅ Sukses !!\n\n` +
             `<code>Detail         : Sukses AKRAB GLOBAL 🌍\n` +
@@ -363,6 +372,10 @@ module.exports = (bot) => {
               saldoSebelum: saldoAwal,
               saldoSesudah: saldoAkhir,
               trxId: trxId,
+              harga: hargaValue,
+              saldoSebelum: saldoAwal,
+              saldoSesudah: saldoAkhir,
+              trxId: trxId,
               provider: 'AKRAB_GLOBAL'
             });
           } catch (logError) {
@@ -370,16 +383,16 @@ module.exports = (bot) => {
           }
             
         } else if (status === 'pending' || message.toLowerCase().includes('pending')) {
-          // ⏳ PENDING - Potong saldo penuh (karena kemungkinan akan berhasil)
+          // ⏳ PENDING - Ambil saldo SEBELUM potong untuk history
+          const saldoAwal = await getUserSaldo(userId);
+          
+          // Potong saldo penuh (karena kemungkinan akan berhasil)
           isPending = true;
-          const { kurangiSaldo } = require('../../../db');
           await kurangiSaldo(userId, hargaValue);
           console.log('⏳ Saldo berhasil dipotong (PENDING):', hargaValue);
           
-          // Ambil saldo user setelah dipotong (untuk display)
-          const { getUserSaldo } = require('../../../db');
+          // Ambil saldo SETELAH dipotong untuk display
           const saldoAkhir = await getUserSaldo(userId);
-          const saldoAwal = saldoAkhir + hargaValue;
           
           teksHasil = `⏳ Pending !!\n\n` +
             `<code>Detail         : Sedang diproses\n` +

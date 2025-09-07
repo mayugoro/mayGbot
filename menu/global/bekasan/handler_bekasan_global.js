@@ -96,12 +96,19 @@ const setStateBekasanGlobal = async (chatId, state) => {
   try {
     const { getUserSaldo, getKonfigurasi } = require('../../../db');
     const saldoUser = await getUserSaldo(userId);
-    const harga = await getKonfigurasi(`harga_bekasan_${tipe}_${hari}`) || await getKonfigurasi(`harga_bekasan_${tipe}`);
-    const hargaValue = harga ? parseInt(harga) : 0;
+    
+    // Priority order untuk harga: global -> regular -> fallback
+    const harga = await getKonfigurasi(`harga_bekasan_global_${tipe}_${hari}h`) || 
+                 await getKonfigurasi(`harga_bekasan_${tipe}_${hari}h`) || 
+                 await getKonfigurasi(`harga_bekasan_${hari}h`) ||
+                 await getKonfigurasi(`harga_bekasan_${tipe}`) || '0';
+    const hargaValue = parseInt(harga);
+    
+    console.log(`💰 Harga check - Global: ${await getKonfigurasi(`harga_bekasan_global_${tipe}_${hari}h`)}, Regular: ${await getKonfigurasi(`harga_bekasan_${tipe}_${hari}h`)}, Final: ${hargaValue}`);
     
     if (saldoUser < hargaValue) {
       // Saldo tidak cukup
-      global.bot.sendMessage(chatId, `❗<b>Saldo tidak cukup untuk membeli produk!</b>`, {
+      global.bot.sendMessage(chatId, `❗<b>Saldo tidak cukup untuk membeli produk!</b>\n\n💰 Harga: Rp.${hargaValue.toLocaleString('id-ID')}\n💳 Saldo Anda: Rp.${saldoUser.toLocaleString('id-ID')}`, {
         parse_mode: 'HTML'
       }).catch(err => console.error('Error sending insufficient balance message:', err));
       return;
@@ -306,11 +313,17 @@ module.exports = (bot) => {
       console.log('API Response:', JSON.stringify(response.data, null, 2));
 
       // === PROSES RESPONSE DAN POTONG SALDO ===
-      const { getKonfigurasi, potongSaldo } = require('../../../db');
-      const harga = await getKonfigurasi(`harga_bekasan_${tipe}_${hari}`) || await getKonfigurasi(`harga_bekasan_${tipe}`);
-      const hargaValue = harga ? parseInt(harga) : 0;
+      const { getKonfigurasi, kurangiSaldo, getUserSaldo } = require('../../../db');
       
-      console.log('Harga paket:', hargaValue);
+      // Priority order untuk harga: global -> regular fallback
+      const harga = await getKonfigurasi(`harga_bekasan_global_${tipe}_${hari}h`) || 
+                   await getKonfigurasi(`harga_bekasan_${tipe}_${hari}h`) || 
+                   await getKonfigurasi(`harga_bekasan_${hari}h`) ||
+                   await getKonfigurasi(`harga_bekasan_${tipe}`) || '0';
+      const hargaValue = parseInt(harga);
+      
+      console.log('💰 Final harga paket:', hargaValue);
+      console.log('🔍 Harga source priority: global -> regular -> fallback');
 
       let teksHasil = '';
       let isPending = false;
@@ -324,15 +337,15 @@ module.exports = (bot) => {
         console.log('API Message:', message);
         
         if (status === 'success' || status === 'sukses') {
-          // ✅ SUKSES - Potong saldo penuh
-          const { kurangiSaldo } = require('../../../db');
+          // ✅ SUKSES - Ambil saldo SEBELUM potong untuk history
+          const saldoAwal = await getUserSaldo(userId);
+          
+          // Potong saldo penuh
           await kurangiSaldo(userId, hargaValue);
           console.log('✅ Saldo berhasil dipotong:', hargaValue);
           
-          // Ambil saldo user setelah dipotong (untuk display)
-          const { getUserSaldo } = require('../../../db');
+          // Ambil saldo SETELAH dipotong untuk display
           const saldoAkhir = await getUserSaldo(userId);
-          const saldoAwal = saldoAkhir + hargaValue;
           
           teksHasil = `✅ Sukses !!\n\n` +
             `<code>Detail         : Sukses AKRAB GLOBAL 🌍\n` +
@@ -366,16 +379,16 @@ module.exports = (bot) => {
           }
             
         } else if (status === 'pending' || message.toLowerCase().includes('pending')) {
-          // ⏳ PENDING - Potong saldo penuh (karena kemungkinan akan berhasil)
+          // ⏳ PENDING - Ambil saldo SEBELUM potong untuk history
+          const saldoAwal = await getUserSaldo(userId);
+          
+          // Potong saldo penuh (karena kemungkinan akan berhasil)
           isPending = true;
-          const { kurangiSaldo } = require('../../../db');
           await kurangiSaldo(userId, hargaValue);
           console.log('⏳ Saldo berhasil dipotong (PENDING):', hargaValue);
           
-          // Ambil saldo user setelah dipotong (untuk display)
-          const { getUserSaldo } = require('../../../db');
+          // Ambil saldo SETELAH dipotong untuk display
           const saldoAkhir = await getUserSaldo(userId);
-          const saldoAwal = saldoAkhir + hargaValue;
           
           teksHasil = `⏳ Pending !!\n\n` +
             `<code>Detail         : Sedang diproses\n` +
@@ -415,7 +428,6 @@ module.exports = (bot) => {
           console.log('🚫 Tujuan diluar wilayah - saldo tidak dipotong');
           
           // Ambil saldo user (tidak berubah)
-          const { getUserSaldo } = require('../../../db');
           const saldoUser = await getUserSaldo(userId);
           
           teksHasil = `🚫 Tujuan Diluar Wilayah !!\n\n` +
@@ -451,17 +463,17 @@ module.exports = (bot) => {
           }
             
         } else {
-          // ❌ GAGAL LAINNYA - Potong biaya gagal
+          // ❌ GAGAL LAINNYA - Ambil saldo SEBELUM potong untuk history
+          const saldoAwal = await getUserSaldo(userId);
+          
+          // Potong biaya gagal
           const biayaGagal = await getKonfigurasi('biaya_gagal') || '1000';
           const biayaGagalValue = parseInt(biayaGagal);
-          const { kurangiSaldo } = require('../../../db');
           await kurangiSaldo(userId, biayaGagalValue);
           console.log('❌ Saldo dipotong biaya gagal:', biayaGagalValue);
           
-          // Ambil saldo user setelah dipotong biaya gagal (untuk display)
-          const { getUserSaldo } = require('../../../db');
+          // Ambil saldo SETELAH dipotong biaya gagal untuk display
           const saldoAkhir = await getUserSaldo(userId);
-          const saldoAwal = saldoAkhir + biayaGagalValue;
           
           teksHasil = `❌ Gagal !!\n\n` +
             `<code>Detail         : ${message}\n` +
@@ -496,16 +508,23 @@ module.exports = (bot) => {
           }
         }
       } else {
-        // Response tidak sesuai format
+        // Response tidak sesuai format - Ambil saldo SEBELUM potong untuk history
+        const saldoAwal = await getUserSaldo(userId);
+        
         const biayaGagal = await getKonfigurasi('biaya_gagal') || '1000';
         const biayaGagalValue = parseInt(biayaGagal);
-        await potongSaldo(userId, biayaGagalValue, `BEKASAN GLOBAL ${tipe.toUpperCase()} ${hari}H (ERROR)`);
+        await kurangiSaldo(userId, biayaGagalValue);
         console.log('❌ Saldo dipotong biaya gagal (format error):', biayaGagalValue);
+        
+        // Ambil saldo SETELAH dipotong untuk display
+        const saldoAkhir = await getUserSaldo(userId);
         
         teksHasil = `❌ <b>BEKASAN GLOBAL ERROR</b>\n\n` +
           `📱 Nomor: ${normalizedNumber}\n` +
           `📦 Paket: ${tipe.toUpperCase()} ${hari} HARI\n` +
-          `💰 Biaya: Rp. ${biayaGagalValue.toLocaleString('id-ID')}\n` +
+          `💰 Saldo awal: Rp. ${saldoAwal.toLocaleString('id-ID')}\n` +
+          `💸 Biaya gagal: Rp. ${biayaGagalValue.toLocaleString('id-ID')}\n` +
+          `💳 Saldo akhir: Rp. ${saldoAkhir.toLocaleString('id-ID')}\n` +
           `🆔 TRX ID: ${trxId}\n` +
           `⏱️ Waktu: ${executionTime}s\n\n` +
           `📋 Error: Response format tidak valid\n\n` +
@@ -570,25 +589,35 @@ module.exports = (bot) => {
       console.error(`Error processing bekasan global: ${err.message}`);
       const executionTime = Math.floor((Date.now() - startTime) / 1000);
       
-      // Error handling dengan biaya gagal
-      const { getKonfigurasi, potongSaldo } = require('../../../db');
-      const biayaGagal = await getKonfigurasi('biaya_gagal') || '1000';
-      const biayaGagalValue = parseInt(biayaGagal);
-
+      // Error handling dengan proper saldo history
+      const { getKonfigurasi, kurangiSaldo, getUserSaldo } = require('../../../db');
       let teksError = '';
+      let saldoAwal = 0;
+      let saldoAkhir = 0;
+      let hargaPotong = 0;
       
       // Special handling untuk timeout/network error
       if (err.code === 'ECONNRESET' || err.message.includes('socket hang up') || err.message.includes('timeout')) {
         // Timeout biasanya berarti masih diproses, potong saldo penuh
-        const harga = await getKonfigurasi(`harga_bekasan_${tipe}_${hari}`) || await getKonfigurasi(`harga_bekasan_${tipe}`);
-        const hargaValue = harga ? parseInt(harga) : 0;
-        await potongSaldo(userId, hargaValue, `BEKASAN GLOBAL ${tipe.toUpperCase()} ${hari}H (TIMEOUT)`);
-        console.log('⏳ Saldo dipotong penuh (timeout):', hargaValue);
+        saldoAwal = await getUserSaldo(userId);
+        
+        // Priority order untuk harga: global -> regular fallback
+        const harga = await getKonfigurasi(`harga_bekasan_global_${tipe}_${hari}h`) || 
+                     await getKonfigurasi(`harga_bekasan_${tipe}_${hari}h`) || 
+                     await getKonfigurasi(`harga_bekasan_${hari}h`) ||
+                     await getKonfigurasi(`harga_bekasan_${tipe}`) || '0';
+        hargaPotong = parseInt(harga);
+        
+        await kurangiSaldo(userId, hargaPotong);
+        saldoAkhir = await getUserSaldo(userId);
+        console.log('⏳ Saldo dipotong penuh (timeout):', hargaPotong);
         
         teksError = `⏳ <b>BEKASAN GLOBAL TIMEOUT</b>\n\n` +
           `📱 Nomor: ${normalizedNumber}\n` +
           `📦 Paket: ${tipe.toUpperCase()} ${hari} HARI\n` +
-          `💰 Harga: Rp. ${hargaValue.toLocaleString('id-ID')}\n` +
+          `💰 Saldo awal: Rp. ${saldoAwal.toLocaleString('id-ID')}\n` +
+          `💸 Harga: Rp. ${hargaPotong.toLocaleString('id-ID')}\n` +
+          `💳 Saldo akhir: Rp. ${saldoAkhir.toLocaleString('id-ID')}\n` +
           `⏱️ Waktu: ${executionTime}s\n\n` +
           `📋 Status: Koneksi timeout\n\n` +
           `⚠️ <i>Kemungkinan transaksi sedang diproses</i>\n` +
@@ -596,13 +625,20 @@ module.exports = (bot) => {
           `🌍 <i>Powered by AKRAB GLOBAL</i>`;
       } else {
         // Error lainnya, potong biaya gagal
-        await potongSaldo(userId, biayaGagalValue, `BEKASAN GLOBAL ${tipe.toUpperCase()} ${hari}H (ERROR)`);
-        console.log('❌ Saldo dipotong biaya gagal (error):', biayaGagalValue);
+        saldoAwal = await getUserSaldo(userId);
+        
+        const biayaGagal = await getKonfigurasi('biaya_gagal') || '1000';
+        hargaPotong = parseInt(biayaGagal);
+        await kurangiSaldo(userId, hargaPotong);
+        saldoAkhir = await getUserSaldo(userId);
+        console.log('❌ Saldo dipotong biaya gagal (error):', hargaPotong);
         
         teksError = `❌ <b>BEKASAN GLOBAL ERROR</b>\n\n` +
           `📱 Nomor: ${normalizedNumber}\n` +
           `📦 Paket: ${tipe.toUpperCase()} ${hari} HARI\n` +
-          `💰 Biaya: Rp. ${biayaGagalValue.toLocaleString('id-ID')}\n` +
+          `💰 Saldo awal: Rp. ${saldoAwal.toLocaleString('id-ID')}\n` +
+          `💸 Biaya gagal: Rp. ${hargaPotong.toLocaleString('id-ID')}\n` +
+          `💳 Saldo akhir: Rp. ${saldoAkhir.toLocaleString('id-ID')}\n` +
           `⏱️ Waktu: ${executionTime}s\n\n` +
           `📋 Error: ${err.message}\n\n` +
           `🔄 <i>Silakan coba lagi atau hubungi admin</i>\n` +
@@ -619,12 +655,12 @@ module.exports = (bot) => {
           userId: userId,
           username: msg.from?.username,
           kategori: `BEKASAN GLOBAL ${state.tipe.toUpperCase()} ${state.hari}H`,
-          nomor: formatNomorTo08(state.nomor), // Nomor customer/pembeli dalam format 08
+          nomor: formatNomorTo08(normalizedNumber), // Nomor customer/pembeli dalam format 08
           pengelola: 'AKRAB_GLOBAL', // Provider
           status: 'failed',
-          harga: 0, // Tidak ada potongan saldo untuk error jaringan
-          saldoSebelum: 0,
-          saldoSesudah: 0,
+          harga: hargaPotong,
+          saldoSebelum: saldoAwal,
+          saldoSesudah: saldoAkhir,
           provider: 'AKRAB_GLOBAL',
           error: `Network Error: ${err.message}`
         });
