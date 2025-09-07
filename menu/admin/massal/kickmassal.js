@@ -1074,17 +1074,23 @@ module.exports = (bot) => {
           `✅ <b>Nomor HP diterima (${validNumbers.length} nomor):</b>\n\n` +
           validNumbers.map(num => `• ${num}`).join('\n') + '\n\n' +
           `⏰ <b>MASUKAN WAKTU KICK</b>\n\n` +
-          `Ketik waktu dalam format jam:menit (24 jam)\n\n` +
-          `💡 <b>Contoh:</b>\n` +
-          `• 23:00 (jam 11 malam)\n` +
-          `• 06:30 (jam 6 pagi 30 menit)\n` +
-          `• 14:15 (jam 2 siang 15 menit)\n\n` +
+          `✅ <b>Format yang didukung:</b>\n` +
+          `• <code>23:00</code> (HH:MM) - Standard\n` +
+          `• <code>23.00</code> (HH.MM) - Titik\n` +
+          `• <code>2300</code> (HHMM) - Tanpa separator\n` +
+          `• <code>23;00</code> (HH;MM) - Semicolon\n` +
+          `• <code>23</code> (HH) - Otomatis :00\n` +
+          `• <code>9</code> (H) - Otomatis 09:00\n\n` +
+          `� <b>Contoh input yang valid:</b>\n` +
+          `• Jam 6 pagi: <code>6</code>, <code>06</code>, <code>6:00</code>, <code>6.00</code>, <code>600</code>, <code>6;00</code>\n` +
+          `• Jam 6:30 pagi: <code>6:30</code>, <code>6.30</code>, <code>630</code>, <code>6;30</code>\n` +
+          `• Jam 11 malam: <code>23</code>, <code>23:00</code>, <code>23.00</code>, <code>2300</code>, <code>23;00</code>\n` +
+          `• Tengah malam: <code>0</code>, <code>00</code>, <code>0:00</code>, <code>0.00</code>, <code>0000</code>, <code>0;00</code>\n\n` +
           `🚀 <b>API1 COMBO Execution:</b>\n` +
           `• ${validNumbers.length} nomor akan diproses PARALLEL\n` +
           `• Per nomor: API1+CEKSLOT1 (1x) → API1+KICK1 (Nx)\n` +
           `• Member kick: Sequential dengan 20s delay\n` +
-          `• 100% API1 precision - No fallback\n` +
-          `• Real-time progress per nomor HP\n\n` +
+          `• 100% API1 precision - No fallback\n\n` +
           `⚠️ <b>Jika waktu sudah lewat, akan di-set untuk besok.</b>\n\n` +
           `💡 Ketik "exit" untuk membatalkan`,
           { parse_mode: 'HTML' }
@@ -1096,20 +1102,106 @@ module.exports = (bot) => {
         kickStates.set(chatId, currentState);
         
       } else if (state.step === 'input_waktu') {
-        // Validate waktu format
-        const timeRegex = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
+        // Function untuk parsing waktu dengan format fleksibel
+        const parseFlexibleTime = (timeInput) => {
+          // Bersihkan input dari spasi
+          const cleanInput = timeInput.trim();
+          
+          // Format yang didukung:
+          // 1. HH:MM (default) - 00:00, 23:59
+          // 2. HH.MM - 00.00, 23.59  
+          // 3. HHMM - 0000, 2359
+          // 4. HH;MM - 00;00, 23;59
+          
+          let jam, menit;
+          
+          // Pattern 1: HH:MM
+          const colonPattern = /^([01]?[0-9]|2[0-3]):([0-5][0-9])$/;
+          const colonMatch = cleanInput.match(colonPattern);
+          if (colonMatch) {
+            jam = parseInt(colonMatch[1]);
+            menit = parseInt(colonMatch[2]);
+            return { jam, menit, valid: true, format: 'HH:MM' };
+          }
+          
+          // Pattern 2: HH.MM
+          const dotPattern = /^([01]?[0-9]|2[0-3])\.([0-5][0-9])$/;
+          const dotMatch = cleanInput.match(dotPattern);
+          if (dotMatch) {
+            jam = parseInt(dotMatch[1]);
+            menit = parseInt(dotMatch[2]);
+            return { jam, menit, valid: true, format: 'HH.MM' };
+          }
+          
+          // Pattern 3: HH;MM
+          const semicolonPattern = /^([01]?[0-9]|2[0-3]);([0-5][0-9])$/;
+          const semicolonMatch = cleanInput.match(semicolonPattern);
+          if (semicolonMatch) {
+            jam = parseInt(semicolonMatch[1]);
+            menit = parseInt(semicolonMatch[2]);
+            return { jam, menit, valid: true, format: 'HH;MM' };
+          }
+          
+          // Pattern 4: HHMM (tanpa separator)
+          const noSepPattern = /^([01]?[0-9]|2[0-3])([0-5][0-9])$/;
+          const noSepMatch = cleanInput.match(noSepPattern);
+          if (noSepMatch) {
+            // Khusus untuk format HHMM, perlu handle 1-4 digit
+            if (cleanInput.length === 3) {
+              // Format HMM -> H:MM (contoh: 930 -> 9:30)
+              jam = parseInt(cleanInput.substring(0, 1));
+              menit = parseInt(cleanInput.substring(1, 3));
+            } else if (cleanInput.length === 4) {
+              // Format HHMM -> HH:MM (contoh: 0930 -> 09:30)
+              jam = parseInt(cleanInput.substring(0, 2));
+              menit = parseInt(cleanInput.substring(2, 4));
+            } else if (cleanInput.length === 2) {
+              // Format HH -> HH:00 (contoh: 09 -> 09:00)
+              jam = parseInt(cleanInput);
+              menit = 0;
+            } else if (cleanInput.length === 1) {
+              // Format H -> H:00 (contoh: 9 -> 09:00)
+              jam = parseInt(cleanInput);
+              menit = 0;
+            } else {
+              return { valid: false };
+            }
+            
+            // Validasi range
+            if (jam >= 0 && jam <= 23 && menit >= 0 && menit <= 59) {
+              return { jam, menit, valid: true, format: 'HHMM' };
+            }
+          }
+          
+          return { valid: false };
+        };
         
-        if (!timeRegex.test(text)) {
+        // Parse waktu dengan format fleksibel
+        const timeResult = parseFlexibleTime(text);
+        
+        if (!timeResult.valid) {
           await bot.sendMessage(chatId,
             `❌ <b>Format waktu tidak valid!</b>\n\n` +
-            `Gunakan format jam:menit (24 jam)\n` +
-            `Contoh: 23:00 atau 06:30\n\n` +
+            `✅ <b>Format yang didukung:</b>\n` +
+            `• <code>23:00</code> (HH:MM)\n` +
+            `• <code>23.00</code> (HH.MM)\n` +
+            `• <code>2300</code> (HHMM)\n` +
+            `• <code>23;00</code> (HH;MM)\n` +
+            `• <code>23</code> (HH - otomatis :00)\n` +
+            `• <code>9</code> (H - otomatis 09:00)\n\n` +
+            `📝 <b>Contoh input yang valid:</b>\n` +
+            `• 06:30, 6:30, 630, 6.30, 6;30\n` +
+            `• 23:00, 23.00, 2300, 23;00, 23\n` +
+            `• 00:00, 0.00, 0000, 0;00, 0\n\n` +
+            `⏰ <b>Range:</b> 00:00 - 23:59 (24 jam)\n\n` +
             `Coba lagi atau ketik "exit" untuk batal.`,
             { parse_mode: 'HTML' }
           );
           await bot.deleteMessage(chatId, msg.message_id);
           return;
         }
+        
+        const { jam, menit, format } = timeResult;
         
         // Hapus pesan input user dan form input
         if (state.inputMessageId) {
@@ -1124,11 +1216,14 @@ module.exports = (bot) => {
         // Schedule kick for all numbers as a batch
         const nomorList = state.nomor_hp_list || [state.nomor_hp]; // Support both old and new format
         
+        // Format waktu yang sudah di-parse ke format HH:MM untuk scheduleKick
+        const jamFormatted = String(jam).padStart(2, '0');
+        const menitFormatted = String(menit).padStart(2, '0');
+        const formattedTime = `${jamFormatted}:${menitFormatted}`;
+        
         try {
-          const targetTime = await scheduleKick(nomorList, text, chatId, bot);
+          const targetTime = await scheduleKick(nomorList, formattedTime, chatId, bot);
           
-          const jamFormatted = String(targetTime.getHours()).padStart(2, '0');
-          const menitFormatted = String(targetTime.getMinutes()).padStart(2, '0');
           const waktuFormatted = `${jamFormatted}:${menitFormatted}`;
           
           const today = new Date();
@@ -1139,7 +1234,8 @@ module.exports = (bot) => {
             `✅ <b>KICK MASSAL BERHASIL DIJADWALKAN!</b>\n\n` +
             `📱 <b>Total nomor HP:</b> ${nomorList.length}\n` +
             `⏰ <b>Waktu kick:</b> ${waktuFormatted} (${tanggalInfo})\n` +
-            `🎯 <b>Mode:</b> API1 COMBO Processing\n\n` +
+            `🎯 <b>Mode:</b> API1 COMBO Processing\n` +
+            `📝 <b>Input format:</b> ${format} → ${text} → ${waktuFormatted}\n\n` +
             nomorList.map(num => `• ${num}`).join('\n') + '\n\n' +
             `💡 <b>Execution Strategy:</b>\n` +
             `• Semua nomor akan diproses parallel\n` +
