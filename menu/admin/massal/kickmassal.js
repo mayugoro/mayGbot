@@ -31,23 +31,23 @@ const kickSingleMemberAPI1Only = async (nomorPengelola, memberData) => {
     const formattedPengelola = formatNomorToInternational(nomorPengelola);
     
     // API kick1 hanya butuh 3 field: token, member_id, id_parent
-    console.log(`🚀 KICK1 - Mengeluarkan anggota: ${memberData.alias} (${memberData.msisdn})`);
+    // console.log(`🚀 KICK1 - Mengeluarkan anggota: ${memberData.alias} (${memberData.msisdn})`);
     
     const formData = new URLSearchParams();
     formData.append('token', API_PRIMARY_TOKEN);
     formData.append('member_id', memberData.family_member_id); // Menggunakan family_member_id spesifik anggota ini
     formData.append('id_parent', formattedPengelola);
 
-    console.log('📝 Form Data KICK1 (simple):', {
-      token: API_PRIMARY_TOKEN ? API_PRIMARY_TOKEN.substring(0, 10) + '...' : 'KOSONG',
-      member_id: memberData.family_member_id,
-      id_parent: formattedPengelola,
-      target_info: {
-        alias: memberData.alias,
-        msisdn: memberData.msisdn,
-        slot_id: memberData.slot_id
-      }
-    });
+    // console.log('📝 Form Data KICK1 (simple):', {
+    //   token: API_PRIMARY_TOKEN ? API_PRIMARY_TOKEN.substring(0, 10) + '...' : 'KOSONG',
+    //   member_id: memberData.family_member_id,
+    //   id_parent: formattedPengelola,
+    //   target_info: {
+    //     alias: memberData.alias,
+    //     msisdn: memberData.msisdn,
+    //     slot_id: memberData.slot_id
+    //   }
+    // });
 
     const response = await axios.post(API_PRIMARY_BASE + API_PRIMARY_KICK_ENDPOINT, formData, {
       headers: {
@@ -56,7 +56,7 @@ const kickSingleMemberAPI1Only = async (nomorPengelola, memberData) => {
       timeout: 30000
     });
 
-    console.log('🔍 KICK1 Response:', JSON.stringify(response.data, null, 2));
+    // console.log('🔍 KICK1 Response:', JSON.stringify(response.data, null, 2));
 
     if (response.data?.status === 'success' || response.data?.success === true) {
       return {
@@ -92,7 +92,7 @@ const kickSemuaAnggotaSingle = async (nomor_hp, chatId, bot) => {
   );
 
   // COMBO STEP 1: Hit API1+CEKSLOT1 sekali saja - sama seperti kick1.js
-  console.log('🚀 STEP 1: API1+CEKSLOT1 - Mengambil data semua slot...');
+  // console.log('🚀 STEP 1: API1+CEKSLOT1 - Mengambil data semua slot...');
   const slotResult = await getSlotInfoAPI1Only(nomor_hp);
   
   if (!slotResult.success) {
@@ -210,7 +210,7 @@ const kickSemuaAnggotaSingle = async (nomor_hp, chatId, bot) => {
 
     // Delay 20 detik antar kick (kecuali kick terakhir)
     if (i < membersToKick.length - 1) {
-      console.log(`⏱️ Delay 20 detik sebelum kick berikutnya...`);
+      // console.log(`⏱️ Delay 20 detik sebelum kick berikutnya...`);
       await new Promise(resolve => setTimeout(resolve, 20000));
     }
   }
@@ -429,18 +429,18 @@ const getTimeRemaining = (targetTime) => {
 };
 
 module.exports = (bot) => {
-  console.log('✅ [KICKMASSAL] Module loaded and registering handlers...');
+  // console.log('✅ [KICKMASSAL] Module loaded and registering handlers...');
   
   // Function untuk auto-load jadwal saat bot startup
   const autoLoadSchedulesOnStartup = async (bot) => {
     try {
-      console.log('🔄 [KICKMASSAL] Auto-loading scheduled kicks from database...');
+      // console.log('🔄 [KICKMASSAL] Auto-loading scheduled kicks from database...');
       
       // Get all active schedules from database (untuk semua chat)
       const allSchedules = await getAllKickSchedules();
       
       if (!allSchedules || allSchedules.length === 0) {
-        console.log('📋 [KICKMASSAL] No scheduled kicks found in database');
+        // console.log('📋 [KICKMASSAL] No scheduled kicks found in database');
         return { loaded: 0, expired: 0, errors: 0 };
       }
       
@@ -449,7 +449,7 @@ module.exports = (bot) => {
       let errorCount = 0;
       const now = new Date();
       
-      console.log(`📋 [KICKMASSAL] Found ${allSchedules.length} scheduled kicks in database`);
+      // console.log(`📋 [KICKMASSAL] Found ${allSchedules.length} scheduled kicks in database`);
       
       // Group schedules by chat_id untuk efficient processing
       const schedulesByChat = {};
@@ -478,7 +478,7 @@ module.exports = (bot) => {
             // Skip if time has passed (less than 5 minutes remaining)
             if (delay < 300000) { // 5 minutes = 300000ms
               expiredCount++;
-              console.log(`⏰ [KICKMASSAL] Expired schedule: ${schedule.nomor_hp} at ${schedule.jam}:${schedule.menit}`);
+              // console.log(`⏰ [KICKMASSAL] Expired schedule: ${schedule.nomor_hp} at ${schedule.jam}:${schedule.menit}`);
               
               // Mark as completed in database
               try {
@@ -499,7 +499,7 @@ module.exports = (bot) => {
             
             // Create timeout for this schedule
             const timeoutId = setTimeout(() => {
-              console.log(`🚀 [KICKMASSAL] Executing scheduled kick: ${schedule.nomor_hp} at ${schedule.jam}:${schedule.menit}`);
+              // console.log(`🚀 [KICKMASSAL] Executing scheduled kick: ${schedule.nomor_hp} at ${schedule.jam}:${schedule.menit}`);
               
               // Execute kick for this number
               kickSemuaAnggotaScheduled(schedule.nomor_hp, parseInt(chatId), bot).finally(() => {
@@ -532,16 +532,16 @@ module.exports = (bot) => {
             const menitFormatted = String(schedule.menit).padStart(2, '0');
             const timeRemaining = getTimeRemaining(targetTime);
             
-            console.log(`✅ [KICKMASSAL] Loaded schedule: ${schedule.nomor_hp} → ${jamFormatted}:${menitFormatted} (${timeRemaining})`);
+            // console.log(`✅ [KICKMASSAL] Loaded schedule: ${schedule.nomor_hp} → ${jamFormatted}:${menitFormatted} (${timeRemaining})`);
             
           } catch (error) {
             errorCount++;
-            console.log(`❌ [KICKMASSAL] Error loading schedule ${schedule.nomor_hp}:`, error.message);
+            // console.log(`❌ [KICKMASSAL] Error loading schedule ${schedule.nomor_hp}:`, error.message);
           }
         }
       }
       
-      console.log(`🎯 [KICKMASSAL] Auto-load complete: ${loadedCount} loaded, ${expiredCount} expired, ${errorCount} errors`);
+      // console.log(`🎯 [KICKMASSAL] Auto-load complete: ${loadedCount} loaded, ${expiredCount} expired, ${errorCount} errors`);
       
       return {
         loaded: loadedCount,
@@ -551,7 +551,7 @@ module.exports = (bot) => {
       };
       
     } catch (error) {
-      console.log('❌ [KICKMASSAL] Error in auto-load:', error.message);
+      // console.log('❌ [KICKMASSAL] Error in auto-load:', error.message);
       return { loaded: 0, expired: 0, errors: 1 };
     }
   };
@@ -567,14 +567,14 @@ module.exports = (bot) => {
     
     // Log semua callback yang diterima (bukan hanya kickmassal)
     if (data && (data.includes('kick') || data.includes('massal'))) {
-      console.log(`🔍 [KICKMASSAL] Related callback received: ${data} from user ${userId} in chat ${chatId}`);
+      // console.log(`🔍 [KICKMASSAL] Related callback received: ${data} from user ${userId} in chat ${chatId}`);
     }
     
     if (!chatId) return;
     
     try {
       if (data === 'kick_massal') {
-        console.log(`🎯 [KICKMASSAL] Handling kick_massal callback from user ${userId}`);
+        // console.log(`🎯 [KICKMASSAL] Handling kick_massal callback from user ${userId}`);
         // Show kick massal manager menu
         const keyboard = [
           [{ text: '🚀 KICK MASSAL', callback_data: 'kickmassal_start' }],
@@ -753,16 +753,16 @@ module.exports = (bot) => {
         }
         
       } else if (data === 'kickmassal_reactivate') {
-        console.log(`🔄 [KICKMASSAL] Processing kickmassal_reactivate from user ${userId}`);
+        // console.log(`🔄 [KICKMASSAL] Processing kickmassal_reactivate from user ${userId}`);
         // Re-activate all scheduled kicks from database (after bot restart)
-        console.log(`🔄 [KICKMASSAL] Reactivate button clicked by user ${userId} in chat ${chatId}`);
+        // console.log(`🔄 [KICKMASSAL] Reactivate button clicked by user ${userId} in chat ${chatId}`);
         
         try {
           const schedules = await getKickSchedules(chatId.toString());
-          console.log(`📋 [KICKMASSAL] Found ${schedules.length} schedules in database for chat ${chatId}`);
+          // console.log(`📋 [KICKMASSAL] Found ${schedules.length} schedules in database for chat ${chatId}`);
           
           if (schedules.length === 0) {
-            console.log(`⚠️ [KICKMASSAL] No schedules found, showing alert to user`);
+            // console.log(`⚠️ [KICKMASSAL] No schedules found, showing alert to user`);
             await bot.answerCallbackQuery(id, { text: '📋 Tidak ada jadwal kick untuk diaktifkan', show_alert: true });
             return;
           }

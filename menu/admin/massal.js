@@ -110,24 +110,24 @@ module.exports = (bot) => {
 
   // Load semua sub-tools massal
   try {
-    console.log('🔄 [MASSAL] Loading massal modules...');
+    // console.log('🔄 [MASSAL] Loading massal modules...');
     require('./massal/scan_bekasan')(bot);
-    console.log('✅ [MASSAL] scan_bekasan loaded');
+    // console.log('✅ [MASSAL] scan_bekasan loaded');
     require('./massal/kickmassal')(bot);
-    console.log('✅ [MASSAL] kickmassal loaded');
+    // console.log('✅ [MASSAL] kickmassal loaded');
     require('./massal/addkick')(bot);
-    console.log('✅ [MASSAL] addkick loaded');
+    // console.log('✅ [MASSAL] addkick loaded');
     require('./massal/cekpulsa')(bot);
-    console.log('✅ [MASSAL] cekpulsa loaded');
+    // console.log('✅ [MASSAL] cekpulsa loaded');
     require('./massal/tanggalreset')(bot);
-    console.log('✅ [MASSAL] tanggalreset loaded');
+    // console.log('✅ [MASSAL] tanggalreset loaded');
   } catch (error) {
     console.error('Error loading massal modules:', error.message);
-    console.log('📁 Pastikan folder massal/ dan file-filenya sudah dibuat:');
-    console.log('   - ./massal/scan_bekasan.js');
-    console.log('   - ./massal/kickmassal.js');
-    console.log('   - ./massal/addkick.js');
-    console.log('   - ./massal/cekpulsa.js');
-    console.log('   - ./massal/tanggalreset.js');
+    // console.log('📁 Pastikan folder massal/ dan file-filenya sudah dibuat:');
+    // console.log('   - ./massal/scan_bekasan.js');
+    // console.log('   - ./massal/kickmassal.js');
+    // console.log('   - ./massal/addkick.js');
+    // console.log('   - ./massal/cekpulsa.js');
+    // console.log('   - ./massal/tanggalreset.js');
   }
 };
