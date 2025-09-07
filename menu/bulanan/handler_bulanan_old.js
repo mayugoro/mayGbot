@@ -6,6 +6,20 @@ const { normalizePhoneNumber, isValidIndonesianPhone } = require('../../utils/no
 
 const stateBulanan = new Map();
 
+// === SAFE DELETE MESSAGE HELPER ===
+const safeDeleteMessage = async (bot, chatId, messageId, context = '') => {
+  if (!messageId) return;
+  try {
+    await bot.deleteMessage(chatId, messageId);
+  } catch (e) {
+    // Only log non-"message not found" errors for debugging
+    if (!e.message.includes('message to delete not found') && 
+        !e.message.includes('Bad Request: message to delete not found')) {
+      console.log(`Safe delete message error (${context}):`, e.message);
+    }
+  }
+};
+
 // === HELPER FUNCTION: FORMAT NOMOR TO INTERNATIONAL ===
 function formatNomorToInternational(nomor) {
   // Remove all non-digit characters
@@ -396,14 +410,15 @@ const checkSlotKosong = async (chatId) => {
               parse_mode: 'HTML'
             });
             
-            // Delete old loading message AFTER new message sent
-            await global.bot.deleteMessage(chatId, loadingMessageId);
-            
-            // Update loadingMessageId untuk step berikutnya
+            // Update loadingMessageId untuk step berikutnya SEBELUM delete
             state.loadingMessageId = retryMsg.message_id;
             stateBulanan.set(chatId, state);
+            
+            // Delete old loading message safely
+            await safeDeleteMessage(global.bot, chatId, loadingMessageId, 'retry slot check');
           } catch (e) {
-            // Ignore send/delete error
+            // Ignore send/delete error - tapi tetap update state jika ada retry message
+            console.log('Retry message handling error (ignored):', e.message);
           }
         }
 
@@ -477,7 +492,7 @@ const checkSlotKosong = async (chatId) => {
           await global.bot.sendMessage(chatId, teksKosong, { parse_mode: 'HTML' });
           
           // Delete old loading/retry message AFTER new message sent
-          await global.bot.deleteMessage(chatId, loadingMessageId);
+          await safeDeleteMessage(global.bot, chatId, loadingMessageId, 'message cleanup');
         } catch (e) {
           // Ignore send/delete error
         }
@@ -511,7 +526,7 @@ const checkSlotKosong = async (chatId) => {
     // Hapus pesan loading setelah pesan input nomor terkirim
     if (loadingMessageId) {
       try {
-        await global.bot.deleteMessage(chatId, loadingMessageId);
+        await safeDeleteMessage(global.bot, chatId, loadingMessageId, 'message cleanup');
       } catch (e) {
         // Ignore delete error - message might already be deleted
       }
@@ -551,7 +566,7 @@ const checkSlotKosong = async (chatId) => {
         await global.bot.sendMessage(chatId, teksError, { parse_mode: 'HTML' });
         
         // Delete old loading message AFTER new message sent
-        await global.bot.deleteMessage(chatId, loadingMessageId);
+        await safeDeleteMessage(global.bot, chatId, loadingMessageId, 'message cleanup');
       } catch (e) {
         // Ignore send/delete error
       }

@@ -6,6 +6,20 @@ const { normalizePhoneNumber, isValidIndonesianPhone } = require('../../utils/no
 const stateBekasan = new Map();
 const sessionTerakhir = new Map();
 
+// === SAFE DELETE MESSAGE HELPER ===
+const safeDeleteMessage = async (bot, chatId, messageId, context = '') => {
+  if (!messageId) return;
+  try {
+    await bot.deleteMessage(chatId, messageId);
+  } catch (e) {
+    // Only log non-"message not found" errors for debugging
+    if (!e.message.includes('message to delete not found') && 
+        !e.message.includes('Bad Request: message to delete not found')) {
+      console.log(`Safe delete message error (${context}):`, e.message);
+    }
+  }
+};
+
 // === MAIN KEYBOARD GENERATOR ===
 const generateMainKeyboard = (userId) => {
   const keyboard = [
@@ -392,8 +406,8 @@ const checkSlotKosong = async (chatId) => {
           // Send new error message FIRST
           await global.bot.sendMessage(chatId, teksError, { parse_mode: 'HTML' });
           
-          // Delete old loading message AFTER new message sent
-          await global.bot.deleteMessage(chatId, loadingMessageId);
+          // Delete old loading message safely
+          await safeDeleteMessage(global.bot, chatId, loadingMessageId, 'api error slot check');
         } catch (e) {
           // Ignore send/delete error
         }
@@ -418,14 +432,15 @@ const checkSlotKosong = async (chatId) => {
               parse_mode: 'HTML'
             });
             
-            // Delete old loading message AFTER new message sent
-            await global.bot.deleteMessage(chatId, loadingMessageId);
-            
-            // Update loadingMessageId untuk step berikutnya
+            // Update loadingMessageId untuk step berikutnya SEBELUM delete
             state.loadingMessageId = retryMsg.message_id;
             stateBekasan.set(chatId, state);
+            
+            // Delete old loading message safely
+            await safeDeleteMessage(global.bot, chatId, loadingMessageId, 'retry slot check');
           } catch (e) {
-            // Ignore send/delete error
+            // Ignore send/delete error - tapi tetap update state jika ada retry message
+            console.log('Retry message handling error (ignored):', e.message);
           }
         }
 
@@ -488,8 +503,8 @@ const checkSlotKosong = async (chatId) => {
           // Send new slot info message FIRST
           await global.bot.sendMessage(chatId, teksKosong, { parse_mode: 'HTML' });
           
-          // Delete old loading/retry message AFTER new message sent
-          await global.bot.deleteMessage(chatId, loadingMessageId);
+          // Delete old loading/retry message safely
+          await safeDeleteMessage(global.bot, chatId, loadingMessageId, 'no slots available');
         } catch (e) {
           // Ignore send/delete error
         }
@@ -519,13 +534,7 @@ const checkSlotKosong = async (chatId) => {
     await global.bot.sendMessage(chatId, teksInput, { parse_mode: 'HTML' });
 
     // Hapus pesan loading setelah pesan input nomor terkirim
-    if (loadingMessageId) {
-      try {
-        await global.bot.deleteMessage(chatId, loadingMessageId);
-      } catch (e) {
-        console.error('Error deleting loading message:', e);
-      }
-    }
+    await safeDeleteMessage(global.bot, chatId, loadingMessageId, 'input nomor ready');
 
     // Set timer 30 detik untuk auto cancel jika tidak ada input
     const timeoutId = setTimeout(() => {
@@ -560,8 +569,8 @@ const checkSlotKosong = async (chatId) => {
         // Send new error message FIRST
         await global.bot.sendMessage(chatId, teksError, { parse_mode: 'HTML' });
         
-        // Delete old loading message AFTER new message sent
-        await global.bot.deleteMessage(chatId, loadingMessageId);
+        // Delete old loading message safely
+        await safeDeleteMessage(global.bot, chatId, loadingMessageId, 'slot check error');
       } catch (e) {
         // Ignore send/delete error
       }
@@ -645,16 +654,7 @@ module.exports = (bot) => {
     const { nomor_slot, kategori, loadingMessageId } = state;
     
     // Hapus message input nomor jika ada loadingMessageId
-    if (loadingMessageId) {
-      try {
-        await bot.deleteMessage(chatId, loadingMessageId);
-      } catch (e) {
-        // Jangan log error jika message sudah tidak ada
-        if (!e.message.includes('message to delete not found')) {
-          console.error('Error deleting input message:', e.message);
-        }
-      }
-    }
+    await safeDeleteMessage(bot, chatId, loadingMessageId, 'before processing');
     
     // Simpan waktu mulai untuk validasi
     const startTime = Date.now();
