@@ -479,12 +479,18 @@ const checkSlotKosong = async (chatId) => {
       if (typeof s["sisa-add"] === 'string') s["sisa-add"] = parseInt(s["sisa-add"]);
     });
 
-    // Prioritaskan slot kosong dengan sisa-add === 1
-    const kosongSisa1 = slotList.filter(s => (!s.nomor || s.nomor === "") && s["sisa-add"] === 1);
-    // Slot kosong lain (sisa-add bukan 1)
-    const kosongLain = slotList.filter(s => (!s.nomor || s.nomor === "") && s["sisa-add"] !== 1);
-    // Gabungkan, yang sisa-add 1 di depan
-    const kosong = [...kosongSisa1, ...kosongLain];
+    // Filter slot kosong dan mengabaikan sisa-add 0
+    const slotKosongValid = slotList.filter(s => 
+      (!s.nomor || s.nomor === "") && s["sisa-add"] > 0
+    );
+
+    // Prioritaskan berdasarkan sisa-add: 3 -> 2 -> 1 (mengabaikan 0)
+    const kosongSisa3 = slotKosongValid.filter(s => s["sisa-add"] === 3);
+    const kosongSisa2 = slotKosongValid.filter(s => s["sisa-add"] === 2);
+    const kosongSisa1 = slotKosongValid.filter(s => s["sisa-add"] === 1);
+    
+    // Gabungkan dengan prioritas: 3 -> 2 -> 1
+    const kosong = [...kosongSisa3, ...kosongSisa2, ...kosongSisa1];
 
     // Debug urutan slot yang dipilih
     // console.log('Urutan slot kosong:', kosong.map(s => ({ slot: s["slot-ke"], sisa: s["sisa-add"] })));
@@ -519,7 +525,7 @@ const checkSlotKosong = async (chatId) => {
       return;
     }
 
-    // AUTO SELECT SLOT KOSONG PRIORITAS SISA-ADD 1
+    // AUTO SELECT SLOT KOSONG PRIORITAS SISA-ADD 3 -> 2 -> 1 (MENGABAIKAN 0)
     const selectedSlot = kosong[0]["slot-ke"];
     
     // Update state dengan slot yang dipilih otomatis
