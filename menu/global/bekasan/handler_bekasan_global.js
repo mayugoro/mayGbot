@@ -7,6 +7,47 @@ const axios = require('axios');
 // State management untuk bekasan global
 const stateBekasanGlobal = new Map();
 
+// === HELPER FUNCTION: EXTRACT ERROR MESSAGE FROM API MSG ===
+function extractErrorMessage(msg) {
+  if (!msg) return '';
+  
+  // Pattern untuk mencari bagian error dari msg API
+  // Fokus pada bagian error utama saja, potong pada kata kunci tertentu
+  const patterns = [
+    /code = ([^.]+\.\.)/i,           // Pattern: "code = [error message].." - ambil sampai ".." pertama
+    /code = ([^.]+)/i,               // Pattern: "code = [error message]" - jika tidak ada ".."
+    /coba lagi ([^.]+\.\.)/i,        // Pattern: "coba lagi [error message].."
+    /kesalahan\.\. ([^.]+\.\.)/i,    // Pattern: "kesalahan.. [error message].."
+    /Gagal, ([^.]+\.\.)/i            // Pattern: "Gagal, [error message].."
+  ];
+  
+  for (const pattern of patterns) {
+    const match = msg.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  
+  // Jika tidak ada pattern yang cocok, coba ambil bagian setelah "Gagal, "
+  const gagalMatch = msg.match(/Gagal,\s*(.+)/i);
+  if (gagalMatch && gagalMatch[1]) {
+    // Ambil sampai ".." pertama
+    let errorMsg = gagalMatch[1];
+    const dotIndex = errorMsg.indexOf('..');
+    if (dotIndex !== -1) {
+      errorMsg = errorMsg.substring(0, dotIndex + 2); // Include the ".."
+    } else {
+      // Jika tidak ada "..", ambil sampai " Saldo" atau "@" (timestamp)
+      errorMsg = errorMsg.split(' Saldo')[0];
+      errorMsg = errorMsg.split(' @')[0];
+    }
+    return errorMsg.trim();
+  }
+  
+  // Fallback: return kosong jika tidak bisa extract
+  return '';
+}
+
 // === HELPER FUNCTION: FORMAT NOMOR TO 628 FORMAT ===
 function formatNomorTo628(nomor) {
   // Remove all non-digit characters
@@ -332,9 +373,11 @@ module.exports = (bot) => {
       if (response.data && response.data.status) {
         const status = response.data.status.toLowerCase();
         const message = response.data.message || '';
+        const msg = response.data.msg || ''; // Ambil field msg untuk detail error
         
         console.log('API Status:', status);
         console.log('API Message:', message);
+        console.log('API Msg:', msg);
         
         if (status === 'success' || status === 'sukses') {
           // ✅ SUKSES - Ambil saldo SEBELUM potong untuk history
@@ -475,8 +518,12 @@ module.exports = (bot) => {
           // Ambil saldo SETELAH dipotong biaya gagal untuk display
           const saldoAkhir = await getUserSaldo(userId);
           
+          // Gunakan msg jika ada, fallback ke message
+          const extractedError = extractErrorMessage(msg);
+          const errorDetail = extractedError || message || 'Transaksi gagal';
+          
           teksHasil = `❌ Gagal !!\n\n` +
-            `<code>Detail         : ${message}\n` +
+            `<code>Detail         : ${errorDetail}\n` +
             `Jenis paket    : ${tipe.toUpperCase()} ${hari}H\n` +
             `Nomor          : ${normalizedNumber}\n` +
             `TRX ID         : ${trxId}\n` +
