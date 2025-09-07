@@ -15,46 +15,39 @@ module.exports = (bot) => {
         const bulananPath = path.join(__dirname, '../../../menu/bulanan');
         
         // File yang akan direname
-        const bekasamOld = path.join(bekasamPath, 'handler_bekasan.js');
-        const bekasamNew = path.join(bekasamPath, 'handler_bekasan_khfy.js');
-        const bekasamHide = path.join(bekasamPath, 'handler_bekasan_hide.js');
-        const bekasamTarget = path.join(bekasamPath, 'handler_bekasan.js');
+        // KONSEP: handler_bekasan.js ↔ handler_bekasan_old.js (swap)
+        // KONSEP: handler_bulanan.js ↔ handler_bulanan_old.js (swap)
         
-        const bulananOld = path.join(bulananPath, 'handler_bulanan.js');
-        const bulananNew = path.join(bulananPath, 'handler_bulanan_khfy.js');
-        const bulananHide = path.join(bulananPath, 'handler_bulanan_hide.js');
-        const bulananTarget = path.join(bulananPath, 'handler_bulanan.js');
-
         let messages = [];
         
         // === SWITCH BEKASAN HANDLER ===
-        if (fs.existsSync(bekasamOld)) {
-          // Backup current handler as KHFY version
-          fs.renameSync(bekasamOld, bekasamNew);
-          messages.push('✅ Backup handler_bekasan.js → handler_bekasan_khfy.js');
-        }
+        const bekasamActive = path.join(bekasamPath, 'handler_bekasan.js');
+        const bekasamHide = path.join(bekasamPath, 'handler_bekasan_old.js');
+        const bekasamTemp = path.join(bekasamPath, 'handler_bekasan_temp.js');
         
-        if (fs.existsSync(bekasamHide)) {
-          // Activate HIDE handler
-          fs.renameSync(bekasamHide, bekasamTarget);
-          messages.push('⚪ Aktivasi handler_bekasan_hide.js → handler_bekasan.js');
+        if (fs.existsSync(bekasamActive) && fs.existsSync(bekasamHide)) {
+          // Swap files: active ↔ old
+          fs.renameSync(bekasamActive, bekasamTemp);    // active → temp
+          fs.renameSync(bekasamHide, bekasamActive);     // old → active (HIDE menjadi aktif)
+          fs.renameSync(bekasamTemp, bekasamHide);       // temp → old (KHFY jadi backup)
+          messages.push('✅ Bekasan: HIDE ↔ KHFY (swapped)');
         } else {
-          messages.push('⚠️ File handler_bekasan_hide.js tidak ditemukan');
+          messages.push('⚠️ File bekasan tidak lengkap untuk swap');
         }
 
         // === SWITCH BULANAN HANDLER ===
-        if (fs.existsSync(bulananOld)) {
-          // Backup current handler as KHFY version
-          fs.renameSync(bulananOld, bulananNew);
-          messages.push('✅ Backup handler_bulanan.js → handler_bulanan_khfy.js');
-        }
+        const bulananActive = path.join(bulananPath, 'handler_bulanan.js');
+        const bulananHide = path.join(bulananPath, 'handler_bulanan_old.js');
+        const bulananTemp = path.join(bulananPath, 'handler_bulanan_temp.js');
         
-        if (fs.existsSync(bulananHide)) {
-          // Activate HIDE handler
-          fs.renameSync(bulananHide, bulananTarget);
-          messages.push('⚪ Aktivasi handler_bulanan_hide.js → handler_bulanan.js');
+        if (fs.existsSync(bulananActive) && fs.existsSync(bulananHide)) {
+          // Swap files: active ↔ old
+          fs.renameSync(bulananActive, bulananTemp);    // active → temp
+          fs.renameSync(bulananHide, bulananActive);     // old → active (HIDE menjadi aktif)
+          fs.renameSync(bulananTemp, bulananHide);       // temp → old (KHFY jadi backup)
+          messages.push('✅ Bulanan: HIDE ↔ KHFY (swapped)');
         } else {
-          messages.push('⚠️ File handler_bulanan_hide.js tidak ditemukan');
+          messages.push('⚠️ File bulanan tidak lengkap untuk swap');
         }
 
         // Send result

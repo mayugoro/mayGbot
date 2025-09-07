@@ -67,42 +67,47 @@ module.exports = (bot) => {
         const bekasamPath = path.join(__dirname, '../../menu/bekasan');
         const bulananPath = path.join(__dirname, '../../menu/bulanan');
         
-        // Check file existence
+        // Check file existence untuk swap system
         const bekasamActive = fs.existsSync(path.join(bekasamPath, 'handler_bekasan.js'));
-        const bekasamKhfy = fs.existsSync(path.join(bekasamPath, 'handler_bekasan_khfy.js'));
-        const bekasamHide = fs.existsSync(path.join(bekasamPath, 'handler_bekasan_hide.js'));
+        const bekasamOld = fs.existsSync(path.join(bekasamPath, 'handler_bekasan_old.js'));
         
         const bulananActive = fs.existsSync(path.join(bulananPath, 'handler_bulanan.js'));
-        const bulananKhfy = fs.existsSync(path.join(bulananPath, 'handler_bulanan_khfy.js'));
-        const bulananHide = fs.existsSync(path.join(bulananPath, 'handler_bulanan_hide.js'));
+        const bulananOld = fs.existsSync(path.join(bulananPath, 'handler_bulanan_old.js'));
 
-        // Determine active API
+        // Determine active API by reading file content
         let activeAPI = 'UNKNOWN';
-        if (bekasamActive && bulananActive) {
-          // Try to determine from available backup files
-          if (bekasamKhfy && bulananKhfy) {
-            activeAPI = 'HIDE API ⚪';
-          } else if (bekasamHide && bulananHide) {
-            activeAPI = 'KHFY API 🟢';
-          } else {
-            activeAPI = 'TIDAK DIKETAHUI ❓';
+        let apiType = '';
+        
+        try {
+          if (bekasamActive) {
+            const content = fs.readFileSync(path.join(bekasamPath, 'handler_bekasan.js'), 'utf8');
+            if (content.includes('api.hidepulsa.com')) {
+              activeAPI = 'HIDE API ⚪';
+              apiType = 'HIDE';
+            } else if (content.includes('khairilpedia.com')) {
+              activeAPI = 'KHFY API 🟢';
+              apiType = 'KHFY';
+            } else {
+              activeAPI = 'TIDAK DIKETAHUI ❓';
+            }
           }
+        } catch (error) {
+          activeAPI = 'ERROR READING FILE ❌';
         }
 
         const content = `❗ <b>STATUS HANDLER FILES</b>\n\n` +
           `🔄 <b>API Aktif:</b> ${activeAPI}\n\n` +
           `📁 <b>BEKASAN HANDLER:</b>\n` +
           `${bekasamActive ? '✅' : '❌'} handler_bekasan.js (AKTIF)\n` +
-          `${bekasamKhfy ? '📂' : '❌'} handler_bekasan_khfy.js (BACKUP)\n` +
-          `${bekasamHide ? '📂' : '❌'} handler_bekasan_hide.js (BACKUP)\n\n` +
+          `${bekasamOld ? '📂' : '❌'} handler_bekasan_old.js (BACKUP)\n\n` +
           `📁 <b>BULANAN HANDLER:</b>\n` +
           `${bulananActive ? '✅' : '❌'} handler_bulanan.js (AKTIF)\n` +
-          `${bulananKhfy ? '📂' : '❌'} handler_bulanan_khfy.js (BACKUP)\n` +
-          `${bulananHide ? '📂' : '❌'} handler_bulanan_hide.js (BACKUP)\n\n` +
+          `${bulananOld ? '📂' : '❌'} handler_bulanan_old.js (BACKUP)\n\n` +
           `💡 <b>Keterangan:</b>\n` +
           `✅ File aktif digunakan\n` +
           `📂 File backup tersedia\n` +
-          `❌ File tidak ada`;
+          `❌ File tidak ada\n\n` +
+          `🔄 <b>Swap System:</b> File handler_xxx.js ↔ handler_xxx_old.js`;
 
         if (message.caption) {
           // Message has photo, edit caption
