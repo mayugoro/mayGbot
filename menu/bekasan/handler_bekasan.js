@@ -439,7 +439,23 @@ const checkSlotKosong = async (chatId) => {
     const additionalMembers = data?.member_info?.additional_members || [];
     const allSlots = [...slotList, ...additionalMembers];
     
-    const kosong = allSlots.filter(s => !s.msisdn || s.msisdn === "");
+    // Pastikan sisa-add bertipe number (sama seperti handler_bekasan_old.js)
+    allSlots.forEach(s => { 
+      if (typeof s["sisa-add"] === 'string') s["sisa-add"] = parseInt(s["sisa-add"]);
+    });
+    
+    // Filter slot kosong
+    const kosongAll = allSlots.filter(s => !s.msisdn || s.msisdn === "");
+    
+    // Prioritaskan slot kosong dengan sisa-add === 1 (sama seperti handler_bekasan_old.js)
+    const kosongSisa1 = kosongAll.filter(s => s["sisa-add"] === 1);
+    // Slot kosong lain (sisa-add bukan 1)
+    const kosongLain = kosongAll.filter(s => s["sisa-add"] !== 1);
+    // Gabungkan, yang sisa-add 1 di depan
+    const kosong = [...kosongSisa1, ...kosongLain];
+
+    // Debug urutan slot yang dipilih (sama seperti handler_bekasan_old.js)
+    // console.log('Urutan slot kosong:', kosong.map(s => ({ slot: s.slot_id, sisa: s["sisa-add"] })));
 
     if (!kosong.length) {
       // RELEASE LOCK karena tidak ada slot kosong
@@ -468,7 +484,7 @@ const checkSlotKosong = async (chatId) => {
       return;
     }
 
-    // AUTO SELECT SLOT KOSONG PERTAMA (menggunakan field 'slot_id' dari API1)
+    // AUTO SELECT SLOT KOSONG PRIORITAS SISA-ADD 1 (sama seperti handler_bekasan_old.js)
     const selectedSlot = kosong[0].slot_id;
     const selectedSlotData = kosong[0]; // SIMPAN DATA LENGKAP SLOT untuk SET_KUBER nanti
     
