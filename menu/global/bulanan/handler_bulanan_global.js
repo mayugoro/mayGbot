@@ -469,7 +469,7 @@ module.exports = (bot) => {
             
         } else {
           // ❌ GAGAL LAINNYA - Potong biaya gagal
-          const biayaGagal = await getKonfigurasi('biaya_gagal') || '1000';
+          const biayaGagal = await getKonfigurasi('harga_gagal') || '100';
           const biayaGagalValue = parseInt(biayaGagal);
           const { kurangiSaldo } = require('../../../db');
           await kurangiSaldo(userId, biayaGagalValue);
@@ -514,7 +514,7 @@ module.exports = (bot) => {
         }
       } else {
         // Response tidak sesuai format
-        const biayaGagal = await getKonfigurasi('biaya_gagal') || '1000';
+        const biayaGagal = await getKonfigurasi('harga_gagal') || '100';
         const biayaGagalValue = parseInt(biayaGagal);
         await potongSaldo(userId, biayaGagalValue, `BULANAN GLOBAL ${paket.toUpperCase()} (ERROR)`);
         console.log('❌ Saldo dipotong biaya gagal (format error):', biayaGagalValue);
@@ -589,7 +589,7 @@ module.exports = (bot) => {
       
       // Error handling dengan biaya gagal
       const { getKonfigurasi, potongSaldo } = require('../../../db');
-      const biayaGagal = await getKonfigurasi('biaya_gagal') || '1000';
+      const biayaGagal = await getKonfigurasi('harga_gagal') || '100';
       const biayaGagalValue = parseInt(biayaGagal);
 
       let teksError = '';

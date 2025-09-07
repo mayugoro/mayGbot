@@ -467,7 +467,7 @@ module.exports = (bot) => {
           const saldoAwal = await getUserSaldo(userId);
           
           // Potong biaya gagal
-          const biayaGagal = await getKonfigurasi('biaya_gagal') || '1000';
+          const biayaGagal = await getKonfigurasi('harga_gagal') || '100';
           const biayaGagalValue = parseInt(biayaGagal);
           await kurangiSaldo(userId, biayaGagalValue);
           console.log('❌ Saldo dipotong biaya gagal:', biayaGagalValue);
@@ -511,7 +511,7 @@ module.exports = (bot) => {
         // Response tidak sesuai format - Ambil saldo SEBELUM potong untuk history
         const saldoAwal = await getUserSaldo(userId);
         
-        const biayaGagal = await getKonfigurasi('biaya_gagal') || '1000';
+        const biayaGagal = await getKonfigurasi('harga_gagal') || '100';
         const biayaGagalValue = parseInt(biayaGagal);
         await kurangiSaldo(userId, biayaGagalValue);
         console.log('❌ Saldo dipotong biaya gagal (format error):', biayaGagalValue);
@@ -627,7 +627,7 @@ module.exports = (bot) => {
         // Error lainnya, potong biaya gagal
         saldoAwal = await getUserSaldo(userId);
         
-        const biayaGagal = await getKonfigurasi('biaya_gagal') || '1000';
+        const biayaGagal = await getKonfigurasi('harga_gagal') || '100';
         hargaPotong = parseInt(biayaGagal);
         await kurangiSaldo(userId, hargaPotong);
         saldoAkhir = await getUserSaldo(userId);
