@@ -1,204 +1,138 @@
 // === KEYBOARD MENU SWITCH API ===
 const SWITCH_API_KEYBOARD = [
   [
-    { text: '⚪ SWITCH HIDE', callback_data: 'switch_hide_menu' },
-    { text: '🟢 SWITCH KHFY', callback_data: 'switch_khfy_menu' }
+    { text: '⚪ SWITCH KE HIDE', callback_data: 'switch_hide_menu' },
+    { text: '🟢 SWITCH KE KHFY', callback_data: 'switch_khfy_menu' }
   ],
   [
-    { text: '❗ STATUS API', callback_data: 'status_all_api' }
+    { text: '❗ STATUS HANDLER', callback_data: 'status_all_handler' }
   ],
   [ 
     { text: '🔙 KEMBALI', callback_data: 'menu_admin' }
   ]
 ];
 
-// Template konten menu
-const SWITCH_API_CONTENT = '♻️ <b>SWITCH API</b>\n\nPilih API yang ingin di-switch:';
-
-// Storage untuk status API states
-const statusApiStates = new Map();
+const fs = require('fs');
+const path = require('path');
 
 module.exports = (bot) => {
-  bot.on('callback_query', async (query) => {
-    const { data, id, from, message } = query;
+  // Handle menu switch API
+  bot.on('callback_query', async (callbackQuery) => {
+    const { data, from, message } = callbackQuery;
     const chatId = message?.chat?.id;
-    const msgId = message?.message_id;
+    const userId = from.id;
 
-    // === PENGECEKAN ADMIN UNTUK SEMUA FITUR SWITCH API ===
-    const switchCallbacks = [
-      'switch_api', 
-      'switch_khfy_menu', 
-      'switch_hide_menu',
-      'status_all_api',
-      // Callback dari api_khfy.js
-      'switch_khfy_bekasan',
-      'switch_khfy_bulanan', 
-      'switch_khfy_both',
-      // Callback dari api_hide.js
-      'switch_hide_bekasan',
-      'switch_hide_bulanan',
-      'switch_hide_both'
-    ];
-    
-    if (switchCallbacks.includes(data)) {
-      if (from.id.toString() !== process.env.ADMIN_ID) {
-        return bot.answerCallbackQuery(id, {
-          text: 'ente mau ngapain wak🗿',
-          show_alert: true
-        });
-      }
-    }
-
-    // === MENU SWITCH API ===
-    if (data === 'switch_api') {
-      
-      const keyboard = SWITCH_API_KEYBOARD;
-      const content = SWITCH_API_CONTENT;
-
-      // Cek apakah message memiliki caption (dari photo message)
-      if (message.caption) {
-        // Cek apakah caption dan keyboard sudah sama
-        if (message.caption === content && 
-            message.reply_markup?.inline_keyboard && 
-            JSON.stringify(message.reply_markup.inline_keyboard) === JSON.stringify(keyboard)) {
-          return bot.answerCallbackQuery(id, {
-            text: '✅ Menu SWITCH API sudah aktif.',
-            show_alert: false
-          });
-        }
-
-        try {
-          await bot.editMessageCaption(content, {
-            chat_id: chatId,
-            message_id: msgId,
-            parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: keyboard }
-          });
-        } catch (error) {
-          if (error.message.includes('message is not modified')) {
-            return bot.answerCallbackQuery(id, {
-              text: '✅ Menu SWITCH API sudah aktif.',
-              show_alert: false
-            });
+    if (data === 'switch_api_menu') {
+      await bot.editMessageText(
+        `🔄 <b>SWITCH API HANDLER</b>\n\n` +
+        `🟢 <b>KHFY API:</b> Menggunakan API KHFY untuk semua operasi\n` +
+        `⚪ <b>HIDE API:</b> Menggunakan API HIDE untuk semua operasi\n\n` +
+        `💡 <b>Info:</b> Switch akan mengganti handler aktif dan membutuhkan restart bot`,
+        {
+          chat_id: chatId,
+          message_id: message.message_id,
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: SWITCH_API_KEYBOARD
           }
-          // Error dihandle secara silent
         }
-      } else {
-        // Cek apakah text dan keyboard sudah sama
-        if (message.text === content && 
-            message.reply_markup?.inline_keyboard && 
-            JSON.stringify(message.reply_markup.inline_keyboard) === JSON.stringify(keyboard)) {
-          return bot.answerCallbackQuery(id, {
-            text: '✅ Menu SWITCH API sudah aktif.',
-            show_alert: false
-          });
-        }
+      );
 
-        try {
-          await bot.editMessageText(content, {
-            chat_id: chatId,
-            message_id: msgId,
-            parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: keyboard }
-          });
-        } catch (error) {
-          if (error.message.includes('message is not modified')) {
-            return bot.answerCallbackQuery(id, {
-              text: '✅ Menu SWITCH API sudah aktif.',
-              show_alert: false
-            });
-          }
-          // Error dihandle secara silent
-        }
-      }
-
-      await bot.answerCallbackQuery(id);
-      return;
-    }
-
-    // === STATUS ALL API ===
-    if (data === 'status_all_api') {
       try {
-        const { getKonfigurasi } = require('../../db');
-        
-        const bulananAPI = await getKonfigurasi('api_bulanan') || 'API1';
-        const bekasanAPI = await getKonfigurasi('api_bekasan') || 'API2';
-        
-        // Set state untuk menunggu exit command
-        statusApiStates.set(chatId, {
-          userId: from.id,
-          active: true
-        });
-
-        const statusText = 
-          '📊 <b>DATA PENGGUNAAN API</b>\n\n' +
-          `🌙 <b>BULANAN</b> [${bulananAPI === 'API1' ? '🟢KHFY' : '⚪HIDE'}]\n` +
-          `⚡ <b>BEKASAN</b> [${bekasanAPI === 'API1' ? '🟢KHFY' : '⚪HIDE'}]\n\n` +
-          '<i>Ketik "exit" untuk keluar dari tampilan ini.</i>';
-
-        const statusMsg = await bot.sendMessage(chatId, statusText, { parse_mode: 'HTML' });
-        
-        // Simpan message ID untuk bisa dihapus nanti
-        const currentState = statusApiStates.get(chatId);
-        if (currentState) {
-          currentState.messageId = statusMsg.message_id;
-          statusApiStates.set(chatId, currentState);
-        }
-
-        await bot.answerCallbackQuery(id);
+        await bot.answerCallbackQuery(callbackQuery.id);
       } catch (error) {
-        await bot.answerCallbackQuery(id, {
-          text: '❌ Error saat mengambil status API',
-          show_alert: true
-        });
+        // Ignore callback answer errors
       }
-      return;
     }
-  });
 
-  // Handle text input untuk status API exit
-  bot.on('message', async (msg) => {
-    const chatId = msg.chat.id;
-    const state = statusApiStates.get(chatId);
+    // Status checker untuk semua handler
+    if (data === 'status_all_handler') {
+      try {
+        const bekasamPath = path.join(__dirname, '../../menu/bekasan');
+        const bulananPath = path.join(__dirname, '../../menu/bulanan');
+        
+        // Check file existence
+        const bekasamActive = fs.existsSync(path.join(bekasamPath, 'handler_bekasan.js'));
+        const bekasamKhfy = fs.existsSync(path.join(bekasamPath, 'handler_bekasan_khfy.js'));
+        const bekasamHide = fs.existsSync(path.join(bekasamPath, 'handler_bekasan_hide.js'));
+        
+        const bulananActive = fs.existsSync(path.join(bulananPath, 'handler_bulanan.js'));
+        const bulananKhfy = fs.existsSync(path.join(bulananPath, 'handler_bulanan_khfy.js'));
+        const bulananHide = fs.existsSync(path.join(bulananPath, 'handler_bulanan_hide.js'));
 
-    if (!state || !state.active || state.userId !== msg.from.id) return;
-
-    try {
-      // Handle exit command - bersihkan semua tanpa pesan
-      if (['exit', 'EXIT', 'Exit'].includes(msg.text?.trim())) {
-        // Hapus pesan status API dan pesan user
-        if (state.messageId) {
-          try {
-            await bot.deleteMessage(chatId, state.messageId);
-          } catch (e) {
-            // Ignore delete error
+        // Determine active API
+        let activeAPI = 'UNKNOWN';
+        if (bekasamActive && bulananActive) {
+          // Try to determine from available backup files
+          if (bekasamKhfy && bulananKhfy) {
+            activeAPI = 'HIDE API ⚪';
+          } else if (bekasamHide && bulananHide) {
+            activeAPI = 'KHFY API 🟢';
+          } else {
+            activeAPI = 'TIDAK DIKETAHUI ❓';
           }
         }
-        try {
-          await bot.deleteMessage(chatId, msg.message_id);
-        } catch (e) {
-          // Ignore delete error
-        }
-        
-        statusApiStates.delete(chatId);
-        return;
+
+        await bot.editMessageText(
+          `❗ <b>STATUS HANDLER FILES</b>\n\n` +
+          `🔄 <b>API Aktif:</b> ${activeAPI}\n\n` +
+          `📁 <b>BEKASAN HANDLER:</b>\n` +
+          `${bekasamActive ? '✅' : '❌'} handler_bekasan.js (AKTIF)\n` +
+          `${bekasamKhfy ? '📂' : '❌'} handler_bekasan_khfy.js (BACKUP)\n` +
+          `${bekasamHide ? '📂' : '❌'} handler_bekasan_hide.js (BACKUP)\n\n` +
+          `📁 <b>BULANAN HANDLER:</b>\n` +
+          `${bulananActive ? '✅' : '❌'} handler_bulanan.js (AKTIF)\n` +
+          `${bulananKhfy ? '📂' : '❌'} handler_bulanan_khfy.js (BACKUP)\n` +
+          `${bulananHide ? '📂' : '❌'} handler_bulanan_hide.js (BACKUP)\n\n` +
+          `💡 <b>Keterangan:</b>\n` +
+          `✅ File aktif digunakan\n` +
+          `📂 File backup tersedia\n` +
+          `❌ File tidak ada`,
+          {
+            chat_id: chatId,
+            message_id: message.message_id,
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔙 KEMBALI', callback_data: 'switch_api_menu' }]
+              ]
+            }
+          }
+        );
+
+      } catch (error) {
+        await bot.editMessageText(
+          `❌ <b>ERROR STATUS CHECK</b>\n\n${error.message}`,
+          {
+            chat_id: chatId,
+            message_id: message.message_id,
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔙 KEMBALI', callback_data: 'switch_api_menu' }]
+              ]
+            }
+          }
+        );
       }
-    } catch (error) {
-      console.error('Error handling status API exit:', error.message);
-      // Clean up state
-      statusApiStates.delete(chatId);
+
+      try {
+        await bot.answerCallbackQuery(callbackQuery.id);
+      } catch (error) {
+        // Ignore callback answer errors
+      }
     }
   });
 
-  // Load semua sub-tools SWITCH API
+  // Load semua sub-tools SWITCH handler
   try {
-    require('./switch_api/api_khfy')(bot);
-    require('./switch_api/api_hide')(bot);
+    require('./switch_handler/use_khfy_handler')(bot);
+    require('./switch_handler/use_hide_handler')(bot);
   } catch (error) {
     // Error dihandle secara silent - file akan dibuat
     console.error('Error loading switch API modules:', error.message);
-    console.log('📁 Pastikan folder switch_api/ dan file-filenya sudah dibuat:');
-    console.log('   - ./switch_api/api_khfy.js');
-    console.log('   - ./switch_api/api_hide.js');
+    console.log('📁 Pastikan folder switch_handler/ dan file-filenya sudah dibuat:');
+    console.log('   - ./switch_handler/use_khfy_handler.js');
+    console.log('   - ./switch_handler/use_hide_handler.js');
   }
 };

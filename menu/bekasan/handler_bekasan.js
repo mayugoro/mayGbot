@@ -1,4 +1,4 @@
-// akan menggunakan full api1
+// Default use API FROM KHFY STORE
 
 const axios = require('axios');
 const { freezeStok } = require('../../db');

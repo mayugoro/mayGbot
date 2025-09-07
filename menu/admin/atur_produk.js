@@ -155,6 +155,53 @@ module.exports = (bot) => {
       return;
     }
 
+    // === SWITCH API REDIRECT ===
+    if (data === 'switch_api') {
+      if (from.id.toString() !== process.env.ADMIN_ID) {
+        return bot.answerCallbackQuery(id, {
+          text: 'ente mau ngapain wak🗿',
+          show_alert: true
+        });
+      }
+      
+      // Redirect ke switch_api_menu handler di switch.js
+      // Simulate callback dengan data switch_api_menu
+      const simulatedCallback = {
+        ...query,
+        data: 'switch_api_menu'
+      };
+      
+      // Panggil handler switch_api_menu secara langsung
+      await bot.editMessageText(
+        `🔄 <b>SWITCH API HANDLER</b>\n\n` +
+        `🟢 <b>KHFY API:</b> Menggunakan API KHFY untuk semua operasi\n` +
+        `⚪ <b>HIDE API:</b> Menggunakan API HIDE untuk semua operasi\n\n` +
+        `💡 <b>Info:</b> Switch akan mengganti handler aktif dan membutuhkan restart bot`,
+        {
+          chat_id: chatId,
+          message_id: msgId,
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '⚪ SWITCH KE HIDE', callback_data: 'switch_hide_menu' },
+                { text: '🟢 SWITCH KE KHFY', callback_data: 'switch_khfy_menu' }
+              ],
+              [
+                { text: '❗ STATUS HANDLER', callback_data: 'status_all_handler' }
+              ],
+              [ 
+                { text: '🔙 KEMBALI', callback_data: 'menu_admin' }
+              ]
+            ]
+          }
+        }
+      );
+
+      await bot.answerCallbackQuery(id);
+      return;
+    }
+
     // === ATUR PRODUK MENU ===
     if (data === 'atur_produk') {
       if (from.id.toString() !== process.env.ADMIN_ID) {
