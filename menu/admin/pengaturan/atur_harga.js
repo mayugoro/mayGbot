@@ -65,28 +65,40 @@ const HARGA_GLOBAL_BEKASAN_KEYBOARD = [
 // Sub-keyboards untuk bekasan global per tipe
 const HARGA_GLOBAL_BEKASAN_L_KEYBOARD = [
   [{ text: 'BEKASAN GLOBAL L 3H', callback_data: 'edit_harga_bekasan_global_l_3h' }],
-  [{ text: 'BEKASAN GLOBAL L 4H', callback_data: 'edit_harga_bekasan_global_l_4h' }],
   [{ text: 'BEKASAN GLOBAL L 5H', callback_data: 'edit_harga_bekasan_global_l_5h' }],
-  [{ text: 'BEKASAN GLOBAL L 6H', callback_data: 'edit_harga_bekasan_global_l_6h' }],
   [{ text: 'BEKASAN GLOBAL L 7H', callback_data: 'edit_harga_bekasan_global_l_7h' }],
+  [{ text: 'BEKASAN GLOBAL L 9H', callback_data: 'edit_harga_bekasan_global_l_9h' }],
+  [{ text: 'BEKASAN GLOBAL L 11H', callback_data: 'edit_harga_bekasan_global_l_11h' }],
+  [{ text: 'BEKASAN GLOBAL L 13H', callback_data: 'edit_harga_bekasan_global_l_13h' }],
+  [{ text: 'BEKASAN GLOBAL L 15H', callback_data: 'edit_harga_bekasan_global_l_15h' }],
+  [{ text: 'BEKASAN GLOBAL L 17H', callback_data: 'edit_harga_bekasan_global_l_17h' }],
+  [{ text: 'BEKASAN GLOBAL L 19H', callback_data: 'edit_harga_bekasan_global_l_19h' }],
   [{ text: '🔙 KEMBALI', callback_data: 'harga_global_bekasan' }]
 ];
 
 const HARGA_GLOBAL_BEKASAN_XL_KEYBOARD = [
   [{ text: 'BEKASAN GLOBAL XL 3H', callback_data: 'edit_harga_bekasan_global_xl_3h' }],
-  [{ text: 'BEKASAN GLOBAL XL 4H', callback_data: 'edit_harga_bekasan_global_xl_4h' }],
   [{ text: 'BEKASAN GLOBAL XL 5H', callback_data: 'edit_harga_bekasan_global_xl_5h' }],
-  [{ text: 'BEKASAN GLOBAL XL 6H', callback_data: 'edit_harga_bekasan_global_xl_6h' }],
   [{ text: 'BEKASAN GLOBAL XL 7H', callback_data: 'edit_harga_bekasan_global_xl_7h' }],
+  [{ text: 'BEKASAN GLOBAL XL 9H', callback_data: 'edit_harga_bekasan_global_xl_9h' }],
+  [{ text: 'BEKASAN GLOBAL XL 11H', callback_data: 'edit_harga_bekasan_global_xl_11h' }],
+  [{ text: 'BEKASAN GLOBAL XL 13H', callback_data: 'edit_harga_bekasan_global_xl_13h' }],
+  [{ text: 'BEKASAN GLOBAL XL 15H', callback_data: 'edit_harga_bekasan_global_xl_15h' }],
+  [{ text: 'BEKASAN GLOBAL XL 17H', callback_data: 'edit_harga_bekasan_global_xl_17h' }],
+  [{ text: 'BEKASAN GLOBAL XL 19H', callback_data: 'edit_harga_bekasan_global_xl_19h' }],
   [{ text: '🔙 KEMBALI', callback_data: 'harga_global_bekasan' }]
 ];
 
 const HARGA_GLOBAL_BEKASAN_XXL_KEYBOARD = [
   [{ text: 'BEKASAN GLOBAL XXL 3H', callback_data: 'edit_harga_bekasan_global_xxl_3h' }],
-  [{ text: 'BEKASAN GLOBAL XXL 4H', callback_data: 'edit_harga_bekasan_global_xxl_4h' }],
   [{ text: 'BEKASAN GLOBAL XXL 5H', callback_data: 'edit_harga_bekasan_global_xxl_5h' }],
-  [{ text: 'BEKASAN GLOBAL XXL 6H', callback_data: 'edit_harga_bekasan_global_xxl_6h' }],
   [{ text: 'BEKASAN GLOBAL XXL 7H', callback_data: 'edit_harga_bekasan_global_xxl_7h' }],
+  [{ text: 'BEKASAN GLOBAL XXL 9H', callback_data: 'edit_harga_bekasan_global_xxl_9h' }],
+  [{ text: 'BEKASAN GLOBAL XXL 11H', callback_data: 'edit_harga_bekasan_global_xxl_11h' }],
+  [{ text: 'BEKASAN GLOBAL XXL 13H', callback_data: 'edit_harga_bekasan_global_xxl_13h' }],
+  [{ text: 'BEKASAN GLOBAL XXL 15H', callback_data: 'edit_harga_bekasan_global_xxl_15h' }],
+  [{ text: 'BEKASAN GLOBAL XXL 17H', callback_data: 'edit_harga_bekasan_global_xxl_17h' }],
+  [{ text: 'BEKASAN GLOBAL XXL 19H', callback_data: 'edit_harga_bekasan_global_xxl_19h' }],
   [{ text: '🔙 KEMBALI', callback_data: 'harga_global_bekasan' }]
 ];
 

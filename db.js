@@ -162,24 +162,36 @@ const init = () => {
 
           // Harga Global Bekasan L
           { key: 'harga_bekasan_global_l_3h', value: '12000', description: 'Harga BEKASAN GLOBAL L 3H' },
-          { key: 'harga_bekasan_global_l_4h', value: '13500', description: 'Harga BEKASAN GLOBAL L 4H' },
           { key: 'harga_bekasan_global_l_5h', value: '15000', description: 'Harga BEKASAN GLOBAL L 5H' },
-          { key: 'harga_bekasan_global_l_6h', value: '16500', description: 'Harga BEKASAN GLOBAL L 6H' },
           { key: 'harga_bekasan_global_l_7h', value: '18000', description: 'Harga BEKASAN GLOBAL L 7H' },
+          { key: 'harga_bekasan_global_l_9h', value: '21000', description: 'Harga BEKASAN GLOBAL L 9H' },
+          { key: 'harga_bekasan_global_l_11h', value: '24000', description: 'Harga BEKASAN GLOBAL L 11H' },
+          { key: 'harga_bekasan_global_l_13h', value: '27000', description: 'Harga BEKASAN GLOBAL L 13H' },
+          { key: 'harga_bekasan_global_l_15h', value: '30000', description: 'Harga BEKASAN GLOBAL L 15H' },
+          { key: 'harga_bekasan_global_l_17h', value: '33000', description: 'Harga BEKASAN GLOBAL L 17H' },
+          { key: 'harga_bekasan_global_l_19h', value: '36000', description: 'Harga BEKASAN GLOBAL L 19H' },
 
           // Harga Global Bekasan XL
           { key: 'harga_bekasan_global_xl_3h', value: '15000', description: 'Harga BEKASAN GLOBAL XL 3H' },
-          { key: 'harga_bekasan_global_xl_4h', value: '17000', description: 'Harga BEKASAN GLOBAL XL 4H' },
           { key: 'harga_bekasan_global_xl_5h', value: '19000', description: 'Harga BEKASAN GLOBAL XL 5H' },
-          { key: 'harga_bekasan_global_xl_6h', value: '21000', description: 'Harga BEKASAN GLOBAL XL 6H' },
           { key: 'harga_bekasan_global_xl_7h', value: '23000', description: 'Harga BEKASAN GLOBAL XL 7H' },
+          { key: 'harga_bekasan_global_xl_9h', value: '27000', description: 'Harga BEKASAN GLOBAL XL 9H' },
+          { key: 'harga_bekasan_global_xl_11h', value: '31000', description: 'Harga BEKASAN GLOBAL XL 11H' },
+          { key: 'harga_bekasan_global_xl_13h', value: '35000', description: 'Harga BEKASAN GLOBAL XL 13H' },
+          { key: 'harga_bekasan_global_xl_15h', value: '39000', description: 'Harga BEKASAN GLOBAL XL 15H' },
+          { key: 'harga_bekasan_global_xl_17h', value: '43000', description: 'Harga BEKASAN GLOBAL XL 17H' },
+          { key: 'harga_bekasan_global_xl_19h', value: '47000', description: 'Harga BEKASAN GLOBAL XL 19H' },
 
           // Harga Global Bekasan XXL  
           { key: 'harga_bekasan_global_xxl_3h', value: '18000', description: 'Harga BEKASAN GLOBAL XXL 3H' },
-          { key: 'harga_bekasan_global_xxl_4h', value: '20500', description: 'Harga BEKASAN GLOBAL XXL 4H' },
           { key: 'harga_bekasan_global_xxl_5h', value: '23000', description: 'Harga BEKASAN GLOBAL XXL 5H' },
-          { key: 'harga_bekasan_global_xxl_6h', value: '25500', description: 'Harga BEKASAN GLOBAL XXL 6H' },
           { key: 'harga_bekasan_global_xxl_7h', value: '28000', description: 'Harga BEKASAN GLOBAL XXL 7H' },
+          { key: 'harga_bekasan_global_xxl_9h', value: '33000', description: 'Harga BEKASAN GLOBAL XXL 9H' },
+          { key: 'harga_bekasan_global_xxl_11h', value: '38000', description: 'Harga BEKASAN GLOBAL XXL 11H' },
+          { key: 'harga_bekasan_global_xxl_13h', value: '43000', description: 'Harga BEKASAN GLOBAL XXL 13H' },
+          { key: 'harga_bekasan_global_xxl_15h', value: '48000', description: 'Harga BEKASAN GLOBAL XXL 15H' },
+          { key: 'harga_bekasan_global_xxl_17h', value: '53000', description: 'Harga BEKASAN GLOBAL XXL 17H' },
+          { key: 'harga_bekasan_global_xxl_19h', value: '58000', description: 'Harga BEKASAN GLOBAL XXL 19H' },
         ];
 
         defaultConfigs.forEach(config => {
