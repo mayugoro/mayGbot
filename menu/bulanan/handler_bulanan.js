@@ -1,33 +1,9 @@
-// akan menggunakan full api1
-
 const axios = require('axios');
 const { freezeStok, getKuotaPaket } = require('../../db');
 const { normalizePhoneNumber, isValidIndonesianPhone } = require('../../utils/normalize');
 
 const stateBulanan = new Map();
-
-// === HELPER FUNCTION: FORMAT NOMOR TO INTERNATIONAL ===
-function formatNomorToInternational(nomor) {
-  // Remove all non-digit characters
-  let cleanNomor = nomor.replace(/\D/g, '');
-  
-  // Convert to international format
-  if (cleanNomor.startsWith('08')) {
-    // 08xxxxxxxx -> 628xxxxxxxx
-    cleanNomor = '628' + cleanNomor.substring(2);
-  } else if (cleanNomor.startsWith('8') && !cleanNomor.startsWith('62')) {
-    // 8xxxxxxxx -> 628xxxxxxxx
-    cleanNomor = '628' + cleanNomor.substring(1);
-  } else if (!cleanNomor.startsWith('62') && cleanNomor.length >= 10) {
-    // Assume it's Indonesian number without country code
-    if (cleanNomor.startsWith('1') || cleanNomor.startsWith('2') || cleanNomor.startsWith('3') || 
-        cleanNomor.startsWith('5') || cleanNomor.startsWith('7') || cleanNomor.startsWith('8') || cleanNomor.startsWith('9')) {
-      cleanNomor = '62' + cleanNomor;
-    }
-  }
-  
-  return cleanNomor;
-}
+const sessionTerakhir = new Map();
 
 // === MAIN KEYBOARD GENERATOR ===
 const generateMainKeyboard = (userId) => {
@@ -75,6 +51,8 @@ const SESSION_STATES = {
 
 // Function untuk release lock dan notify waiting users
 const releasePengelolaLock = (nomor_hp, userId, reason = 'completed') => {
+  // console.log(`🔓 Releasing lock for ${nomor_hp} by user ${userId} - reason: ${reason}`);
+  
   activePengelolaSessions.delete(nomor_hp);
   userActiveSessions.delete(userId);
   
@@ -134,50 +112,148 @@ const notifyWaitingUsers = (nomor_hp) => {
       paket: nextUser.paket,
       step: 'pilih_slot',
       userId: nextUser.userId,
-      originalMessageId: nextUser.originalMessageId,  // ✅ Restore originalMessageId dari queue
-      loadingMessageId: loadingMsg ? loadingMsg.message_id : null,  // ✅ Pass loading message ID
-      attemptedPengelola: nextUser.attemptedPengelola || []  // ✅ Restore attempted list dari queue
+      originalMessageId: nextUser.originalMessageId,
+      loadingMessageId: loadingMsg ? loadingMsg.message_id : null  // ✅ Pass loading message ID
     });
   }, 1000);
 };
 
-// === HELPER FUNCTION: CARI NOMOR PENGELOLA KOSONG ===
-const findAvailablePengelola = async (excludeNumbers = [], paket) => {
-  try {
-    // Ambil list semua nomor pengelola dari database
-    const { getAllPengelolaNumbers } = require('../../db');
-    const allPengelola = await getAllPengelolaNumbers(paket);
-    
-    // Filter nomor yang tidak sedang digunakan dan tidak dalam exclude list
-    const availablePengelola = allPengelola.filter(nomor => 
-      !activePengelolaSessions.has(nomor) && !excludeNumbers.includes(nomor)
-    );
-    
-    return availablePengelola.length > 0 ? availablePengelola[0] : null;
-  } catch (err) {
-    console.error('Error finding available pengelola:', err.message);
-    return null;
+// === HELPER FUNCTION: CEK APAKAH NOMOR ADALAH XL/AXIS ===
+const isXLAxisNumber = (nomor) => {
+  // Mapping seri nomor XL dan Axis (sama seperti dompul.js)
+  const xlAxisSeries = [
+    '0817', '0818', '0819', // XL
+    '0859', '0877', '0878', // XL
+    '0831', '0832', '0833', '0838' // Axis
+  ];
+  
+  // Pastikan nomor dalam format 08xxx
+  let checkNumber = nomor;
+  if (checkNumber.startsWith('62')) {
+    checkNumber = '0' + checkNumber.substring(2);
+  } else if (checkNumber.length === 10 && !checkNumber.startsWith('0')) {
+    checkNumber = '0' + checkNumber;
   }
+  
+  // Cek 4 digit pertama
+  const prefix = checkNumber.substring(0, 4);
+  const result = xlAxisSeries.includes(prefix);
+  
+  return result;
 };
 
-// === HELPER FUNCTION: CEK APAKAH PAKET PUNYA MULTIPLE PENGELOLA ===
-const hasMultiplePengelola = async (paket) => {
+// === HELPER FUNCTION: VALIDASI NOMOR DENGAN API DOMPUL ===
+const validateNomorWithDompul = async (nomorPembeli) => {
   try {
-    const { getAllPengelolaNumbers } = require('../../db');
-    const allPengelola = await getAllPengelolaNumbers(paket);
+    const response = await axios.post("https://api.hidepulsa.com/api/tools", {
+      action: "cek_dompul",
+      id_telegram: process.env.ADMIN_ID,
+      password: process.env.PASSWORD2,
+      nomor_hp: nomorPembeli
+    }, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: process.env.APIKEY2
+      },
+      timeout: 15000 // 15 detik timeout untuk stabilitas
+    });
+
+    const responseData = response.data;
     
-    // Buat Set untuk menghilangkan duplikasi, lalu cek jumlahnya
-    const uniquePengelola = new Set(allPengelola);
-    return uniquePengelola.size > 1;
-  } catch (err) {
-    console.error('Error checking multiple pengelola:', err.message);
-    return false;
+    // Cek apakah response sukses dan ada data
+    if (responseData.status === 'success' && responseData.data) {
+      const dompulData = responseData.data;
+      
+      // Parse data dari response yang nested (sesuai struktur response nyata)
+      // Path: responseData.data.data.data.packageInfo
+      const data = dompulData.data && dompulData.data.data ? dompulData.data.data : null;
+      
+      // Cek paket aktif dari packageInfo
+      if (data && data.packageInfo && Array.isArray(data.packageInfo)) {
+        const akrabPackages = [];
+        
+        // Loop melalui packageInfo untuk mencari paket akrab
+        data.packageInfo.forEach((packageGroup, groupIndex) => {
+          if (Array.isArray(packageGroup)) {
+            packageGroup.forEach((packageItem, itemIndex) => {
+              if (packageItem.packages && packageItem.packages.name) {
+                const packageName = packageItem.packages.name;
+                // Cek apakah ada paket dengan nama "akrab" atau "Akrab"
+                if (packageName.toLowerCase().includes('akrab')) {
+                  akrabPackages.push(packageName);
+                }
+              }
+            });
+          }
+        });
+
+        if (akrabPackages.length > 0) {
+          return {
+            valid: false,
+            reason: 'akrab_package_exists',
+            packages: akrabPackages
+          };
+        } else {
+          return {
+            valid: true,
+            reason: 'no_akrab_packages'
+          };
+        }
+      } else {
+        // Tidak ada packageInfo atau struktur tidak sesuai - anggap aman, lanjut proses
+        return {
+          valid: true,
+          reason: 'no_package_info'
+        };
+      }
+
+    } else if (responseData.status === 'error' && responseData.data && responseData.data.text) {
+      // Handle kasus nomor tidak memiliki paket (dari struktur dompul.js)
+      try {
+        const textData = JSON.parse(responseData.data.text);
+        if (textData && textData.message && textData.message.includes('tidak memiliki paket')) {
+          return {
+            valid: true,
+            reason: 'no_packages_active'
+          };
+        } else {
+          // Error lain dari API - lanjut proses tanpa validasi
+          return {
+            valid: true, // Ubah ke true agar tidak block proses
+            reason: 'api_error_proceed',
+            error: textData.message || 'Unknown API error'
+          };
+        }
+      } catch (parseError) {
+        // Parse error - lanjut proses tanpa validasi
+        return {
+          valid: true, // Ubah ke true agar tidak block proses
+          reason: 'parse_error_proceed',
+          error: parseError.message
+        };
+      }
+    } else {
+      // Response tidak sesuai ekspektasi - lanjut proses tanpa validasi
+      return {
+        valid: true, // Ubah ke true agar tidak block proses
+        reason: 'unexpected_response_proceed',
+        error: responseData.message || 'Unexpected API response'
+      };
+    }
+
+  } catch (error) {
+    // Semua error di catch - lanjut proses tanpa validasi
+    return {
+      valid: true, // Ubah ke true agar tidak block proses
+      reason: 'validation_error_proceed',
+      error: error.message
+    };
   }
 };
 
 // Export function untuk set state dari list_bulanan.js
 const setStateBulanan = async (chatId, state) => {
-  const { nomor_hp, userId, paket, attemptedPengelola = [] } = state;
+  const { nomor_hp, userId, paket } = state;
   
   // === VALIDASI SALDO SEBELUM LOCK ===
   try {
@@ -212,68 +288,6 @@ const setStateBulanan = async (chatId, state) => {
   
   // Cek apakah nomor pengelola sedang digunakan
   if (activePengelolaSessions.has(nomor_hp)) {
-    // === CEK APAKAH PAKET PUNYA MULTIPLE PENGELOLA ===
-    const hasMultiple = await hasMultiplePengelola(paket);
-    
-    if (hasMultiple) {
-      // === AUTO SWITCH LOGIC (untuk paket dengan multiple pengelola) ===
-      // Cari nomor pengelola lain yang kosong
-      const newAttemptedList = [...attemptedPengelola, nomor_hp];
-      const alternatePengelola = await findAvailablePengelola(newAttemptedList, paket);
-      
-      if (alternatePengelola) {
-        // Found alternative! Auto switch ke pengelola lain
-        const loadingMsg = await global.bot.sendMessage(chatId, 
-          `🔄 <b>Pengelola ${nomor_hp.slice(-5)} sedang busy...\n` +
-          `Auto switching ke pengelola ${alternatePengelola.slice(-5)}...</b>`, 
-          { parse_mode: 'HTML' }
-        ).catch(err => console.error('Error sending switch message:', err));
-        
-        // Hapus loading message sebelumnya jika ada
-        if (state.loadingMessageId) {
-          try {
-            await global.bot.deleteMessage(chatId, state.loadingMessageId);
-          } catch (e) {
-            // Ignore delete error
-          }
-        }
-        
-        // Recursive call dengan pengelola baru
-        setTimeout(async () => {
-          // Hapus switch message
-          if (loadingMsg) {
-            try {
-              await global.bot.deleteMessage(chatId, loadingMsg.message_id);
-            } catch (e) {
-              // Ignore delete error
-            }
-          }
-          
-          // Kirim loading message baru
-          let newLoadingMsg;
-          try {
-            newLoadingMsg = await global.bot.sendMessage(chatId, 
-              '📧 <b>Mengecek slot kosong... 📧</b>', 
-              { parse_mode: 'HTML' }
-            );
-          } catch (e) {
-            console.error('Error sending new loading message:', e);
-          }
-          
-          await setStateBulanan(chatId, {
-            ...state,
-            nomor_hp: alternatePengelola,
-            attemptedPengelola: newAttemptedList,
-            loadingMessageId: newLoadingMsg ? newLoadingMsg.message_id : null
-          });
-        }, 1000);
-        
-        return; // Exit current call
-      }
-    }
-    
-    // === FALLBACK TO QUEUE SYSTEM ===
-    // Jika hanya 1 pengelola ATAU semua pengelola busy, masuk ke queue system
     const session = activePengelolaSessions.get(nomor_hp);
     const waitTime = Math.ceil((Date.now() - session.timestamp) / 1000);
     
@@ -293,27 +307,14 @@ const setStateBulanan = async (chatId, state) => {
     
     waitingQueues.get(nomor_hp).push({
       userId, chatId, paket: state.paket, timestamp: Date.now(),
-      originalMessageId: state.originalMessageId,  // ✅ Simpan originalMessageId untuk queue
-      attemptedPengelola: hasMultiple ? (attemptedPengelola.includes(nomor_hp) ? attemptedPengelola : [...attemptedPengelola, nomor_hp]) : []  // ✅ Simpan attempted list untuk queue jika multiple
+      originalMessageId: state.originalMessageId
     });
     
     const position = waitingQueues.get(nomor_hp).length;
-    
-    // Pesan berbeda untuk single vs multiple pengelola
-    let queueMsg;
-    if (hasMultiple) {
-      queueMsg = `<b><i>⚠️ Semua pengelola sedang busy...\n` +
-                 `Menunggu pengelola ${nomor_hp.slice(-5)}...\n` +
-                 `Posisi antrian: ${position}</i></b>`;
-    } else {
-      queueMsg = `<b><i>⚠️ Pengelola ${nomor_hp.slice(-5)} sedang digunakan...\n` +
-                 `Tunggu sebentar...!!\n` +
-                 `Posisi antrian: ${position}</i></b>`;
-    }
-    
-    const queueMessage = await global.bot.sendMessage(chatId, queueMsg, {
-      parse_mode: 'HTML'
-    }).catch(err => console.error('Error sending queue message:', err));
+    const queueMessage = await global.bot.sendMessage(chatId, 
+      `<b><i>⚠️Nomer pengelola kode ${nomor_hp.slice(-5)} masih di gunakan user lain...\nTunggu sebentar...!!</i></b>`,
+      { parse_mode: 'HTML' }
+    ).catch(err => console.error('Error sending queue message:', err));
     
     // Simpan queue message ID untuk dihapus nanti
     if (queueMessage) {
@@ -347,7 +348,7 @@ const setStateBulanan = async (chatId, state) => {
   }, 1000);
 };
 
-// Function untuk cek slot kosong
+// Function untuk cek slot kosong dan auto select
 const checkSlotKosong = async (chatId) => {
   const state = stateBulanan.get(chatId);
   if (!state || state.step !== 'pilih_slot') return;
@@ -362,27 +363,47 @@ const checkSlotKosong = async (chatId) => {
   }
 
   try {
-    // === HIT API1 KHFY-Store PERTAMA ===
-    const formattedNomor = formatNomorToInternational(nomor_hp);
-    
-    const requestBody = new URLSearchParams({
-      id_parent: formattedNomor,
-      token: process.env.APIKEY1
-    }).toString();
-    
-    const res = await axios.post(
-      `${process.env.API1}/member_info_akrab`,
-      requestBody,
-      {
+    // === HIT API PERTAMA ===
+    let res;
+    try {
+      res = await axios.post("https://api.hidepulsa.com/api/akrab", {
+        action: "info",
+        id_telegram: process.env.ADMIN_ID,
+        password: process.env.PASSWORD2,
+        nomor_hp
+      }, {
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        timeout: 10000
+          "Content-Type": "application/json",
+          Authorization: process.env.APIKEY2
+        }
+      });
+    } catch (apiErr) {
+      console.error('API Error in slot check:', apiErr.message);
+      
+      // RELEASE LOCK karena API error
+      releasePengelolaLock(nomor_hp, userId, 'api_error_slot_check');
+      stateBulanan.delete(chatId);
+      
+      const teksError = '❌ <b>Gagal mengecek slot kosong</b>\n\nSilakan coba lagi atau hubungi admin.\n\n🔓 Nomor pengelola telah dibebaskan.';
+      
+      if (loadingMessageId) {
+        try {
+          // Send new error message FIRST
+          await global.bot.sendMessage(chatId, teksError, { parse_mode: 'HTML' });
+          
+          // Delete old loading message AFTER new message sent
+          await global.bot.deleteMessage(chatId, loadingMessageId);
+        } catch (e) {
+          // Ignore send/delete error
+        }
+      } else {
+        await global.bot.sendMessage(chatId, teksError, { parse_mode: 'HTML' });
       }
-    );
+      return;
+    }
 
     let data = res.data?.data;
-    let slotList = data?.member_info?.members || [];
+    let slotList = data?.data_slot || [];
 
     // === RETRY MECHANISM ===
     // Jika hit pertama tidak menghasilkan data slot, coba hit kedua
@@ -410,48 +431,57 @@ const checkSlotKosong = async (chatId) => {
         // Delay sebentar sebelum retry
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        // === HIT API1 KHFY-Store KEDUA ===
-        const retryRes = await axios.post(
-          `${process.env.API1}/member_info_akrab`,
-          requestBody,
-          {
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            timeout: 10000
+        // === HIT API KEDUA ===
+        const retryRes = await axios.post("https://api.hidepulsa.com/api/akrab", {
+          action: "info",
+          id_telegram: process.env.ADMIN_ID,
+          password: process.env.PASSWORD2,
+          nomor_hp
+        }, {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: process.env.APIKEY2
           }
-        );
+        });
 
         // Gunakan hasil dari hit kedua
         const retryData = retryRes.data?.data;
         if (retryData) {
           data = retryData;
-          slotList = retryData?.member_info?.members || [];
+          slotList = retryData?.data_slot || [];
         }
 
       } catch (retryErr) {
         // Jika retry gagal, tetap gunakan hasil hit pertama
+        console.log(`Retry failed for ${nomor_hp}:`, retryErr.message);
       }
     }
+    // Pastikan sisa-add bertipe number
+    slotList.forEach(s => { 
+      if (typeof s["sisa-add"] === 'string') s["sisa-add"] = parseInt(s["sisa-add"]);
+    });
 
-    // Filter slot kosong berdasarkan API1 format (msisdn kosong = slot kosong)
-    // Gabungkan members dan additional_members untuk mendapatkan semua slot
-    const additionalMembers = data?.member_info?.additional_members || [];
-    const allSlots = [...slotList, ...additionalMembers];
-    
-    const kosong = allSlots.filter(s => !s.msisdn || s.msisdn === "");
+    // Prioritaskan slot kosong dengan sisa-add === 1
+    const kosongSisa1 = slotList.filter(s => (!s.nomor || s.nomor === "") && s["sisa-add"] === 1);
+    // Slot kosong lain (sisa-add bukan 1)
+    const kosongLain = slotList.filter(s => (!s.nomor || s.nomor === "") && s["sisa-add"] !== 1);
+    // Gabungkan, yang sisa-add 1 di depan
+    const kosong = [...kosongSisa1, ...kosongLain];
+
+    // Debug urutan slot yang dipilih
+    // console.log('Urutan slot kosong:', kosong.map(s => ({ slot: s["slot-ke"], sisa: s["sisa-add"] })));
 
     if (!kosong.length) {
       // RELEASE LOCK karena tidak ada slot kosong
       releasePengelolaLock(nomor_hp, userId, 'no_slots_available');
       stateBulanan.delete(chatId);
-      
+
       // Tambahkan info jika masih tidak ada data setelah retry
-      let teksKosong = '❌ <b>Tidak ada slot kosong</b>\n\nSilakan coba lagi nanti atau pilih paket lain.';
+      let teksKosong = '<b><i>Sedang me-refresh token...\n\nSilahkan klik lagi ✅ LANJUT BELI!</i></b>';
       if ((!slotList || slotList.length === 0)) {
         teksKosong += '\n\n⚠️ <i>Data tidak tersedia setelah 2x hit API</i>';
       }
-      
+
       if (loadingMessageId) {
         try {
           // Send new slot info message FIRST
@@ -468,14 +498,12 @@ const checkSlotKosong = async (chatId) => {
       return;
     }
 
-    // AUTO SELECT SLOT KOSONG PERTAMA (menggunakan field 'slot_id' dari API1)
-    const selectedSlot = kosong[0].slot_id;
-    const selectedSlotData = kosong[0]; // SIMPAN DATA LENGKAP SLOT untuk SET_KUBER nanti
+    // AUTO SELECT SLOT KOSONG PRIORITAS SISA-ADD 1
+    const selectedSlot = kosong[0]["slot-ke"];
     
-    // Update state dengan slot yang dipilih otomatis + SIMPAN SLOT DATA LENGKAP
+    // Update state dengan slot yang dipilih otomatis
     state.step = 'input_nomor';
     state.nomor_slot = selectedSlot;
-    state.selectedSlotData = selectedSlotData; // ✅ SIMPAN DATA SLOT LENGKAP (termasuk family_member_id)
     stateBulanan.set(chatId, state);
 
     // Update session state
@@ -494,7 +522,7 @@ const checkSlotKosong = async (chatId) => {
       try {
         await global.bot.deleteMessage(chatId, loadingMessageId);
       } catch (e) {
-        // Ignore delete error - message might already be deleted
+        console.error('Error deleting loading message:', e);
       }
     }
 
@@ -549,6 +577,8 @@ const cleanupStaleSessions = () => {
   
   for (const [nomor_hp, session] of activePengelolaSessions) {
     if (now - session.lastActivity > TIMEOUT_DURATION) {
+      // console.log(`🧹 Cleaning up stale session for ${nomor_hp} - user ${session.userId}`);
+      
       // Release lock untuk session yang timeout
       releasePengelolaLock(nomor_hp, session.userId, 'session_timeout');
       
@@ -567,132 +597,6 @@ const cleanupStaleSessions = () => {
   }
 };
 
-// === HELPER FUNCTION: CEK APAKAH NOMOR ADALAH XL/AXIS ===
-const isXLAxisNumber = (nomor) => {
-  // Mapping seri nomor XL dan Axis (sama seperti dompul.js)
-  const xlAxisSeries = [
-    '0817', '0818', '0819', // XL
-    '0859', '0877', '0878', // XL
-    '0831', '0832', '0833', '0838' // Axis
-  ];
-  
-  // Pastikan nomor dalam format 08xxx
-  let checkNumber = nomor;
-  if (checkNumber.startsWith('62')) {
-    checkNumber = '0' + checkNumber.substring(2);
-  } else if (checkNumber.length === 10 && !checkNumber.startsWith('0')) {
-    checkNumber = '0' + checkNumber;
-  }
-  
-  // Cek 4 digit pertama
-  const prefix = checkNumber.substring(0, 4);
-  const result = xlAxisSeries.includes(prefix);
-  
-  return result;
-};
-
-// === HELPER FUNCTION: VALIDASI NOMOR DENGAN API KMSP DOMPUL ===
-const validateNomorWithDompul = async (nomorPembeli) => {
-  try {
-    // Format nomor ke format 08xxx seperti di dompul.js
-    let formattedMsisdn = nomorPembeli.replace(/\D/g, '');
-    if (formattedMsisdn.startsWith('62')) {
-      formattedMsisdn = '0' + formattedMsisdn.substring(2);
-    }
-    if (!formattedMsisdn.startsWith('0') && formattedMsisdn.length >= 10 && formattedMsisdn.length <= 11) {
-      formattedMsisdn = '0' + formattedMsisdn;
-    }
-    
-    const params = {
-      msisdn: formattedMsisdn,
-      isJSON: 'true',
-      _: Date.now().toString()
-    };
-
-    const response = await axios.get("https://apigw.kmsp-store.com/sidompul/v4/cek_kuota", {
-      params,
-      headers: {
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Accept-Encoding": "gzip, deflate, br, zstd",
-        "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7,ja;q=0.6",
-        "Authorization": "Basic c2lkb21wdWxhcGk6YXBpZ3drbXNw",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Origin": "https://sidompul.kmsp-store.com",
-        "Priority": "u=1, i",
-        "Referer": "https://sidompul.kmsp-store.com/",
-        "Sec-CH-UA": '"Not;A=Brand";v="99", "Google Chrome";v="139", "Chromium";v="139"',
-        "Sec-CH-UA-Mobile": "?0",
-        "Sec-CH-UA-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-site",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-        "X-API-Key": "60ef29aa-a648-4668-90ae-20951ef90c55",
-        "X-App-Version": "4.0.0"
-      },
-      timeout: 30000 // 30 detik timeout seperti di dompul.js
-    });
-
-    const responseData = response.data;
-    
-    if (responseData && responseData.data && responseData.data.hasil) {
-      // Clean up HTML tags dari hasil
-      let resultText = responseData.data.hasil
-        .replace(/<br>/g, '\n')
-        .replace(/<[^>]*>/g, '') // Remove HTML tags
-        .replace(/&nbsp;/g, ' ') // Replace HTML space
-        .trim();
-      
-      // Cek apakah ada keyword "akrab" dalam hasil
-      const lowerResultText = resultText.toLowerCase();
-      const hasAkrab = lowerResultText.includes('akrab') || 
-                     lowerResultText.includes('family') ||
-                     lowerResultText.includes('keluarga');
-      
-      if (hasAkrab) {
-        return {
-          valid: false,
-          reason: 'akrab_package_exists',
-          packages: ['Detected from dompul results: akrab package exists']
-        };
-      } else {
-        return {
-          valid: true,
-          reason: 'no_akrab_packages'
-        };
-      }
-      
-    } else {
-      // Tidak ada hasil atau struktur tidak sesuai - anggap aman, lanjut proses
-      return {
-        valid: true,
-        reason: 'no_results_data'
-      };
-    }
-
-  } catch (error) {
-    // ✅ VALIDATION PASSED - Error occurred, proceeding anyway
-    
-    // Jika error dari response, cek apakah ada pesan khusus
-    if (error.response && error.response.data && error.response.data.message) {
-      const errorMessage = error.response.data.message.toLowerCase();
-      if (errorMessage.includes('tidak memiliki paket') || errorMessage.includes('no package')) {
-        return {
-          valid: true,
-          reason: 'no_packages_active'
-        };
-      }
-    }
-    
-    // Semua error lainnya - lanjut proses tanpa validasi
-    return {
-      valid: true,
-      reason: 'validation_error_proceed',
-      error: error.message
-    };
-  }
-};
-
 // Jalankan cleanup setiap 1 menit
 setInterval(cleanupStaleSessions, 60000);
 
@@ -701,7 +605,7 @@ module.exports = (bot) => {
   global.bot = bot;
 
   // HAPUS SEMUA CALLBACK QUERY HANDLER UNTUK SLOT SELECTION
-  // Karena sekarang menggunakan auto select seperti bekasan
+  // Karena sekarang auto select, tidak perlu lagi handle addslot_\d+
 
   bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
@@ -726,12 +630,10 @@ module.exports = (bot) => {
       session.lastActivity = Date.now();
     }
 
-    // NORMALISASI NOMOR INPUT ke format internasional
-    const normalizedNumber = formatNomorToInternational(text);
+    // NORMALISASI NOMOR INPUT
+    const normalizedNumber = normalizePhoneNumber(text);
     
-    // Validasi dengan format lokal untuk kompatibilitas dengan fungsi validasi existing
-    const localFormat = normalizePhoneNumber(text);
-    if (!localFormat || !isValidIndonesianPhone(localFormat)) {
+    if (!normalizedNumber || !isValidIndonesianPhone(normalizedNumber)) {
       await bot.sendMessage(chatId, '❌ Format nomor tidak valid!\n\n✅ Format yang diterima:\n• 08xxxxxxxxxx\n• 628xxxxxxxxxx\n• 8xxxxxxxxxx\n\n💡 Contoh: 08123456789 atau 628123456789');
       try {
         await bot.deleteMessage(chatId, msg.message_id);
@@ -739,12 +641,21 @@ module.exports = (bot) => {
       return;
     }
 
-    const { nomor_slot, paket } = state;
+    const { nomor_slot, paket, loadingMessageId } = state;
     
-    // Ambil kuota dari konfigurasi admin
-    const kuotaDefault = await getKuotaPaket(paket);
-    const kuotaGB = kuotaDefault === '0' ? '0' : kuotaDefault; // 0 = unlimited
+    // Hapus message input nomor jika ada loadingMessageId
+    if (loadingMessageId) {
+      try {
+        await bot.deleteMessage(chatId, loadingMessageId);
+      } catch (e) {
+        // Jangan log error jika message sudah tidak ada
+        if (!e.message.includes('message to delete not found')) {
+          console.error('Error deleting input message:', e.message);
+        }
+      }
+    }
     
+    // Simpan waktu mulai untuk validasi
     const startTime = Date.now();
     const processingMsg = await bot.sendMessage(chatId, '⏳ <b>Diproses, Mohon tunggu sebentar...</b>', { parse_mode: 'HTML' });
 
@@ -781,7 +692,7 @@ module.exports = (bot) => {
         
         const teksGagalValidasi = `❌ Gagal !!\n\n` +
           `<code>Detail         : Nomor masih memiliki paket akrab aktif\n` +
-          `Jenis paket    : ${paket.toUpperCase()}\n` +
+          `Jenis paket    : BULANAN ${paket.toUpperCase()}\n` +
           `Nomor          : ${normalizedNumber}\n` +
           `Kode           : -\n` +
           `Kuota Bersama  : -\n` +
@@ -802,7 +713,7 @@ module.exports = (bot) => {
           await logTransaction(bot, {
             userId: msg.from.id,
             username: msg.from.username,
-            kategori: state.paket.toUpperCase(), // Gunakan state.paket
+            kategori: paket.toUpperCase(), // paket sudah tersedia dari state
             nomor: normalizedNumber, // Nomor customer/pembeli
             pengelola: nomor_hp, // Nomor pengelola
             status: 'validation_failed',
@@ -838,7 +749,7 @@ module.exports = (bot) => {
           try {
             const { getUserSaldo } = require('../../db');
             const saldo = await getUserSaldo(msg.from.id);
-
+            
             const formatUptime = (ms) => {
               let s = Math.floor(ms / 1000);
               const hari = Math.floor(s / 86400); s %= 86400;
@@ -894,61 +805,41 @@ module.exports = (bot) => {
     const addStartTime = Date.now();
     
     try {
-      // === API1 KHFY-Store ADD MEMBER (FULL PARAMETERS) ===
-      const formattedParent = formatNomorToInternational(nomor_hp);
-      
-      // ✅ AMBIL FAMILY_MEMBER_ID dari data CEKSLOT1 yang sudah disimpan
-      const { selectedSlotData } = state;
-      const familyMemberId = selectedSlotData?.family_member_id || '';
-      
-      const formData = new URLSearchParams();
-      formData.append('token', process.env.APIKEY1);
-      formData.append('id_parent', formattedParent);
-      formData.append('msisdn', normalizedNumber);                    // ✅ Sesuai ADD1.js - nomor yang sudah divalidasi KMSP DOMPUL
-      formData.append('member_id', familyMemberId);                   // ✅ Gunakan family_member_id dari CEKSLOT1
-      formData.append('slot_id', nomor_slot.toString());              // ✅ Sesuai ADD1.js  
-      formData.append('parent_name', 'XL');                           // ✅ Hardcode ke "XL"
-      formData.append('child_name', `${msg.from.username || msg.from.first_name || 'USER'} ${paket.toUpperCase()}`); // ✅ Sesuai ADD1.js
-      
-      const requestBody = formData.toString();
-      
-      const res = await axios.post(
-        `${process.env.API1}/${process.env.ADD1}`,  // ✅ Gunakan endpoint dari .env (change_member_akrab_v2)
-        requestBody,
-        {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-          },
-          timeout: 300000 // 5 menit timeout untuk menghindari socket hang up
-        }
-      );
+      const res = await axios.post("https://api.hidepulsa.com/api/akrab", {
+        action: "add",
+        id_telegram: process.env.ADMIN_ID,
+        password: process.env.PASSWORD2,
+        nomor_hp,
+        nomor_slot,
+        nomor_anggota: normalizedNumber, // Gunakan nomor yang sudah dinormalisasi
+        nama_anggota: `${msg.from.username || msg.from.first_name || 'USER'} BEKASAN`, // Gunakan username Telegram
+        nama_admin: "XL"
+      }, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: process.env.APIKEY2
+        },
+        timeout: 300000 // 5 menit timeout untuk menghindari socket hang up
+      });
 
+      // Hitung waktu eksekusi
       const addExecutionTime = Math.floor((Date.now() - addStartTime) / 1000);
       
-      // ✅ COBA AMBIL FAMILY_MEMBER_ID dari response ADD jika ada
-      let addedMemberFamilyId = null;
-      if (res.data?.data?.details?.["member-id"] || res.data?.data?.details?.family_member_id) {
-        addedMemberFamilyId = res.data.data.details["member-id"] || res.data.data.details.family_member_id;
-        
-        // UPDATE state dengan family_member_id dari ADD response
-        if (!state.selectedSlotData) {
-          state.selectedSlotData = {};
-        }
-        state.selectedSlotData.family_member_id = addedMemberFamilyId;
-        stateBulanan.set(chatId, state);
-      }
-      
+      // Ambil harga dari database
       const { getHargaPaket, getHargaGagal } = require('../../db');
       const harga = await getHargaPaket(paket);
       
+      // Kode pengelola (5 digit terakhir nomor)
       const kodePengelola = nomor_hp.slice(-5);
+      
       const info = res.data?.data?.details || {};
+      const kuota = await getKuotaPaket(paket);
 
       let teksHasil = '';
 
+      // Logika berdasarkan waktu eksekusi
       if (addExecutionTime >= 8) {
-        // SUKSES - RELEASE LOCK SETELAH BERHASIL
-        const kuotaText = kuotaGB === '0' ? '0gb' : `${kuotaGB}gb`;
+        // SUKSES - Waktu eksekusi >= 8 detik
         
         // Ambil saldo user sebelum dipotong
         const { getUserSaldo } = require('../../db');
@@ -957,16 +848,16 @@ module.exports = (bot) => {
         
         teksHasil = `✅ Sukses !!\n\n` +
           `<code>Detail         : Sukses bjir🗿\n` +
-          `Jenis paket    : ${paket.toUpperCase()}\n` +
+          `Jenis paket    : BULANAN ${paket.toUpperCase()}\n` +
           `Nomor          : ${info["nomor-anggota"] || normalizedNumber}\n` +
           `Kode           : ${kodePengelola}\n` +
-          `Kuota Bersama  : ${kuotaText}\n` +
+          `Kuota Bersama  : ${kuota}gb\n` +
           `Saldo awal     : Rp.${saldoAwal.toLocaleString('id-ID')}\n` +
           `Saldo terpotong: Rp.${harga.toLocaleString('id-ID')}\n` +
           `Saldo akhir    : Rp.${saldoAkhir.toLocaleString('id-ID')}\n` +
           `Waktu eksekusi : ${addExecutionTime} detik ✅</code>`;
 
-        // Kurangi saldo SETELAH membuat output
+        // Kurangi saldo sesuai harga penuh SETELAH membuat output
         try {
           const { kurangiSaldo } = require('../../db');
           await kurangiSaldo(msg.from.id, harga);
@@ -975,7 +866,7 @@ module.exports = (bot) => {
         }
 
         // HANYA catat transaksi jika SUKSES dengan user_id dan nomor normalized
-        await freezeStok(paket.toUpperCase(), nomor_hp, normalizedNumber, nomor_slot, kuotaGB, msg.from.id, bot, {
+        await freezeStok(state.paket, nomor_hp, normalizedNumber, nomor_slot, kuota, msg.from.id, bot, {
           saldoSebelum: saldoAwal,
           saldoSesudah: saldoAkhir,
           harga: harga
@@ -985,7 +876,7 @@ module.exports = (bot) => {
         releasePengelolaLock(nomor_hp, userId, 'transaction_success');
 
       } else {
-        // GAGAL - RELEASE LOCK karena transaksi GAGAL (< 15 detik)
+        // GAGAL - Waktu eksekusi < 15 detik
         const biayaGagal = await getHargaGagal();
         
         // Ambil saldo user sebelum dipotong
@@ -995,7 +886,7 @@ module.exports = (bot) => {
         
         teksHasil = `❌ Gagal !!\n\n` +
           `<code>Detail         : nyangkut, ada akrab\n` +
-          `Jenis paket    : ${paket.toUpperCase()}\n` +
+          `Jenis paket    : BULANAN ${paket.toUpperCase()}\n` +
           `Nomor          : ${normalizedNumber}\n` +
           `Kode           : -\n` +
           `Kuota Bersama  : -\n` +
@@ -1004,7 +895,7 @@ module.exports = (bot) => {
           `Saldo akhir    : Rp.${saldoAkhir.toLocaleString('id-ID')}\n` +
           `Waktu eksekusi : ${addExecutionTime} detik ❌</code>`;
 
-        // Kurangi saldo SETELAH membuat output
+        // Kurangi saldo hanya Rp. 700 SETELAH membuat output
         try {
           const { kurangiSaldo } = require('../../db');
           await kurangiSaldo(msg.from.id, biayaGagal);
@@ -1018,7 +909,7 @@ module.exports = (bot) => {
           await logTransaction(bot, {
             userId: msg.from.id,
             username: msg.from.username,
-            kategori: paket.toUpperCase(),
+            kategori: state.paket,
             nomor: normalizedNumber, // Nomor customer/pembeli
             pengelola: nomor_hp, // Nomor pengelola
             status: 'failed',
@@ -1036,21 +927,355 @@ module.exports = (bot) => {
         releasePengelolaLock(nomor_hp, userId, 'transaction_failed');
       }
 
-      // Kirim hasil FIRST, lalu hapus processing message
+      // Hapus message "Memproses penambahan anggota..." dan kirim hasil dengan reply
+      try {
+        await bot.deleteMessage(chatId, processingMsg.message_id);
+      } catch (e) {
+        // Ignore delete error
+      }
+      
+      // JANGAN hapus pesan input nomor user - biarkan tetap terlihat
+      // try {
+      //   await bot.deleteMessage(chatId, msg.message_id);
+      // } catch (e) {
+      //   // Ignore delete error
+      // }
+      
       await bot.sendMessage(chatId, teksHasil, {
         parse_mode: 'HTML',
-        reply_to_message_id: msg.message_id // Reply ke message nomor user
+        reply_to_message_id: msg.message_id  // Reply ke pesan nomor user
       });
 
+      // === AUTO-RESTORE MENU PATTERN ===
+      // Hapus menu detail bekasan setelah 1 detik
+      setTimeout(async () => {
+        try {
+          // Hapus menu detail bekasan yang dipilih user
+          // Message ID disimpan saat user memilih paket bekasan
+          if (state.originalMessageId) {
+            await bot.deleteMessage(chatId, state.originalMessageId);
+          }
+        } catch (deleteErr) {
+          // Ignore delete error jika menu sudah tidak ada
+        }
+      }, 1000);
+      
+      // Tampilkan menu utama setelah 2 detik (sama persis dengan main.js)
+      setTimeout(async () => {
+        try {
+          const { getUserSaldo } = require('../../db');
+          
+          // Format uptime sama dengan main.js
+          const formatUptime = (ms) => {
+            let s = Math.floor(ms / 1000);
+            const hari = Math.floor(s / 86400);
+            s %= 86400;
+            const jam = Math.floor(s / 3600);
+            s %= 3600;
+            const menit = Math.floor(s / 60);
+            const detik = s % 60;
+            let hasil = [];
+            if (hari > 0) hasil.push(`${hari} hari`);
+            if (jam > 0) hasil.push(`${jam} jam`);
+            if (menit > 0) hasil.push(`${menit} menit`);
+            if (detik > 0 || hasil.length === 0) hasil.push(`${detik} detik`);
+            return hasil.join(' ');
+          };
+          
+          // Generate user detail sama dengan main.js
+          const generateUserDetail = (userId, username, saldo, uptime) => {
+            return '💌 <b>ID</b>           : <code>' + userId + '</code>\n' +
+                   '💌 <b>User</b>       : <code>' + (username || '-') + '</code>\n' +
+                   '📧 <b>Saldo</b>     : <code>Rp. ' + saldo.toLocaleString('id-ID') + '</code>\n' +
+                   '⌚ <b>Uptime</b>  : <code>' + uptime + '</code>';
+          };
+          
+          // Ambil saldo terbaru
+          const saldoTerbaru = await getUserSaldo(msg.from.id);
+          
+          // Hitung uptime dari BOT_START_TIME global atau fallback ke process.uptime
+          let uptimeMs;
+          if (global.BOT_START_TIME) {
+            uptimeMs = Date.now() - global.BOT_START_TIME;
+          } else {
+            uptimeMs = process.uptime() * 1000;
+          }
+          const uptime = formatUptime(uptimeMs);
+          
+          // Generate detail persis sama dengan main.js
+          const detail = generateUserDetail(msg.from.id, msg.from.username, saldoTerbaru, uptime);
+          
+          // Kirim menu utama persis sama dengan main.js
+          await bot.sendPhoto(chatId, './welcome.jpg', {
+            caption: detail,
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: generateMainKeyboard(msg.from.id) }
+          }, {
+            filename: 'welcome.jpg',
+            contentType: 'image/jpeg'
+          });
+        } catch (restoreErr) {
+          console.error('Error restoring menu:', restoreErr.message);
+        }
+      }, 2000);
+      // === END AUTO-RESTORE PATTERN ===
+
+      // Simpan sesi terakhir (hanya jika SUKSES)
+      if (addExecutionTime >= 15) {
+        sessionTerakhir.set(chatId, {
+          nomor_hp,
+          nomor_slot,
+          input_gb: kuota
+        });
+
+        // Set timeout untuk hapus session terakhir setelah 60 detik
+        setTimeout(() => {
+          sessionTerakhir.delete(chatId);
+        }, 60000);
+      }
+
+      // Hapus state setelah selesai
+      stateBulanan.delete(chatId);
+
+      // Set kuota sesuai dengan paket setelah 10 detik (hanya jika SUKSES)
+      if (addExecutionTime >= 15) {
+        setTimeout(async () => {
+          try {
+            await axios.post("https://api.hidepulsa.com/api/akrab", {
+              action: "edit",
+              id_telegram: process.env.ADMIN_ID,
+              password: process.env.PASSWORD2,
+              nomor_hp,
+              nomor_slot,
+              input_gb: kuota.toString()
+            }, {
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: process.env.APIKEY2
+              },
+              timeout: 60000 // 1 menit timeout untuk edit kuota
+            });
+          } catch (err) {
+            console.warn(`⚠️ Edit kuota gagal untuk ${nomor_hp} SLOT ${nomor_slot}:`, err.message);
+          }
+        }, 10000);
+      }
+
+    } catch (err) {
+      console.error(`Error adding anggota bekasan: ${err.message}`);
+      const addExecutionTime = Math.floor((Date.now() - addStartTime) / 1000);
+      const { getHargaGagal } = require('../../db');
+      const biayaGagal = await getHargaGagal();
+
+      // === SPECIAL HANDLING UNTUK SOCKET HANG UP ===
+      // Socket hang up biasanya berarti server masih memproses tapi client timeout
+      if (err.code === 'ECONNRESET' || err.message.includes('socket hang up') || err.message.includes('timeout')) {
+        console.warn(`⚠️ [SOCKET HANG UP] Possible server still processing - API ADD execution time: ${addExecutionTime}s`);
+        
+        // Jika execution time >= 8 detik, kemungkinan besar server berhasil memproses
+        if (addExecutionTime >= 8) {
+          console.log(`✅ [SOCKET HANG UP] Treating as SUCCESS due to API ADD execution time >= 8s`);
+          
+          // TREAT AS SUCCESS - calculate as successful transaction
+          const { getHargaPaket } = require('../../db');
+          const harga = await getHargaPaket(paket);
+          const kodePengelola = nomor_hp.slice(-5);
+          const kuota = await getKuotaPaket(paket);
+          
+          // Ambil saldo user sebelum dipotong
+          const { getUserSaldo } = require('../../db');
+          const saldoAwal = await getUserSaldo(msg.from.id);
+          const saldoAkhir = saldoAwal - harga;
+          
+          const teksHasilSuccess = `✅ Sukses !! (Network Timeout)\n\n` +
+            `<code>Detail         : Sukses (timeout jaringan)\n` +
+            `Jenis paket    : BULANAN ${paket.toUpperCase()}\n` +
+            `Nomor          : ${normalizedNumber}\n` +
+            `Kode           : ${kodePengelola}\n` +
+            `Kuota Bersama  : ${kuota}gb\n` +
+            `Saldo awal     : Rp.${saldoAwal.toLocaleString('id-ID')}\n` +
+            `Saldo terpotong: Rp.${harga.toLocaleString('id-ID')}\n` +
+            `Saldo akhir    : Rp.${saldoAkhir.toLocaleString('id-ID')}\n` +
+            `Waktu eksekusi : ${addExecutionTime} detik ⚠️</code>\n\n` +
+            `⚠️ <i>Nomor kemungkinan sudah ter-add meski ada timeout jaringan</i>`;
+
+          // Kirim hasil success
+          await bot.sendMessage(chatId, teksHasilSuccess, {
+            parse_mode: 'HTML',
+            reply_to_message_id: msg.message_id
+          });
+
+          // Kurangi saldo dengan harga paket (bukan biaya gagal)
+          try {
+            const { kurangiSaldo } = require('../../db');
+            await kurangiSaldo(msg.from.id, harga);
+          } catch (saldoErr) {
+            console.error('Error mengurangi saldo (success case):', saldoErr.message);
+          }
+
+          // Catat transaksi sebagai sukses
+          await freezeStok(paket, nomor_hp, normalizedNumber, nomor_slot, kuota, msg.from.id, bot, {
+            saldoSebelum: saldoAwal,
+            saldoSesudah: saldoAkhir,
+            harga: harga
+          });
+
+          // RELEASE LOCK sebagai sukses
+          releasePengelolaLock(nomor_hp, userId, 'transaction_success_timeout');
+
+          // Auto edit kuota untuk socket hang up yang dianggap sukses
+          setTimeout(async () => {
+            try {
+              await axios.post("https://api.hidepulsa.com/api/akrab", {
+                action: "edit",
+                id_telegram: process.env.ADMIN_ID,
+                password: process.env.PASSWORD2,
+                nomor_hp,
+                nomor_slot,
+                input_gb: kuota.toString()
+              }, {
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: process.env.APIKEY2
+                },
+                timeout: 60000 // 1 menit timeout untuk edit kuota
+              });
+            } catch (editErr) {
+              console.warn(`⚠️ Edit kuota timeout case gagal untuk ${nomor_hp} SLOT ${nomor_slot}:`, editErr.message);
+            }
+          }, 10000);
+
+        } else {
+          console.log(`❌ [SOCKET HANG UP] Treating as FAILURE due to API ADD execution time < 8s`);
+          
+          // TREAT AS FAILURE - execution time < 15 detik
+          // Ambil saldo user sebelum dipotong
+          const { getUserSaldo } = require('../../db');
+          const saldoAwal = await getUserSaldo(msg.from.id);
+          const saldoAkhir = saldoAwal - biayaGagal;
+          
+          const teksGagalTimeout = `❌ Gagal !! (Network Timeout)\n\n` +
+            `<code>Detail         : Timeout jaringan\n` +
+            `Jenis paket    : BULANAN ${paket.toUpperCase()}\n` +
+            `Nomor          : ${normalizedNumber}\n` +
+            `Kode           : -\n` +
+            `Kuota Bersama  : -\n` +
+            `Saldo awal     : Rp.${saldoAwal.toLocaleString('id-ID')}\n` +
+            `Saldo terpotong: Rp.${biayaGagal.toLocaleString('id-ID')}\n` +
+            `Saldo akhir    : Rp.${saldoAkhir.toLocaleString('id-ID')}\n` +
+            `Waktu eksekusi : ${addExecutionTime} detik ⚠️</code>\n\n` +
+            `⚠️ <i>Timeout jaringan - silakan cek manual apakah nomor ter-add</i>`;
+
+          // Kirim hasil timeout
+          await bot.sendMessage(chatId, teksGagalTimeout, {
+            parse_mode: 'HTML',
+            reply_to_message_id: msg.message_id
+          });
+
+          // Kurangi saldo dengan biaya gagal
+          try {
+            const { kurangiSaldo } = require('../../db');
+            await kurangiSaldo(msg.from.id, biayaGagal);
+          } catch (saldoErr) {
+            console.error('Error mengurangi saldo (timeout case):', saldoErr.message);
+          }
+
+          // Log transaksi timeout ke grup/channel
+          try {
+            const { logTransaction } = require('../../transaction_logger');
+            await logTransaction(bot, {
+              userId: msg.from.id,
+              username: msg.from.username,
+              kategori: paket.toUpperCase(),
+              nomor: normalizedNumber,
+              pengelola: nomor_hp,
+              status: 'timeout',
+              harga: biayaGagal,
+              saldoSebelum: saldoAwal,
+              saldoSesudah: saldoAkhir,
+              provider: 'API_TIMEOUT',
+              error: 'Timeout jaringan - waktu eksekusi melebihi batas'
+            });
+          } catch (logError) {
+            console.error('Warning: Failed to log timeout transaction:', logError.message);
+          }
+
+          // RELEASE LOCK sebagai gagal
+          releasePengelolaLock(nomor_hp, userId, 'transaction_failed_timeout');
+        }
+
+      } else {
+        // ERROR LAINNYA (bukan socket hang up) - treat as normal failure
+        console.log(`❌ [API ERROR] Non-timeout error: ${err.message}`);
+
+        // RELEASE LOCK karena API ERROR
+        releasePengelolaLock(nomor_hp, userId, 'api_error_add_anggota');
+
+        // Format output gagal karena error API normal
+        // TIDAK memanggil freezeStok untuk transaksi yang error
+        
+        // Ambil saldo user sebelum dipotong
+        const { getUserSaldo } = require('../../db');
+        const saldoAwal = await getUserSaldo(msg.from.id);
+        const saldoAkhir = saldoAwal - biayaGagal;
+        
+        const teksGagal = `❌ Gagal !!\n\n` +
+          `<code>Detail         : nyangkut, ada akrab\n` +
+          `Jenis paket    : BULANAN ${paket.toUpperCase()}\n` +
+          `Nomor          : ${normalizedNumber}\n` +
+          `Kode           : -\n` +
+          `Kuota Bersama  : -\n` +
+          `Saldo awal     : Rp.${saldoAwal.toLocaleString('id-ID')}\n` +
+          `Saldo terpotong: Rp.${biayaGagal.toLocaleString('id-ID')}\n` +
+          `Saldo akhir    : Rp.${saldoAkhir.toLocaleString('id-ID')}\n` +
+          `Waktu eksekusi : ${addExecutionTime} detik ❌</code>`;
+
+        // Kirim hasil FIRST, lalu hapus processing message
+        await bot.sendMessage(chatId, teksGagal, {
+          parse_mode: 'HTML',
+          reply_to_message_id: msg.message_id // Reply ke message nomor user
+        });
+
+        // Kurangi saldo SETELAH kirim pesan
+        try {
+          const { kurangiSaldo } = require('../../db');
+          await kurangiSaldo(msg.from.id, biayaGagal);
+        } catch (saldoErr) {
+          console.error('Error mengurangi saldo:', saldoErr.message);
+        }
+
+        // Log transaksi API error ke grup/channel
+        try {
+          const { logTransaction } = require('../../transaction_logger');
+          await logTransaction(bot, {
+            userId: msg.from.id,
+            username: msg.from.username,
+            kategori: paket.toUpperCase(),
+            nomor: normalizedNumber,
+            pengelola: nomor_hp,
+            status: 'failed',
+            harga: biayaGagal,
+            saldoSebelum: saldoAwal,
+            saldoSesudah: saldoAkhir,
+            provider: 'API_ERROR',
+            error: `API Error - ${err.message}`
+          });
+        } catch (logError) {
+          console.error('Warning: Failed to log API error transaction:', logError.message);
+        }
+      }
+
+      // === CLEANUP UNTUK SEMUA ERROR CASES ===
       // Hapus message "Memproses..." setelah hasil terkirim
       try {
         await bot.deleteMessage(chatId, processingMsg.message_id);
       } catch (e) {
         // Ignore delete error
       }
+
       stateBulanan.delete(chatId);
 
-      // Auto restore menu setelah transaksi (sama seperti create.js)
+      // Auto restore menu setelah transaksi gagal (sama seperti create.js)
       setTimeout(async () => {
         // Hapus pesan detail paket (originalMessageId) setelah 1 detik
         if (state.originalMessageId) {
@@ -1108,430 +1333,11 @@ module.exports = (bot) => {
           console.error('Error restoring main menu:', err.message);
         }
       }, 2000); // 2 detik delay untuk memberi waktu user membaca hasil
-
-      // Auto edit kuota setelah ADD sukses (urutan: ADD → Wait 5s → CEKSLOT → SET_KUBER)
-      if (addExecutionTime >= 8) {
-        setTimeout(async () => {
-          try {
-            // === LANGSUNG SET_KUBER DENGAN ROBUST APPROACH ===
-            const formattedParent = formatNomorToInternational(nomor_hp);
-            
-            // ✅ LANGSUNG HIT member_info_akrab untuk mendapat fresh member_id
-            const recheckBody = new URLSearchParams({
-              id_parent: formattedParent,
-              token: process.env.APIKEY1
-            }).toString();
-            
-            const recheckRes = await axios.post(
-              `${process.env.API1}/member_info_akrab`,
-              recheckBody,
-              {
-                headers: {
-                  'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                timeout: 10000
-              }
-            );
-            
-            // ✅ KONVERSI GB KE BYTES DULU (sebelum member search untuk menghindari undefined error)
-            const kuotaGBInt = parseInt(kuotaGB);
-            let kuberInBytes = kuotaGBInt * 1073741824;
-            
-            // ✅ WORKAROUND: API KHFY tidak support new_allocation: 0, gunakan 1024 bytes sebagai pseudo 0GB
-            if (kuotaGBInt === 0) {
-              kuberInBytes = 1024; // 1024 bytes ≈ 0.000001 GB (praktis 0GB)
-            }
-            
-            // ✅ ROBUST MEMBER EXTRACTION - Jangan terlalu strict dengan status
-            let freshMemberList = [];
-            let familyMemberId = null;
-            
-            // Coba ekstrak dari berbagai kemungkinan struktur response
-            if (recheckRes.data?.data?.member_info?.members) {
-              freshMemberList = recheckRes.data.data.member_info.members;
-            } else if (recheckRes.data?.data && Array.isArray(recheckRes.data.data)) {
-              freshMemberList = recheckRes.data.data;
-            }
-            
-            // Jika belum dapat member_id, cari dari array berdasarkan nomor HP yang di-ADD
-            if (freshMemberList.length > 0) {
-              // ✅ NORMALIZE TARGET NUMBER untuk matching
-              const targetMsisdn = normalizedNumber.startsWith('62') ? normalizedNumber : `62${normalizedNumber.slice(1)}`;
-              
-              // ✅ SKIP INDEX 0 (parent/pengelola) - member mulai dari index 1
-              const membersOnly = freshMemberList.slice(1); // Skip index 0 yang adalah parent
-              
-              const targetMember = membersOnly.find(member => 
-                member.msisdn === targetMsisdn || member.msisdn === normalizedNumber
-              );
-              
-              if (targetMember) {
-                familyMemberId = targetMember.family_member_id;
-              } else {
-                console.warn(`❌ No member found with msisdn ${targetMsisdn} or ${normalizedNumber}`);
-                console.warn(`❌ Available member msisdns (excluding parent):`, membersOnly.map(m => m.msisdn));
-                console.warn(`❌ Parent msisdn (index 0):`, freshMemberList[0]?.msisdn || 'N/A');
-              }
-            }
-            
-            if (!familyMemberId) {
-              throw new Error(`No fresh member_id found for ${normalizedNumber} after ADD - member not found in recheck`);
-            }
-            
-            // SET_KUBER dengan member_id yang fresh
-            console.log(`� SET_KUBER: Member found via robust extraction`);
-            
-            // SET_KUBER calculation
-
-            
-            // ✅ FORMULIR SET_KUBER (HANYA 4 PARAMETER)
-            const formData = new URLSearchParams();
-            formData.append('token', process.env.APIKEY1);
-            formData.append('id_parent', formattedParent);
-            formData.append('member_id', familyMemberId);
-            formData.append('new_allocation', kuberInBytes.toString());
-            
-            const setKuberResponse = await axios.post(
-              `${process.env.API1}/set_kuber_akrab`,
-              formData,
-              {
-                headers: {
-                  'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                timeout: 30000 // 30 detik timeout
-              }
-            );
-            
-            // ✅ PROPER SUCCESS CHECK: API returns status: true (boolean) for success
-            if (setKuberResponse.data.status === true || setKuberResponse.data.status === 'success') {
-              // SET_KUBER berhasil - tidak perlu log detail
-            }
-          } catch (setKuberErr) {
-            console.warn(`⚠️ SET_KUBER Error untuk ${nomor_hp} SLOT ${nomor_slot}:`);
-            console.warn(`   - Error: ${setKuberErr.message}`);
-            console.warn(`   - Member ID: ${familyMemberId || 'NOT_FOUND'}`);
-            console.warn(`   - Allocation: ${kuberInBytes || 'NOT_SET'} bytes`);
-            
-            // Jika error axios, log response juga
-            if (setKuberErr.response) {
-              console.warn(`   - API Response:`, setKuberErr.response.data);
-            }
-          }
-        }, 5000); // 5 detik delay untuk mendapat fresh member_id setelah ADD
-      }
-
-  } catch (err) {
-    console.error(`Error adding anggota bulanan: ${err.message}`);
-    const addExecutionTime = Math.floor((Date.now() - addStartTime) / 1000);
-    const { getHargaGagal } = require('../../db');
-    const biayaGagal = await getHargaGagal();
-
-    // === SPECIAL HANDLING UNTUK SOCKET HANG UP ===
-    // Socket hang up biasanya berarti server masih memproses tapi client timeout
-    if (err.code === 'ECONNRESET' || err.message.includes('socket hang up') || err.message.includes('timeout')) {
-      console.warn(`⚠️ [SOCKET HANG UP] Possible server still processing - API ADD execution time: ${addExecutionTime}s`);
-      
-        // Jika execution time >= 8 detik, kemungkinan besar server berhasil memproses
-        if (addExecutionTime >= 8) {
-
-        const { getHargaPaket } = require('../../db');
-        const harga = await getHargaPaket(paket);
-        const kuotaText = kuotaGB === '0' ? '0gb' : `${kuotaGB}gb`;
-        const kodePengelola = nomor_hp.slice(-5);
-        
-        // Ambil saldo user sebelum dipotong
-        const { getUserSaldo } = require('../../db');
-        const saldoAwal = await getUserSaldo(msg.from.id);
-        const saldoAkhir = saldoAwal - harga;
-        
-        const teksHasilSuccess = `✅ Sukses !! (Network Timeout)\n\n` +
-          `<code>Detail         : Sukses (timeout jaringan)\n` +
-          `Jenis paket    : ${paket.toUpperCase()}\n` +
-          `Nomor          : ${normalizedNumber}\n` +
-          `Kode           : ${kodePengelola}\n` +
-          `Kuota Bersama  : ${kuotaText}\n` +
-          `Saldo awal     : Rp.${saldoAwal.toLocaleString('id-ID')}\n` +
-          `Saldo terpotong: Rp.${harga.toLocaleString('id-ID')}\n` +
-          `Saldo akhir    : Rp.${saldoAkhir.toLocaleString('id-ID')}\n` +
-          `Waktu eksekusi : ${addExecutionTime} detik ⚠️</code>\n\n` +
-          `⚠️ <i>Nomor kemungkinan sudah ter-add meski ada timeout jaringan</i>`;
-
-        // Kirim hasil success
-        await bot.sendMessage(chatId, teksHasilSuccess, {
-          parse_mode: 'HTML',
-          reply_to_message_id: msg.message_id
-        });
-
-        // Kurangi saldo dengan harga paket (bukan biaya gagal)
-        try {
-          const { kurangiSaldo } = require('../../db');
-          await kurangiSaldo(msg.from.id, harga);
-        } catch (saldoErr) {
-          console.error('Error mengurangi saldo (success case):', saldoErr.message);
-        }
-
-        // Catat transaksi sebagai sukses
-        await freezeStok(paket.toUpperCase(), nomor_hp, normalizedNumber, nomor_slot, kuotaGB, msg.from.id, bot, {
-          saldoSebelum: saldoAwal,
-          saldoSesudah: saldoAkhir,
-          harga: harga
-        });
-
-        // RELEASE LOCK sebagai sukses
-        releasePengelolaLock(nomor_hp, userId, 'transaction_success_timeout');
-
-        // Auto edit kuota untuk socket hang up yang dianggap sukses
-        setTimeout(async () => {
-          try {
-            // === API1 KHFY-Store SET_KUBER ===
-            const formattedParent = formatNomorToInternational(nomor_hp);
-            
-            // ✅ AMBIL FAMILY_MEMBER_ID dari data CEKSLOT1 yang sudah disimpan
-            const { selectedSlotData } = state;
-            let familyMemberId = selectedSlotData?.family_member_id;
-            
-            // ✅ FALLBACK: Jika tidak ada family_member_id, coba gunakan slot_id atau hitung berdasarkan slot
-            if (!familyMemberId) {
-              console.warn(`⚠️ SET_KUBER (hangup): No family_member_id found, trying slot_id fallback`);
-              
-              // Option 1: Gunakan slot_id jika ada
-              if (selectedSlotData?.slot_id !== undefined) {
-                familyMemberId = selectedSlotData.slot_id.toString();
-              } 
-              // Option 2: Gunakan nomor_slot sebagai last resort
-              else if (nomor_slot !== undefined) {
-                familyMemberId = nomor_slot.toString();
-              } 
-              // Option 3: Skip SET_KUBER jika tidak ada ID sama sekali
-              else {
-                console.warn(`⚠️ SET_KUBER (hangup): No member identifier found for ${nomor_hp}, skipping SET_KUBER`);
-                return;
-              }
-            }
-            
-            // ✅ KONVERSI GB KE BYTES (bilangan utuh * 1073741824)
-            const kuotaGBInt = parseInt(kuotaGB);
-            let kuberInBytes = kuotaGBInt * 1073741824;
-            
-            // ✅ WORKAROUND: API KHFY tidak support new_allocation: 0, gunakan 1024 bytes sebagai pseudo 0GB
-            if (kuotaGBInt === 0) {
-              kuberInBytes = 1024; // 1024 bytes ≈ 0.000001 GB (praktis 0GB)
-            }
-            
-            // ✅ FORMULIR API YANG BENAR
-            const formData = new URLSearchParams();
-            formData.append('token', process.env.APIKEY1);
-            formData.append('id_parent', formattedParent);
-            formData.append('member_id', familyMemberId);                     // ✅ BENAR: member_id bukan slot
-            formData.append('new_allocation', kuberInBytes.toString());       // ✅ BENAR: 0GB → "1024", 15GB → "16106127360"
-            
-            const setKuberResponse = await axios.post(
-              `${process.env.API1}/set_kuber_akrab`,
-              formData,
-              {
-                headers: {
-                  'Content-Type': 'application/x-www-form-urlencoded'
-                },
-              timeout: 60000 // 1 menit timeout untuk edit kuota
-            });
-            
-          } catch (editErr) {
-            console.warn(`⚠️ Edit kuota timeout case gagal untuk ${nomor_hp} SLOT ${nomor_slot}:`, editErr.message);
-          }
-        }, 10000);
-
-      } else {
-
-        
-        // TREAT AS FAILURE - execution time < 15 detik
-        // Ambil saldo user sebelum dipotong
-        const { getUserSaldo } = require('../../db');
-        const saldoAwal = await getUserSaldo(msg.from.id);
-        const saldoAkhir = saldoAwal - biayaGagal;
-        
-        const teksGagalTimeout = `❌ Gagal !! (Network Timeout)\n\n` +
-          `<code>Detail         : Timeout jaringan\n` +
-          `Jenis paket    : ${paket.toUpperCase()}\n` +
-          `Nomor          : ${normalizedNumber}\n` +
-          `Kode           : -\n` +
-          `Kuota Bersama  : -\n` +
-          `Saldo awal     : Rp.${saldoAwal.toLocaleString('id-ID')}\n` +
-          `Saldo terpotong: Rp.${biayaGagal.toLocaleString('id-ID')}\n` +
-          `Saldo akhir    : Rp.${saldoAkhir.toLocaleString('id-ID')}\n` +
-          `Waktu eksekusi : ${addExecutionTime} detik ⚠️</code>\n\n` +
-          `⚠️ <i>Timeout jaringan - silakan cek manual apakah nomor ter-add</i>`;
-
-        // Kirim hasil timeout
-        await bot.sendMessage(chatId, teksGagalTimeout, {
-          parse_mode: 'HTML',
-          reply_to_message_id: msg.message_id
-        });
-
-        // Kurangi saldo dengan biaya gagal
-        try {
-          const { kurangiSaldo } = require('../../db');
-          await kurangiSaldo(msg.from.id, biayaGagal);
-        } catch (saldoErr) {
-          console.error('Error mengurangi saldo (timeout case):', saldoErr.message);
-        }
-
-        // Log transaksi timeout ke grup/channel
-        try {
-          const { logTransaction } = require('../../transaction_logger');
-          await logTransaction(bot, {
-            userId: msg.from.id,
-            username: msg.from.username,
-            kategori: paket.toUpperCase(),
-            nomor: normalizedNumber,
-            pengelola: nomor_hp,
-            status: 'timeout',
-            harga: biayaGagal,
-            saldoSebelum: saldoAwal,
-            saldoSesudah: saldoAkhir,
-            provider: 'API_TIMEOUT',
-            error: 'Timeout jaringan - waktu eksekusi melebihi batas'
-          });
-        } catch (logError) {
-          console.error('Warning: Failed to log timeout transaction:', logError.message);
-        }
-
-        // RELEASE LOCK sebagai gagal
-        releasePengelolaLock(nomor_hp, userId, 'transaction_failed_timeout');
-      }
-
-    } else {
-      // ERROR LAINNYA (bukan socket hang up) - treat as normal failure
-
-
-      // RELEASE LOCK karena API ERROR
-      releasePengelolaLock(nomor_hp, userId, 'api_error_add_anggota');
-
-      // Format output gagal karena error API normal
-      // TIDAK memanggil freezeStok untuk transaksi yang error
-      
-      // Ambil saldo user sebelum dipotong
-      const { getUserSaldo } = require('../../db');
-      const saldoAwal = await getUserSaldo(msg.from.id);
-      const saldoAkhir = saldoAwal - biayaGagal;
-      
-      const teksGagal = `❌ Gagal !!\n\n` +
-        `<code>Detail         : nyangkut, ada akrab\n` +
-        `Jenis paket    : ${paket.toUpperCase()}\n` +
-        `Nomor          : ${normalizedNumber}\n` +
-        `Kode           : -\n` +
-        `Kuota Bersama  : -\n` +
-        `Saldo awal     : Rp.${saldoAwal.toLocaleString('id-ID')}\n` +
-        `Saldo terpotong: Rp.${biayaGagal.toLocaleString('id-ID')}\n` +
-        `Saldo akhir    : Rp.${saldoAkhir.toLocaleString('id-ID')}\n` +
-        `Waktu eksekusi : ${addExecutionTime} detik ❌</code>`;
-
-      // Kirim hasil FIRST, lalu hapus processing message
-      await bot.sendMessage(chatId, teksGagal, {
-        parse_mode: 'HTML',
-        reply_to_message_id: msg.message_id // Reply ke message nomor user
-      });
-
-      // Kurangi saldo SETELAH kirim pesan
-      try {
-        const { kurangiSaldo } = require('../../db');
-        await kurangiSaldo(msg.from.id, biayaGagal);
-      } catch (saldoErr) {
-        console.error('Error mengurangi saldo:', saldoErr.message);
-      }
-
-      // Log transaksi API error ke grup/channel
-      try {
-        const { logTransaction } = require('../../transaction_logger');
-        await logTransaction(bot, {
-          userId: msg.from.id,
-          username: msg.from.username,
-          kategori: paket.toUpperCase(),
-          nomor: normalizedNumber,
-          pengelola: nomor_hp,
-          status: 'failed',
-          harga: biayaGagal,
-          saldoSebelum: saldoAwal,
-          saldoSesudah: saldoAkhir,
-          provider: 'API_ERROR',
-          error: `API Error - ${err.message}`
-        });
-      } catch (logError) {
-        console.error('Warning: Failed to log API error transaction:', logError.message);
-      }
     }
-
-    // === CLEANUP UNTUK SEMUA ERROR CASES ===
-    // Hapus message "Memproses..." setelah hasil terkirim
-    try {
-      await bot.deleteMessage(chatId, processingMsg.message_id);
-    } catch (e) {
-      // Ignore delete error
-    }
-
-    stateBulanan.delete(chatId);
-
-    // Auto restore menu setelah transaksi gagal (sama seperti create.js)
-    setTimeout(async () => {
-      // Hapus pesan detail paket (originalMessageId) setelah 1 detik
-      if (state.originalMessageId) {
-        try {
-          await global.bot.deleteMessage(chatId, state.originalMessageId);
-        } catch (e) {
-          console.error('Error deleting original message:', e);
-        }
-      }
-    }, 1000); // 1 detik untuk hapus detail paket
-    
-    setTimeout(async () => {
-      try {
-        const { getUserSaldo } = require('../../db');
-        const saldo = await getUserSaldo(msg.from.id);
-
-        // Generate uptime (simplified version)
-        const formatUptime = (ms) => {
-          let s = Math.floor(ms / 1000);
-          const hari = Math.floor(s / 86400);
-          s %= 86400;
-          const jam = Math.floor(s / 3600);
-          s %= 3600;
-          const menit = Math.floor(s / 60);
-          const detik = s % 60;
-          let hasil = [];
-          if (hari > 0) hasil.push(`${hari} hari`);
-          if (jam > 0) hasil.push(`${jam} jam`);
-          if (menit > 0) hasil.push(`${menit} menit`);
-          if (detik > 0 || hasil.length === 0) hasil.push(`${detik} detik`);
-          return hasil.join(' ');
-        };
-
-        const BOT_START_TIME = Date.now() - (process.uptime() * 1000);
-        const uptime = formatUptime(Date.now() - BOT_START_TIME);
-        
-        const generateUserDetail = (userId, username, saldo, uptime) => {
-          return '💌 <b>ID</b>           : <code>' + userId + '</code>\n' +
-                 '💌 <b>User</b>       : <code>' + (username || '-') + '</code>\n' +
-                 '📧 <b>Saldo</b>     : <code>Rp. ' + saldo.toLocaleString('id-ID') + '</code>\n' +
-                 '⌚ <b>Uptime</b>  : <code>' + uptime + '</code>';
-        };
-
-        const detail = generateUserDetail(msg.from.id, msg.from.username, saldo, uptime);
-
-        await global.bot.sendPhoto(chatId, './welcome.jpg', {
-          caption: detail,
-          parse_mode: 'HTML',
-          reply_markup: { inline_keyboard: generateMainKeyboard(msg.from.id) }
-        }, {
-          filename: 'welcome.jpg',
-          contentType: 'image/jpeg'
-        });
-      } catch (err) {
-        console.error('Error restoring main menu:', err.message);
-      }
-    }, 2000); // 2 detik delay untuk memberi waktu user membaca hasil
-  }
   });
 
 };
 
+// Export setStateBulanan function
 module.exports.setStateBulanan = setStateBulanan;
-// === END OF BULANAN HANDLER ===
+// == END HANDLER BULANAN ===
