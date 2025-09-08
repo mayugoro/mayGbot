@@ -4,11 +4,11 @@
 
 const axios = require('axios');
 
-// Konfigurasi API Global (KHFY-STORE)
-const KHFY_API_URL = 'https://panel.khfy-store.com/api_v2/list_product';
+// Konfigurasi API Global (KHFY-STORE AKRAB - Real Stock)
+const KHFY_API_URL = 'https://panel.khfy-store.com/api/api-xl-v7/cek_stock_akrab';
 const APIKEYG = process.env.APIKEYG;
 
-// Function untuk fetch stok akrab global dari API KHFY-STORE (format baru)
+// Function untuk fetch stok akrab global dari API KHFY-STORE (real stock)
 async function fetchStokGlobal() {
   try {
     if (!APIKEYG) {
@@ -16,22 +16,21 @@ async function fetchStokGlobal() {
     }
 
     const response = await axios.get(KHFY_API_URL, {
-      params: {
-        provider: 'KUBER',
-        token: APIKEYG
-      },
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
+      params: {
+        token: APIKEYG
+      },
       timeout: 10000 // 10 detik timeout
     });
 
-    if (response.data && response.data.ok && response.data.data) {
-      // Konversi dari format JSON ke format legacy string untuk backward compatibility
-      return convertToLegacyFormat(response.data);
+    if (response.data && response.data.status) {
+      // Konversi dari format akrab API ke format legacy string untuk backward compatibility
+      return convertAkrabToLegacyFormat(response.data);
     } else {
-      throw new Error('Format response tidak sesuai dari KHFY API');
+      throw new Error('Format response tidak sesuai dari KHFY AKRAB API');
     }
 
   } catch (error) {
@@ -40,30 +39,41 @@ async function fetchStokGlobal() {
   }
 }
 
-// Function untuk konversi response KHFY ke format legacy string
-function convertToLegacyFormat(apiResponse) {
+// Function untuk konversi response KHFY AKRAB ke format legacy string
+function convertAkrabToLegacyFormat(apiResponse) {
   const lines = [];
   
-  apiResponse.data.forEach(product => {
-    const {
-      kode_produk,
-      nama_produk,
-      kosong,
-      gangguan
-    } = product;
-
-    // Calculate available stock (1 jika tidak kosong dan tidak gangguan, 0 jika kosong/gangguan)
-    const stok = (kosong === 0 && gangguan === 0) ? 1 : 0;
+  if (apiResponse && apiResponse.message) {
+    const message = apiResponse.message;
     
-    // Format: "(KODE) Nama Produk : stok"
-    const formattedLine = `(${kode_produk}) ${nama_produk} : ${stok}`;
-    lines.push(formattedLine);
-  });
+    // Split dengan pattern yang lebih akurat - cari pattern "( space"
+    const messageLines = message.split(/ \(/g).filter(line => line.trim());
+    
+    messageLines.forEach((line, index) => {
+      // Add back "(" for lines after the first
+      const processLine = index === 0 ? line : (line.startsWith('(') ? line : '(' + line);
+      
+      // Parse format: "(KODE) Nama Paket : jumlah"
+      const match = processLine.match(/\(([^)]+)\)\s*([^:]+):\s*(\d+)/);
+      if (match) {
+        const kode = match[1].trim();
+        const nama = match[2].trim();
+        const stok = parseInt(match[3]);
+        
+        // Skip paket BPA (bekasan) - hanya ambil bulanan
+        if (!kode.includes('BPA')) {
+          // Format: "(KODE) Nama Produk : stok"
+          const formattedLine = `(${kode}) ${nama} : ${stok}`;
+          lines.push(formattedLine);
+        }
+      }
+    });
+  }
 
   return lines.join('\n');
 }
 
-// Function untuk fetch data mentah dari KHFY API (untuk dynamic generation)
+// Function untuk fetch data mentah dari KHFY AKRAB API (untuk dynamic generation)
 async function fetchRawStokData() {
   try {
     if (!APIKEYG) {
@@ -71,27 +81,63 @@ async function fetchRawStokData() {
     }
 
     const response = await axios.get(KHFY_API_URL, {
-      params: {
-        provider: 'KUBER',
-        token: APIKEYG
-      },
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
+      params: {
+        token: APIKEYG
+      },
       timeout: 10000
     });
 
-    if (response.data && response.data.ok && response.data.data) {
-      return response.data.data; // Return raw array data
+    if (response.data && response.data.status && response.data.message) {
+      // Convert akrab message format ke array format untuk compatibility
+      return convertAkrabMessageToArray(response.data.message);
     } else {
-      throw new Error('Format response tidak sesuai dari KHFY API');
+      throw new Error('Format response tidak sesuai dari KHFY AKRAB API');
     }
 
   } catch (error) {
     console.error('❌ Error fetching raw stok data:', error.message);
     throw error;
   }
+}
+
+// Function untuk convert message akrab ke array format (untuk compatibility dengan sistem existing)
+function convertAkrabMessageToArray(message) {
+  const products = [];
+  
+  // Split dengan pattern yang lebih akurat - cari pattern "( space"
+  const lines = message.split(/ \(/g).filter(line => line.trim());
+  
+  // Process first line as is, others need "(" prefix added back
+  lines.forEach((line, index) => {
+    // Add back "(" for lines after the first (except if already starts with "(")
+    const processLine = index === 0 ? line : (line.startsWith('(') ? line : '(' + line);
+    
+    // Parse format: "(KODE) Nama Paket : jumlah"
+    const match = processLine.match(/\(([^)]+)\)\s*([^:]+):\s*(\d+)/);
+    if (match) {
+      const kode = match[1].trim();
+      const nama = match[2].trim();
+      const stok = parseInt(match[3]);
+      
+      // Skip paket BPA (bekasan) - hanya ambil bulanan
+      if (!kode.includes('BPA')) {
+        products.push({
+          kode_produk: kode,
+          nama_produk: nama,
+          kosong: stok === 0 ? 1 : 0,  // Convert stok ke format boolean untuk compatibility
+          gangguan: 0,  // Selalu 0 karena data akrab sudah filtered
+          stok: stok,   // Tambahkan field stok riil
+          harga_final: 0 // Placeholder
+        });
+      }
+    }
+  });
+  
+  return products;
 }
 
 // Function untuk parse string stok menjadi object
