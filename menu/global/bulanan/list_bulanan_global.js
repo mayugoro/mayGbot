@@ -114,10 +114,19 @@ const generateDetailPaketGlobal = async (productData, stokCount = 0) => {
   let deskripsiPaket = 'Detail tidak tersedia';
   if (productData.deskripsi && productData.deskripsi.trim()) {
     // Format deskripsi dari API dengan line breaks yang proper
-    deskripsiPaket = productData.deskripsi
+    let cleanDescription = productData.deskripsi
       .replace(/\r\n/g, '\n')
       .replace(/\r/g, '\n')
       .trim();
+    
+    // Filter out bagian "noted" dan setelahnya (case insensitive)
+    const notedIndex = cleanDescription.toLowerCase().indexOf('noted');
+    if (notedIndex !== -1) {
+      cleanDescription = cleanDescription.substring(0, notedIndex).trim();
+    }
+    
+    // Jika masih ada isi setelah filtering, gunakan itu
+    deskripsiPaket = cleanDescription || 'Detail kuota sesuai area coverage';
   }
   
   return {

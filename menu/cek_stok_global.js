@@ -6,7 +6,7 @@ const axios = require('axios');
 
 // Konfigurasi API Global (KHFY-STORE AKRAB - Real Stock)
 const KHFY_API_URL = 'https://panel.khfy-store.com/api/api-xl-v7/cek_stock_akrab';
-const LIST_PRODUCT_URL = 'https://panel.khfy-store.com/api_v2/list_product?provider=KUBER&token=63b1a6fa-e1e6-4151-8e5b-66e07e701fab';
+const LIST_PRODUCT_URL = 'https://panel.khfy-store.com/api_v2/list_product?provider=KUBER&token=' + process.env.APIKEYG;
 const APIKEYG = process.env.APIKEYG;
 
 // Function untuk fetch stok akrab global dari API KHFY-STORE (real stock)
