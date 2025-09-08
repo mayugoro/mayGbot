@@ -156,14 +156,6 @@ const init = () => {
           { key: 'pesan_tolak_bulanan', value: 'Saldo tidak cukup untuk akses menu ini\n\n⏤͟͟ᴍᴀʏᴜɢᴏʀᴏ', description: 'Pesan penolakan akses bulanan' },
           { key: 'pesan_tolak_global', value: 'Saldo tidak cukup untuk akses menu global\n\n⏤͟͟ᴍᴀʏᴜɢᴏʀᴏ', description: 'Pesan penolakan akses global' },
 
-          // === PRODUK GLOBAL LEGACY (untuk backward compatibility) ===
-          { key: 'harga_global_supermini', value: '42000', description: 'Harga BULANAN GLOBAL SUPERMINI (Legacy)' },
-          { key: 'harga_global_megabig', value: '87000', description: 'Harga BULANAN GLOBAL MEGABIG (Legacy)' },
-          { key: 'harga_global_mini', value: '52000', description: 'Harga BULANAN GLOBAL MINI (Legacy)' },
-          { key: 'harga_global_big', value: '57000', description: 'Harga BULANAN GLOBAL BIG (Legacy)' },
-          { key: 'harga_global_jumbo', value: '77000', description: 'Harga BULANAN GLOBAL JUMBO (Legacy)' },
-          { key: 'harga_global_bigplus', value: '62000', description: 'Harga BULANAN GLOBAL BIG PLUS (Legacy)' },
-
           // Harga Global Bekasan (masih menggunakan sistem lama karena tidak ada API dinamis untuk bekasan global)
           { key: 'harga_bekasan_global_l_3h', value: '12000', description: 'Harga BEKASAN GLOBAL L 3H' },
           { key: 'harga_bekasan_global_l_5h', value: '15000', description: 'Harga BEKASAN GLOBAL L 5H' },
