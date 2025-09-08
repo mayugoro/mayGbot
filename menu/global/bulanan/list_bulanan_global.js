@@ -92,17 +92,17 @@ const generateDetailPaketGlobal = async (productData, stokCount = 0) => {
   
   try {
     // Gunakan fungsi database dinamis untuk cek harga berdasarkan kode produk
-    console.log(`🔍 Checking price for product: ${productData.kode}, fallback: ${productData.nama?.toLowerCase()}`);
+    // console.log(`🔍 Checking price for product: ${productData.kode}, fallback: ${productData.nama?.toLowerCase()}`);
     finalHarga = await getHargaPaketDynamic(productData.kode, productData.nama?.toLowerCase());
-    console.log(`💰 Database price result: ${finalHarga}`);
+    // console.log(`💰 Database price result: ${finalHarga}`);
     
     if (finalHarga > 0) {
       hargaDisplay = finalHarga.toLocaleString('id-ID');
-      console.log(`✅ Using database price: ${hargaDisplay}`);
+      // console.log(`✅ Using database price: ${hargaDisplay}`);
     } else if (productData.harga > 0) {
       finalHarga = productData.harga;
       hargaDisplay = productData.harga.toLocaleString('id-ID');
-      console.log(`🔄 Using API price: ${hargaDisplay}`);
+      // console.log(`🔄 Using API price: ${hargaDisplay}`);
     }
   } catch (error) {
     console.error('Error getting price from database:', error);

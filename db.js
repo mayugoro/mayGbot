@@ -874,11 +874,11 @@ const getHargaFinalProduk = (kodeProduK) => {
 // Auto-sync produk dari API (menggunakan external API call)
 const autoSyncProdukFromAPI = async () => {
   try {
-    console.log("🔄 Starting auto-sync produk from API...");
+    // console.log("🔄 Starting auto-sync produk from API...");
     
     // Check jika API key tersedia
     if (!process.env.APIKEYG) {
-      console.log("ℹ️  APIKEYG not configured, skipping auto-sync");
+      // console.log("ℹ️  APIKEYG not configured, skipping auto-sync");
       return 0;
     }
     
@@ -886,15 +886,15 @@ const autoSyncProdukFromAPI = async () => {
     const { fetchRawStokData } = require('./menu/cek_stok_global');
     
     try {
-      console.log("📡 Fetching products from KHFY-STORE API...");
+      // console.log("📡 Fetching products from KHFY-STORE API...");
       const apiData = await fetchRawStokData();
       
       if (!apiData || apiData.length === 0) {
-        console.log("⚠️  No products received from API");
+        // console.log("⚠️  No products received from API");
         return 0;
       }
       
-      console.log(`📦 Received ${apiData.length} products from API`);
+      // console.log(`📦 Received ${apiData.length} products from API`);
       
       // Filter hanya produk bulanan (non-BPA) yang aktif
       const bulanProducts = apiData.filter(product => 
@@ -903,22 +903,22 @@ const autoSyncProdukFromAPI = async () => {
         product.gangguan === 0
       );
       
-      console.log(`🔍 Filtered to ${bulanProducts.length} active bulanan products`);
+      // console.log(`🔍 Filtered to ${bulanProducts.length} active bulanan products`);
       
       if (bulanProducts.length === 0) {
-        console.log("⚠️  No active bulanan products to sync");
+        // console.log("⚠️  No active bulanan products to sync");
         return 0;
       }
       
       // Sync ke database dengan preserve existing markup
       const syncedCount = await syncProdukFromAPIPreserveMarkup(bulanProducts);
-      console.log(`✅ Auto-sync completed: ${syncedCount} products synced/updated`);
+      // console.log(`✅ Auto-sync completed: ${syncedCount} products synced/updated`);
       
       return syncedCount;
       
     } catch (apiError) {
       console.error("❌ API fetch failed:", apiError.message);
-      console.log("ℹ️  API dependencies not ready, skipping auto-sync");
+      // console.log("ℹ️  API dependencies not ready, skipping auto-sync");
       return 0;
     }
     
@@ -963,7 +963,7 @@ const syncProdukFromAPIPreserveMarkup = async (apiData) => {
             if (err) rej(err);
             else {
               const action = existing ? 'updated' : 'added';
-              console.log(`   ${action}: ${kodeProduK} (API: ${product.harga_final || 0}${preservedMarkup ? ', Markup preserved: ' + preservedMarkup : ''})`);
+              // console.log(`   ${action}: ${kodeProduK} (API: ${product.harga_final || 0}${preservedMarkup ? ', Markup preserved: ' + preservedMarkup : ''})`);
               res(this.changes);
             }
           });
@@ -988,22 +988,22 @@ init().then(() => {
   setTimeout(() => {
     autoSyncProdukFromAPI().then(syncedCount => {
       if (syncedCount > 0) {
-        console.log(`🎉 Initial sync completed: ${syncedCount} products synced`);
+        // console.log(`🎉 Initial sync completed: ${syncedCount} products synced`);
       }
     }).catch(err => {
-      console.log("ℹ️  Initial auto-sync skipped:", err.message || "dependencies not ready");
+      // console.log("ℹ️  Initial auto-sync skipped:", err.message || "dependencies not ready");
     });
   }, 5000);
   
   // Setup periodic sync setiap 1 jam untuk menjaga data tetap update
   setInterval(() => {
-    console.log("⏰ Running periodic product sync...");
+    // console.log("⏰ Running periodic product sync...");
     autoSyncProdukFromAPI().then(syncedCount => {
       if (syncedCount > 0) {
-        console.log(`🔄 Periodic sync completed: ${syncedCount} products updated`);
+        // console.log(`🔄 Periodic sync completed: ${syncedCount} products updated`);
       }
     }).catch(err => {
-      console.log("ℹ️  Periodic sync skipped:", err.message || "API not available");
+      // console.log("ℹ️  Periodic sync skipped:", err.message || "API not available");
     });
   }, 60 * 60 * 1000); // 1 jam = 60 menit * 60 detik * 1000 ms
   

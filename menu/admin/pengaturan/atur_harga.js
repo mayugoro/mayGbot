@@ -63,7 +63,7 @@ async function generateDynamicHargaGlobalBulananKeyboard() {
     const produkBulanan = await getAllProdukDinamis('bulanan');
     
     if (!produkBulanan || produkBulanan.length === 0) {
-      console.log('⚠️  No dynamic products found, trying fallback...');
+      // console.log('⚠️  No dynamic products found, trying fallback...');
       // Fallback ke sistem lama jika belum ada data
       const { getDynamicProductMapping } = require('../../global/bulanan/list_bulanan_global');
       const productMapping = await getDynamicProductMapping();
@@ -365,7 +365,7 @@ module.exports = (bot) => {
         }
         
       } catch (e) {
-        console.log('🏪 Harga Stok Pribadi handler loaded (placeholder)');
+        // console.log('🏪 Harga Stok Pribadi handler loaded (placeholder)');
       }
 
       await bot.answerCallbackQuery(id);
@@ -614,7 +614,7 @@ module.exports = (bot) => {
       try {
         const { autoSyncProdukFromAPI } = require('../../../db');
         
-        console.log('🎛️ Admin triggered manual sync');
+        // console.log('🎛️ Admin triggered manual sync');
         const syncedCount = await autoSyncProdukFromAPI();
         
         // Send simple feedback message instead of intrusive alert
@@ -660,7 +660,7 @@ module.exports = (bot) => {
           } catch (editError) {
             // Abaikan error jika message tidak berubah (normal behavior)
             if (editError.message && !editError.message.includes('message is not modified')) {
-              console.log('Could not refresh keyboard:', editError.message);
+              // console.log('Could not refresh keyboard:', editError.message);
             }
             // Untuk "message is not modified", ini adalah behavior normal dan tidak perlu di-log
           }
