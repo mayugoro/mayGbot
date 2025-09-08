@@ -95,8 +95,9 @@ const init = () => {
           return reject(err);
         }
         
-        // Insert default values jika belum ada
+        // Insert default values jika belum ada (sistem dasar + produk lokal)
         const defaultConfigs = [
+          // === PRODUK LOKAL (BEKASAN) ===
           { key: 'harga_3h', value: '5000', description: 'Harga paket BEKASAN 3H' },
           { key: 'harga_4h', value: '6500', description: 'Harga paket BEKASAN 4H' },
           { key: 'harga_5h', value: '9000', description: 'Harga paket BEKASAN 5H' },
@@ -105,6 +106,8 @@ const init = () => {
           { key: 'harga_8h', value: '15000', description: 'Harga paket BEKASAN 8H' },
           { key: 'harga_9h', value: '18000', description: 'Harga paket BEKASAN 9H' },
           { key: 'harga_10h', value: '20000', description: 'Harga paket BEKASAN 10H' },
+          
+          // Deskripsi bekasan lokal
           { key: 'deskripsi_3h', value: 'AREA 1 = 8 GB\nAREA 2 = 10 GB\nAREA 3 = 15 GB\nAREA 4 = 25 GB', description: 'Deskripsi kuota BEKASAN 3H' },
           { key: 'deskripsi_4h', value: 'AREA 1 = 8 GB\nAREA 2 = 10 GB\nAREA 3 = 15 GB\nAREA 4 = 25 GB', description: 'Deskripsi kuota BEKASAN 4H' },
           { key: 'deskripsi_5h', value: 'AREA 1 = 8 GB\nAREA 2 = 10 GB\nAREA 3 = 15 GB\nAREA 4 = 25 GB', description: 'Deskripsi kuota BEKASAN 5H' },
@@ -114,16 +117,7 @@ const init = () => {
           { key: 'deskripsi_9h', value: 'AREA 1 = 8 GB\nAREA 2 = 10 GB\nAREA 3 = 15 GB\nAREA 4 = 25 GB', description: 'Deskripsi kuota BEKASAN 9H' },
           { key: 'deskripsi_10h', value: 'AREA 1 = 8 GB\nAREA 2 = 10 GB\nAREA 3 = 15 GB\nAREA 4 = 25 GB', description: 'Deskripsi kuota BEKASAN 10H' },
 
-          // Fitur lainnya
-          { key: 'harga_gagal', value: '700', description: 'Harga yang dipotong jika transaksi gagal' },
-          { key: 'min_saldo_bekasan', value: '5000', description: 'Minimal saldo untuk akses menu bekasan' },
-          { key: 'min_saldo_bulanan', value: '100000', description: 'Minimal saldo untuk akses menu bulanan' },
-          { key: 'min_saldo_global', value: '150000', description: 'Minimal saldo untuk akses menu global' },
-          { key: 'pesan_tolak_bekasan', value: 'Saldo tidak cukup untuk akses menu ini\n\n⏤͟͟ᴍᴀʏᴜɢᴏʀᴏ', description: 'Pesan penolakan akses bekasan' },
-          { key: 'pesan_tolak_bulanan', value: 'Saldo tidak cukup untuk akses menu ini\n\n⏤͟͟ᴍᴀʏᴜɢᴏʀᴏ', description: 'Pesan penolakan akses bulanan' },
-          { key: 'pesan_tolak_global', value: 'Saldo tidak cukup untuk akses menu global\n\n⏤͟͟ᴍᴀʏᴜɢᴏʀᴏ', description: 'Pesan penolakan akses global' },
-
-          // Konfigurasi untuk menu BULANAN
+          // === PRODUK LOKAL (BULANAN) ===
           { key: 'harga_supermini', value: '40000', description: 'Harga paket BULANAN SUPERMINI' },
           { key: 'harga_superbig', value: '60000', description: 'Harga paket BULANAN SUPERBIG' },
           { key: 'harga_mini', value: '50000', description: 'Harga paket BULANAN MINI' },
@@ -132,6 +126,8 @@ const init = () => {
           { key: 'harga_jumbo', value: '75000', description: 'Harga paket BULANAN JUMBO' },
           { key: 'harga_megabig', value: '85000', description: 'Harga paket BULANAN MEGABIG' },
           { key: 'harga_superjumbo', value: '90000', description: 'Harga paket BULANAN SUPER JUMBO' },
+          
+          // Deskripsi bulanan lokal
           { key: 'deskripsi_supermini', value: 'AREA 1 : 13 GB\nAREA 2 : 15 GB\nAREA 3 : 20 GB\nAREA 4 : 30 GB', description: 'Deskripsi kuota BULANAN SUPERMINI' },
           { key: 'deskripsi_superbig', value: 'AREA 1 : 7 GB\nAREA 2 : 12 GB\nAREA 3 : 25 GB\nAREA 4 : 65 GB', description: 'Deskripsi kuota BULANAN SUPERBIG' },
           { key: 'deskripsi_mini', value: 'AREA 1 : 22,5 GB\nAREA 2 : 25,5 GB\nAREA 3 : 34 GB\nAREA 4 : 49 GB', description: 'Deskripsi kuota BULANAN MINI' },
@@ -141,7 +137,7 @@ const init = () => {
           { key: 'deskripsi_megabig', value: 'AREA 1 : 88 GB\nAREA 2 : 90 GB\nAREA 3 : 95 GB\nAREA 4 : 105 GB', description: 'Deskripsi kuota BULANAN MEGABIG' },
           { key: 'deskripsi_superjumbo', value: 'AREA 1 : 86 GB\nAREA 2 : 91 GB\nAREA 3 : 104 GB\nAREA 4 : 144 GB', description: 'Deskripsi kuota BULANAN SUPER JUMBO' },
           
-          // Konfigurasi kuota default untuk bulanan
+          // Konfigurasi kuota default untuk bulanan lokal
           { key: 'kuota_supermini', value: '0', description: 'Kuota default BULANAN SUPERMINI (GB)' },
           { key: 'kuota_superbig', value: '0', description: 'Kuota default BULANAN SUPERBIG (GB)' },
           { key: 'kuota_mini', value: '15', description: 'Kuota default BULANAN MINI (GB)' },
@@ -151,16 +147,24 @@ const init = () => {
           { key: 'kuota_megabig', value: '75', description: 'Kuota default BULANAN MEGABIG (GB)' },
           { key: 'kuota_superjumbo', value: '60', description: 'Kuota default BULANAN SUPER JUMBO (GB)' },
 
-          // ====== KONFIGURASI HARGA GLOBAL ======
-          // Harga Global Bulanan
-          { key: 'harga_global_supermini', value: '42000', description: 'Harga BULANAN GLOBAL SUPERMINI' },
-          { key: 'harga_global_megabig', value: '87000', description: 'Harga BULANAN GLOBAL MEGABIG' },
-          { key: 'harga_global_mini', value: '52000', description: 'Harga BULANAN GLOBAL MINI' },
-          { key: 'harga_global_big', value: '57000', description: 'Harga BULANAN GLOBAL BIG' },
-          { key: 'harga_global_jumbo', value: '77000', description: 'Harga BULANAN GLOBAL JUMBO' },
-          { key: 'harga_global_bigplus', value: '62000', description: 'Harga BULANAN GLOBAL BIG PLUS' },
+          // === KONFIGURASI SISTEM ===
+          { key: 'harga_gagal', value: '700', description: 'Harga yang dipotong jika transaksi gagal' },
+          { key: 'min_saldo_bekasan', value: '5000', description: 'Minimal saldo untuk akses menu bekasan' },
+          { key: 'min_saldo_bulanan', value: '100000', description: 'Minimal saldo untuk akses menu bulanan' },
+          { key: 'min_saldo_global', value: '150000', description: 'Minimal saldo untuk akses menu global' },
+          { key: 'pesan_tolak_bekasan', value: 'Saldo tidak cukup untuk akses menu ini\n\n⏤͟͟ᴍᴀʏᴜɢᴏʀᴏ', description: 'Pesan penolakan akses bekasan' },
+          { key: 'pesan_tolak_bulanan', value: 'Saldo tidak cukup untuk akses menu ini\n\n⏤͟͟ᴍᴀʏᴜɢᴏʀᴏ', description: 'Pesan penolakan akses bulanan' },
+          { key: 'pesan_tolak_global', value: 'Saldo tidak cukup untuk akses menu global\n\n⏤͟͟ᴍᴀʏᴜɢᴏʀᴏ', description: 'Pesan penolakan akses global' },
 
-          // Harga Global Bekasan L
+          // === PRODUK GLOBAL LEGACY (untuk backward compatibility) ===
+          { key: 'harga_global_supermini', value: '42000', description: 'Harga BULANAN GLOBAL SUPERMINI (Legacy)' },
+          { key: 'harga_global_megabig', value: '87000', description: 'Harga BULANAN GLOBAL MEGABIG (Legacy)' },
+          { key: 'harga_global_mini', value: '52000', description: 'Harga BULANAN GLOBAL MINI (Legacy)' },
+          { key: 'harga_global_big', value: '57000', description: 'Harga BULANAN GLOBAL BIG (Legacy)' },
+          { key: 'harga_global_jumbo', value: '77000', description: 'Harga BULANAN GLOBAL JUMBO (Legacy)' },
+          { key: 'harga_global_bigplus', value: '62000', description: 'Harga BULANAN GLOBAL BIG PLUS (Legacy)' },
+
+          // Harga Global Bekasan (masih menggunakan sistem lama karena tidak ada API dinamis untuk bekasan global)
           { key: 'harga_bekasan_global_l_3h', value: '12000', description: 'Harga BEKASAN GLOBAL L 3H' },
           { key: 'harga_bekasan_global_l_5h', value: '15000', description: 'Harga BEKASAN GLOBAL L 5H' },
           { key: 'harga_bekasan_global_l_7h', value: '18000', description: 'Harga BEKASAN GLOBAL L 7H' },
@@ -191,13 +195,34 @@ const init = () => {
           { key: 'harga_bekasan_global_xxl_13h', value: '43000', description: 'Harga BEKASAN GLOBAL XXL 13H' },
           { key: 'harga_bekasan_global_xxl_15h', value: '48000', description: 'Harga BEKASAN GLOBAL XXL 15H' },
           { key: 'harga_bekasan_global_xxl_17h', value: '53000', description: 'Harga BEKASAN GLOBAL XXL 17H' },
-          { key: 'harga_bekasan_global_xxl_19h', value: '58000', description: 'Harga BEKASAN GLOBAL XXL 19H' },
+          { key: 'harga_bekasan_global_xxl_19h', value: '58000', description: 'Harga BEKASAN GLOBAL XXL 19H' }
         ];
 
         defaultConfigs.forEach(config => {
           db.run('INSERT OR IGNORE INTO konfigurasi (key, value, description) VALUES (?, ?, ?)', 
             [config.key, config.value, config.description]);
         });
+      });
+
+      // Buat tabel produk dinamis untuk menyimpan data API
+      db.run(`
+        CREATE TABLE IF NOT EXISTS produk_dinamis (
+          kode_produk TEXT PRIMARY KEY,
+          nama_produk TEXT NOT NULL,
+          kategori TEXT NOT NULL,
+          harga_api INTEGER NOT NULL,
+          harga_markup INTEGER NULL,
+          deskripsi TEXT,
+          status_api TEXT DEFAULT 'active',
+          last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `, (err) => {
+        if (err) {
+          console.error("Error creating produk_dinamis table: ", err.message);
+          return reject(err);
+        }
+        //console.log("✅ Tabel produk_dinamis berhasil dibuat/divalidasi");
       });
 
       // Buat tabel redeem_codes
@@ -655,11 +680,54 @@ const getAllKonfigurasi = () => {
   });
 };
 
-// === Get harga paket berdasarkan kategori ===
+// === Get harga paket berdasarkan kategori/kode produk dinamis ===
 const getHargaPaket = async (kategori) => {
   const key = `harga_${kategori.toLowerCase()}`;
   const harga = await getKonfigurasi(key);
   return harga ? parseInt(harga) : 0;
+};
+
+// === Get harga paket dengan prioritas kode produk dinamis (VERSI BARU) ===
+const getHargaPaketDynamic = async (kodeProduK, fallbackKategori = null) => {
+  try {
+    // Priority 1: Cari di tabel produk_dinamis
+    const hargaFinal = await getHargaFinalProduk(kodeProduK);
+    if (hargaFinal > 0) {
+      return hargaFinal;
+    }
+    
+    // Priority 2: Fallback ke sistem konfigurasi lama
+    let key = `harga_${kodeProduK.toLowerCase()}`;
+    let harga = await getKonfigurasi(key);
+    
+    if (harga) {
+      return parseInt(harga);
+    }
+    
+    // Priority 3: Cari berdasarkan global prefix + kode produk
+    key = `harga_global_${kodeProduK.toLowerCase()}`;
+    harga = await getKonfigurasi(key);
+    
+    if (harga) {
+      return parseInt(harga);
+    }
+    
+    // Priority 4: Fallback ke kategori lama jika ada
+    if (fallbackKategori) {
+      key = `harga_${fallbackKategori.toLowerCase()}`;
+      harga = await getKonfigurasi(key);
+      
+      if (harga) {
+        return parseInt(harga);
+      }
+    }
+    
+    // Default: return 0 jika tidak ditemukan
+    return 0;
+  } catch (error) {
+    console.error('Error in getHargaPaketDynamic:', error);
+    return 0;
+  }
 };
 
 // === Get deskripsi paket berdasarkan kategori ===
@@ -687,8 +755,245 @@ const getKuotaPaket = async (kategori) => {
   return kuota || '100';
 };
 
+// === FUNGSI PRODUK DINAMIS ===
+
+// Sync produk dari API ke database
+const syncProdukFromAPI = async (apiData) => {
+  return new Promise((resolve, reject) => {
+    const promises = [];
+    
+    apiData.forEach(product => {
+      const promise = new Promise((res, rej) => {
+        const kategori = product.kode_produk.includes('BPA') ? 'bekasan' : 'bulanan';
+        
+        db.run(`
+          INSERT OR REPLACE INTO produk_dinamis 
+          (kode_produk, nama_produk, kategori, harga_api, deskripsi, status_api, last_updated)
+          VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        `, [
+          product.kode_produk,
+          product.nama_produk,
+          kategori,
+          product.harga_final || 0,
+          product.deskripsi || '',
+          (product.kosong === 0 && product.gangguan === 0) ? 'active' : 'inactive'
+        ], function(err) {
+          if (err) rej(err);
+          else res(this.changes);
+        });
+      });
+      promises.push(promise);
+    });
+    
+    Promise.all(promises)
+      .then(results => {
+        console.log(`✅ Synced ${results.length} products from API to database`);
+        resolve(results.length);
+      })
+      .catch(reject);
+  });
+};
+
+// Get semua produk dinamis
+const getAllProdukDinamis = (kategori = null) => {
+  return new Promise((resolve, reject) => {
+    let query = 'SELECT * FROM produk_dinamis WHERE 1=1';
+    const params = [];
+    
+    if (kategori) {
+      query += ' AND kategori = ?';
+      params.push(kategori);
+    }
+    
+    query += ' ORDER BY nama_produk ASC';
+    
+    db.all(query, params, (err, rows) => {
+      if (err) return reject(err);
+      resolve(rows);
+    });
+  });
+};
+
+// Get produk dinamis berdasarkan kode
+const getProdukDinamis = (kodeProduK) => {
+  return new Promise((resolve, reject) => {
+    db.get('SELECT * FROM produk_dinamis WHERE kode_produk = ?', [kodeProduK.toUpperCase()], (err, row) => {
+      if (err) return reject(err);
+      resolve(row);
+    });
+  });
+};
+
+// Update harga markup produk
+const updateHargaMarkup = (kodeProduK, hargaMarkup) => {
+  return new Promise((resolve, reject) => {
+    db.run(`
+      UPDATE produk_dinamis 
+      SET harga_markup = ?, last_updated = CURRENT_TIMESTAMP 
+      WHERE kode_produk = ?
+    `, [hargaMarkup, kodeProduK.toUpperCase()], function(err) {
+      if (err) return reject(err);
+      resolve(this.changes);
+    });
+  });
+};
+
+// Get harga final produk (markup jika ada, atau harga API)
+const getHargaFinalProduk = (kodeProduK) => {
+  return new Promise((resolve, reject) => {
+    db.get(`
+      SELECT 
+        harga_markup, 
+        harga_api,
+        CASE 
+          WHEN harga_markup IS NOT NULL AND harga_markup > 0 THEN harga_markup
+          ELSE harga_api
+        END as harga_final
+      FROM produk_dinamis 
+      WHERE kode_produk = ?
+    `, [kodeProduK.toUpperCase()], (err, row) => {
+      if (err) return reject(err);
+      resolve(row ? row.harga_final : 0);
+    });
+  });
+};
+
+// Auto-sync produk dari API (menggunakan external API call)
+const autoSyncProdukFromAPI = async () => {
+  try {
+    console.log("🔄 Starting auto-sync produk from API...");
+    
+    // Check jika API key tersedia
+    if (!process.env.APIKEYG) {
+      console.log("ℹ️  APIKEYG not configured, skipping auto-sync");
+      return 0;
+    }
+    
+    // Import fungsi fetch API
+    const { fetchRawStokData } = require('./menu/cek_stok_global');
+    
+    try {
+      console.log("📡 Fetching products from KHFY-STORE API...");
+      const apiData = await fetchRawStokData();
+      
+      if (!apiData || apiData.length === 0) {
+        console.log("⚠️  No products received from API");
+        return 0;
+      }
+      
+      console.log(`📦 Received ${apiData.length} products from API`);
+      
+      // Filter hanya produk bulanan (non-BPA) yang aktif
+      const bulanProducts = apiData.filter(product => 
+        !product.kode_produk.includes('BPA') && 
+        product.kosong === 0 && 
+        product.gangguan === 0
+      );
+      
+      console.log(`🔍 Filtered to ${bulanProducts.length} active bulanan products`);
+      
+      if (bulanProducts.length === 0) {
+        console.log("⚠️  No active bulanan products to sync");
+        return 0;
+      }
+      
+      // Sync ke database dengan preserve existing markup
+      const syncedCount = await syncProdukFromAPIPreserveMarkup(bulanProducts);
+      console.log(`✅ Auto-sync completed: ${syncedCount} products synced/updated`);
+      
+      return syncedCount;
+      
+    } catch (apiError) {
+      console.error("❌ API fetch failed:", apiError.message);
+      console.log("ℹ️  API dependencies not ready, skipping auto-sync");
+      return 0;
+    }
+    
+  } catch (error) {
+    console.error("❌ Auto-sync failed:", error.message);
+    return 0;
+  }
+};
+
+// Sync produk dari API ke database dengan preserve markup yang sudah ada
+const syncProdukFromAPIPreserveMarkup = async (apiData) => {
+  return new Promise((resolve, reject) => {
+    const promises = [];
+    
+    apiData.forEach(product => {
+      const promise = new Promise((res, rej) => {
+        const kategori = product.kode_produk.includes('BPA') ? 'bekasan' : 'bulanan';
+        const kodeProduK = product.kode_produk.toUpperCase();
+        
+        // First, check if product already exists to preserve markup
+        db.get(`
+          SELECT harga_markup FROM produk_dinamis WHERE kode_produk = ?
+        `, [kodeProduK], (err, existing) => {
+          if (err) return rej(err);
+          
+          // Preserve existing markup if available
+          const preservedMarkup = existing ? existing.harga_markup : null;
+          
+          db.run(`
+            INSERT OR REPLACE INTO produk_dinamis 
+            (kode_produk, nama_produk, kategori, harga_api, harga_markup, deskripsi, status_api, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          `, [
+            kodeProduK,
+            product.nama_produk,
+            kategori,
+            product.harga_final || 0,
+            preservedMarkup, // Keep existing markup
+            product.deskripsi || '',
+            (product.kosong === 0 && product.gangguan === 0) ? 'active' : 'inactive'
+          ], function(err) {
+            if (err) rej(err);
+            else {
+              const action = existing ? 'updated' : 'added';
+              console.log(`   ${action}: ${kodeProduK} (API: ${product.harga_final || 0}${preservedMarkup ? ', Markup preserved: ' + preservedMarkup : ''})`);
+              res(this.changes);
+            }
+          });
+        });
+      });
+      promises.push(promise);
+    });
+    
+    Promise.all(promises)
+      .then(results => {
+        resolve(results.length);
+      })
+      .catch(reject);
+  });
+};
+
 // Jalankan fungsi init() dan tunggu sampai selesai
 init().then(() => {
+  // console.log("✅ Database initialized successfully");
+  
+  // Auto-sync produk dari API saat startup (delayed untuk memastikan dependencies tersedia)
+  setTimeout(() => {
+    autoSyncProdukFromAPI().then(syncedCount => {
+      if (syncedCount > 0) {
+        console.log(`🎉 Initial sync completed: ${syncedCount} products synced`);
+      }
+    }).catch(err => {
+      console.log("ℹ️  Initial auto-sync skipped:", err.message || "dependencies not ready");
+    });
+  }, 5000);
+  
+  // Setup periodic sync setiap 1 jam untuk menjaga data tetap update
+  setInterval(() => {
+    console.log("⏰ Running periodic product sync...");
+    autoSyncProdukFromAPI().then(syncedCount => {
+      if (syncedCount > 0) {
+        console.log(`🔄 Periodic sync completed: ${syncedCount} products updated`);
+      }
+    }).catch(err => {
+      console.log("ℹ️  Periodic sync skipped:", err.message || "API not available");
+    });
+  }, 60 * 60 * 1000); // 1 jam = 60 menit * 60 detik * 1000 ms
+  
 }).catch((err) => {
   console.error("Database initialization failed:", err);
 });
@@ -1020,6 +1325,7 @@ module.exports = {
   setKonfigurasi,
   getAllKonfigurasi,
   getHargaPaket,
+  getHargaPaketDynamic, // Fungsi baru untuk harga dinamis
   getDeskripsiPaket,
   getHargaGagal,
   getMinSaldoBekasan,
@@ -1045,5 +1351,13 @@ module.exports = {
   removeBlockedUsers,
   getBlockedUsersCount,
   unblockUser,
-  autoUnblockIfActive
+  autoUnblockIfActive,
+  // === PRODUK DINAMIS ===
+  syncProdukFromAPI,
+  syncProdukFromAPIPreserveMarkup,
+  getAllProdukDinamis,
+  getProdukDinamis,
+  updateHargaMarkup,
+  getHargaFinalProduk,
+  autoSyncProdukFromAPI
 };

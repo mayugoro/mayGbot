@@ -1,20 +1,25 @@
 // Handler untuk cek stok global
-// Berinteraksi dengan API AKRAB GLOBAL untuk mendapatkan stok akrab
-// Handler untuk stok bulanan (non-BPA) dan backup redirect message
+// Berinteraksi dengan API KHFY-STORE untuk mendapatkan stok akrab global
+// Handler untuk stok bulanan (non-BPA) dengan dynamic button generation
 
 const axios = require('axios');
 
-// Konfigurasi API Global
-const APIG_LISTPRODUK = process.env.APIG_LISTPRODUK;
+// Konfigurasi API Global (KHFY-STORE)
+const KHFY_API_URL = 'https://panel.khfy-store.com/api_v2/list_product';
+const APIKEYG = process.env.APIKEYG;
 
-// Function untuk fetch stok akrab global dari API
+// Function untuk fetch stok akrab global dari API KHFY-STORE (format baru)
 async function fetchStokGlobal() {
   try {
-    if (!APIG_LISTPRODUK) {
-      throw new Error('APIG_LISTPRODUK tidak dikonfigurasi di .env');
+    if (!APIKEYG) {
+      throw new Error('APIKEYG tidak dikonfigurasi di .env');
     }
 
-    const response = await axios.get(APIG_LISTPRODUK, {
+    const response = await axios.get(KHFY_API_URL, {
+      params: {
+        provider: 'KUBER',
+        token: APIKEYG
+      },
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
@@ -22,14 +27,69 @@ async function fetchStokGlobal() {
       timeout: 10000 // 10 detik timeout
     });
 
-    if (response.data && response.data.status && response.data.message) {
-      return response.data.message; // String dengan format stok
+    if (response.data && response.data.ok && response.data.data) {
+      // Konversi dari format JSON ke format legacy string untuk backward compatibility
+      return convertToLegacyFormat(response.data);
     } else {
-      throw new Error('Format response tidak sesuai');
+      throw new Error('Format response tidak sesuai dari KHFY API');
     }
 
   } catch (error) {
     console.error('❌ Error fetching stok global:', error.message);
+    throw error;
+  }
+}
+
+// Function untuk konversi response KHFY ke format legacy string
+function convertToLegacyFormat(apiResponse) {
+  const lines = [];
+  
+  apiResponse.data.forEach(product => {
+    const {
+      kode_produk,
+      nama_produk,
+      kosong,
+      gangguan
+    } = product;
+
+    // Calculate available stock (1 jika tidak kosong dan tidak gangguan, 0 jika kosong/gangguan)
+    const stok = (kosong === 0 && gangguan === 0) ? 1 : 0;
+    
+    // Format: "(KODE) Nama Produk : stok"
+    const formattedLine = `(${kode_produk}) ${nama_produk} : ${stok}`;
+    lines.push(formattedLine);
+  });
+
+  return lines.join('\n');
+}
+
+// Function untuk fetch data mentah dari KHFY API (untuk dynamic generation)
+async function fetchRawStokData() {
+  try {
+    if (!APIKEYG) {
+      throw new Error('APIKEYG tidak dikonfigurasi di .env');
+    }
+
+    const response = await axios.get(KHFY_API_URL, {
+      params: {
+        provider: 'KUBER',
+        token: APIKEYG
+      },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      timeout: 10000
+    });
+
+    if (response.data && response.data.ok && response.data.data) {
+      return response.data.data; // Return raw array data
+    } else {
+      throw new Error('Format response tidak sesuai dari KHFY API');
+    }
+
+  } catch (error) {
+    console.error('❌ Error fetching raw stok data:', error.message);
     throw error;
   }
 }
@@ -115,3 +175,4 @@ module.exports = (bot) => {
 // Export functions untuk digunakan di file lain
 module.exports.fetchStokGlobal = fetchStokGlobal;
 module.exports.parseStokGlobal = parseStokGlobal;
+module.exports.fetchRawStokData = fetchRawStokData; // New: untuk dynamic generation

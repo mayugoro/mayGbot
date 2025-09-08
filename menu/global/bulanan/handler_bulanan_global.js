@@ -131,22 +131,20 @@ const generateMainKeyboard = (userId) => {
 
 // Export function untuk set state dari list_bulanan_global.js
 const setStateBulananGlobal = async (chatId, state) => {
-  const { userId, paket } = state;
+  const { userId, kodeProduK, namaProduK, hargaProduK, productData } = state;
   
   // === VALIDASI SALDO SEBELUM PROSES ===
   try {
-    const { getUserSaldo, getKonfigurasi } = require('../../../db');
+    const { getUserSaldo, getHargaPaketDynamic } = require('../../../db');
     const saldoUser = await getUserSaldo(userId);
     
-    // Priority order untuk harga: global -> regular fallback
-    const harga = await getKonfigurasi(`harga_global_${paket}`) || 
-                 await getKonfigurasi(`harga_${paket}`) || '0';
-    const hargaValue = parseInt(harga);
-    
+    // Priority untuk harga: database berdasarkan kode produk -> API harga -> fallback 0
+    const hargaValue = await getHargaPaketDynamic(kodeProduK, namaProduK?.toLowerCase()) || 
+                      parseInt(hargaProduK) || 0;
     
     if (saldoUser < hargaValue) {
-      // Saldo tidak cukup
-      global.bot.sendMessage(chatId, `❗<b>Saldo tidak cukup untuk membeli produk!</b>\n\n💰 Harga: Rp.${hargaValue.toLocaleString('id-ID')}\n💳 Saldo Anda: Rp.${saldoUser.toLocaleString('id-ID')}`, {
+      // Saldo tidak cukup - gunakan nama produk dinamis
+      global.bot.sendMessage(chatId, `❗<b>Saldo tidak cukup untuk membeli ${namaProduK}!</b>\n\n💰 Harga: Rp.${hargaValue.toLocaleString('id-ID')}\n💳 Saldo Anda: Rp.${saldoUser.toLocaleString('id-ID')}`, {
         parse_mode: 'HTML'
       }).catch(err => console.error('Error sending insufficient balance message:', err));
       return;
@@ -159,7 +157,8 @@ const setStateBulananGlobal = async (chatId, state) => {
     return;
   }
   
-  
+  // Update state dengan harga yang sudah dicek
+  state.hargaProduK = hargaValue;
   stateBulananGlobal.set(chatId, state);
   
   // Langsung ke input nomor (tidak ada pengecekan slot untuk global)
@@ -173,7 +172,7 @@ const inputNomorHP = async (chatId) => {
   const state = stateBulananGlobal.get(chatId);
   if (!state || state.step !== 'input_nomor_global') return;
 
-  const { paket } = state;
+  const { namaProduK } = state;
   
 
   // Update state
@@ -241,7 +240,7 @@ module.exports = (bot) => {
 
     if (!state || state.step !== 'input_nomor_global' || text.startsWith('/')) return;
 
-    const { userId, paket } = state;
+    const { userId, kodeProduK, namaProduK, hargaProduK } = state;
     
     
     // BATALKAN TIMEOUT TIMER karena user sudah input
@@ -289,20 +288,13 @@ module.exports = (bot) => {
       // Generate unique transaction ID
       const trxId = `TRX${Date.now()}${Math.random().toString(36).substr(2, 5)}`;
 
-      // Get kode paket dari mapping
-      const kodePaketMap = {
-        'supermini': 'XLASM',
-        'megabig': 'XLA89',
-        'mini': 'XLAM',
-        'big': 'XLAB',
-        'jumbo': 'XLAJ'
-      };
-      const kodePaket = kodePaketMap[paket] || paket.toUpperCase();
+      // Gunakan kode produk dinamis dari API
+      const kodeProduk = state.kodeProduK; // Langsung gunakan kode dari API (XLA14, XLA32, dll)
 
       // Prepare API payload
       const apiPayload = {
         req: "topup",
-        produk: kodePaket,
+        produk: kodeProduk,
         msisdn: normalizedNumber,
         reffid: trxId,
         time: timeFormat,
@@ -323,12 +315,10 @@ module.exports = (bot) => {
       const executionTime = Math.floor((Date.now() - startTime) / 1000);
 
       // === PROSES RESPONSE DAN POTONG SALDO ===
-      const { getKonfigurasi, kurangiSaldo, getUserSaldo } = require('../../../db');
+      const { kurangiSaldo, getUserSaldo } = require('../../../db');
       
-      // Priority order untuk harga: global -> regular fallback
-      const harga = await getKonfigurasi(`harga_global_${paket}`) || 
-                   await getKonfigurasi(`harga_${paket}`) || '0';
-      const hargaValue = parseInt(harga);
+      // Gunakan harga dinamis dari state
+      const hargaValue = parseInt(hargaProduK);
       
 
       let teksHasil = '';
@@ -353,7 +343,7 @@ module.exports = (bot) => {
           
           teksHasil = `✅ Sukses !!\n\n` +
             `<code>Detail         : Sukses AKRAB GLOBAL 🌍\n` +
-            `Jenis paket    : ${paket.toUpperCase()}\n` +
+            `Jenis paket    : ${namaProduK}\n` +
             `Nomor          : ${normalizedNumber}\n` +
             `TRX ID         : ${trxId}\n` +
             `Provider       : AKRAB GLOBAL\n` +
@@ -368,7 +358,7 @@ module.exports = (bot) => {
             await logTransaction(bot, {
               userId: userId,
               username: msg.from?.username,
-              kategori: `BULANAN GLOBAL ${paket.toUpperCase()}`,
+              kategori: `BULANAN GLOBAL ${namaProduK}`,
               nomor: formatNomorTo08(normalizedNumber), // Nomor customer/pembeli dalam format 08
               pengelola: 'AKRAB_GLOBAL', // Provider
               status: 'completed',
@@ -399,7 +389,7 @@ module.exports = (bot) => {
           
           teksHasil = `⏳ Pending !!\n\n` +
             `<code>Detail         : Sedang diproses\n` +
-            `Jenis paket    : ${paket.toUpperCase()}\n` +
+            `Jenis paket    : ${namaProduK}\n` +
             `Nomor          : ${normalizedNumber}\n` +
             `TRX ID         : ${trxId}\n` +
             `Provider       : AKRAB GLOBAL\n` +
@@ -415,7 +405,7 @@ module.exports = (bot) => {
             await logTransaction(bot, {
               userId: userId,
               username: msg.from?.username,
-              kategori: `BULANAN GLOBAL ${paket.toUpperCase()}`,
+              kategori: `BULANAN GLOBAL ${namaProduK}`,
               nomor: formatNomorTo08(normalizedNumber), // Nomor customer/pembeli dalam format 08
               pengelola: 'AKRAB_GLOBAL', // Provider
               status: 'pending',
@@ -439,7 +429,7 @@ module.exports = (bot) => {
           
           teksHasil = `🚫 Tujuan Diluar Wilayah !!\n\n` +
             `<code>Detail         : Nomor diluar coverage\n` +
-            `Jenis paket    : ${paket.toUpperCase()}\n` +
+            `Jenis paket    : ${namaProduK}\n` +
             `Nomor          : ${normalizedNumber}\n` +
             `TRX ID         : ${trxId}\n` +
             `Provider       : AKRAB GLOBAL\n` +
@@ -454,7 +444,7 @@ module.exports = (bot) => {
             await logTransaction(bot, {
               userId: userId,
               username: msg.from?.username,
-              kategori: `BULANAN GLOBAL ${paket.toUpperCase()}`,
+              kategori: `BULANAN GLOBAL ${namaProduK}`,
               nomor: formatNomorTo08(normalizedNumber), // Nomor customer/pembeli dalam format 08
               pengelola: 'AKRAB_GLOBAL', // Provider
               status: 'validation_failed',
@@ -471,13 +461,12 @@ module.exports = (bot) => {
             
         } else {
           // ❌ GAGAL LAINNYA - Potong biaya gagal
+          const { getKonfigurasi, kurangiSaldo, getUserSaldo } = require('../../../db');
           const biayaGagal = await getKonfigurasi('harga_gagal') || '100';
           const biayaGagalValue = parseInt(biayaGagal);
-          const { kurangiSaldo } = require('../../../db');
           await kurangiSaldo(userId, biayaGagalValue);
           
           // Ambil saldo user setelah dipotong biaya gagal (untuk display)
-          const { getUserSaldo } = require('../../../db');
           const saldoAkhir = await getUserSaldo(userId);
           const saldoAwal = saldoAkhir + biayaGagalValue;
           
@@ -487,7 +476,7 @@ module.exports = (bot) => {
           
           teksHasil = `❌ Gagal !!\n\n` +
             `<code>Detail         : ${errorDetail}\n` +
-            `Jenis paket    : ${paket.toUpperCase()}\n` +
+            `Jenis paket    : ${namaProduK}\n` +
             `Nomor          : ${normalizedNumber}\n` +
             `TRX ID         : ${trxId}\n` +
             `Provider       : AKRAB GLOBAL\n` +
@@ -502,7 +491,7 @@ module.exports = (bot) => {
             await logTransaction(bot, {
               userId: userId,
               username: msg.from?.username,
-              kategori: `BULANAN GLOBAL ${paket.toUpperCase()}`,
+              kategori: `BULANAN GLOBAL ${namaProduK}`,
               nomor: formatNomorTo08(normalizedNumber), // Nomor customer/pembeli dalam format 08
               pengelola: 'AKRAB_GLOBAL', // Provider
               status: 'failed',
@@ -519,13 +508,14 @@ module.exports = (bot) => {
         }
       } else {
         // Response tidak sesuai format
+        const { getKonfigurasi, potongSaldo } = require('../../../db');
         const biayaGagal = await getKonfigurasi('harga_gagal') || '100';
         const biayaGagalValue = parseInt(biayaGagal);
-        await potongSaldo(userId, biayaGagalValue, `BULANAN GLOBAL ${paket.toUpperCase()} (ERROR)`);
+        await potongSaldo(userId, biayaGagalValue, `BULANAN GLOBAL ${namaProduK} (ERROR)`);
         
         teksHasil = `❌ <b>BULANAN GLOBAL ERROR</b>\n\n` +
           `📱 Nomor: ${normalizedNumber}\n` +
-          `📦 Paket: ${paket.toUpperCase()}\n` +
+          `📦 Paket: ${namaProduK}\n` +
           `💰 Biaya: Rp. ${biayaGagalValue.toLocaleString('id-ID')}\n` +
           `🆔 TRX ID: ${trxId}\n` +
           `⏱️ Waktu: ${executionTime}s\n\n` +
@@ -590,13 +580,12 @@ module.exports = (bot) => {
       // Special handling untuk timeout/network error
       if (err.code === 'ECONNRESET' || err.message.includes('socket hang up') || err.message.includes('timeout')) {
         // Timeout biasanya berarti masih diproses, potong saldo penuh
-        const harga = await getKonfigurasi(`harga_global_${paket}`) || await getKonfigurasi(`harga_${paket}`);
-        const hargaValue = harga ? parseInt(harga) : 0;
-        await potongSaldo(userId, hargaValue, `BULANAN GLOBAL ${paket.toUpperCase()} (TIMEOUT)`);
+        const hargaValue = parseInt(hargaProduK);
+        await potongSaldo(userId, hargaValue, `BULANAN GLOBAL ${namaProduK} (TIMEOUT)`);
         
         teksError = `⏳ <b>BULANAN GLOBAL TIMEOUT</b>\n\n` +
           `📱 Nomor: ${normalizedNumber}\n` +
-          `📦 Paket: ${paket.toUpperCase()}\n` +
+          `📦 Paket: ${namaProduK}\n` +
           `💰 Harga: Rp. ${hargaValue.toLocaleString('id-ID')}\n` +
           `⏱️ Waktu: ${executionTime}s\n\n` +
           `📋 Status: Koneksi timeout\n\n` +
@@ -605,11 +594,11 @@ module.exports = (bot) => {
           `🌍 <i>Powered by AKRAB GLOBAL</i>`;
       } else {
         // Error lainnya, potong biaya gagal
-        await potongSaldo(userId, biayaGagalValue, `BULANAN GLOBAL ${paket.toUpperCase()} (ERROR)`);
+        await potongSaldo(userId, biayaGagalValue, `BULANAN GLOBAL ${namaProduK} (ERROR)`);
         
         teksError = `❌ <b>BULANAN GLOBAL ERROR</b>\n\n` +
           `📱 Nomor: ${normalizedNumber}\n` +
-          `📦 Paket: ${paket.toUpperCase()}\n` +
+          `📦 Paket: ${namaProduK}\n` +
           `💰 Biaya: Rp. ${biayaGagalValue.toLocaleString('id-ID')}\n` +
           `⏱️ Waktu: ${executionTime}s\n\n` +
           `📋 Error: ${err.message}\n\n` +
@@ -624,7 +613,7 @@ module.exports = (bot) => {
         await logTransaction(bot, {
           userId: userId,
           username: msg.from?.username,
-          kategori: `BULANAN GLOBAL ${state.paket.toUpperCase()}`,
+          kategori: `BULANAN GLOBAL ${namaProduK}`,
           nomor: formatNomorTo08(state.nomor), // Nomor customer/pembeli dalam format 08
           pengelola: 'AKRAB_GLOBAL', // Provider
           status: 'failed',

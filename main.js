@@ -468,7 +468,7 @@ require('./dompul')(bot);
 // Transaction logger sudah berjalan otomatis, tidak perlu admin commands
 
 console.log('🤖 Bot berhasil dimulai...');
-console.log('🛡️  Proteksi broadcast session aktif!');
+// console.log('🛡️  Proteksi broadcast session aktif!');
 
 // Export bot untuk digunakan di webhook
 module.exports = bot;
