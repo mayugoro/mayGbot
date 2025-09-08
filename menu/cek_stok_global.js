@@ -6,6 +6,7 @@ const axios = require('axios');
 
 // Konfigurasi API Global (KHFY-STORE AKRAB - Real Stock)
 const KHFY_API_URL = 'https://panel.khfy-store.com/api/api-xl-v7/cek_stock_akrab';
+const LIST_PRODUCT_URL = 'https://panel.khfy-store.com/api_v2/list_product?provider=KUBER&token=63b1a6fa-e1e6-4151-8e5b-66e07e701fab';
 const APIKEYG = process.env.APIKEYG;
 
 // Function untuk fetch stok akrab global dari API KHFY-STORE (real stock)
@@ -13,6 +14,15 @@ async function fetchStokGlobal() {
   try {
     if (!APIKEYG) {
       throw new Error('APIKEYG tidak dikonfigurasi di .env');
+    }
+
+    // Fetch nama dari list_product API untuk konsistensi
+    const listProductResponse = await axios.get(LIST_PRODUCT_URL);
+    const productNames = {};
+    if (listProductResponse.data && listProductResponse.data.data) {
+      listProductResponse.data.data.forEach(product => {
+        productNames[product.kode_produk] = product.nama_produk.toUpperCase();
+      });
     }
 
     const response = await axios.get(KHFY_API_URL, {
@@ -28,7 +38,7 @@ async function fetchStokGlobal() {
 
     if (response.data && response.data.status) {
       // Konversi dari format akrab API ke format legacy string untuk backward compatibility
-      return convertAkrabToLegacyFormat(response.data);
+      return convertAkrabToLegacyFormat(response.data, productNames);
     } else {
       throw new Error('Format response tidak sesuai dari KHFY AKRAB API');
     }
@@ -40,7 +50,7 @@ async function fetchStokGlobal() {
 }
 
 // Function untuk konversi response KHFY AKRAB ke format legacy string
-function convertAkrabToLegacyFormat(apiResponse) {
+function convertAkrabToLegacyFormat(apiResponse, productNames = {}) {
   const lines = [];
   
   if (apiResponse && apiResponse.message) {
@@ -62,8 +72,10 @@ function convertAkrabToLegacyFormat(apiResponse) {
         
         // Skip paket BPA (bekasan) - hanya ambil bulanan
         if (!kode.includes('BPA')) {
+          // Gunakan nama dari list_product API untuk konsistensi dengan display
+          const consistentName = productNames[kode] || nama.toUpperCase();
           // Format: "(KODE) Nama Produk : stok"
-          const formattedLine = `(${kode}) ${nama} : ${stok}`;
+          const formattedLine = `(${kode}) ${consistentName} : ${stok}`;
           lines.push(formattedLine);
         }
       }
@@ -93,7 +105,7 @@ async function fetchRawStokData() {
 
     if (response.data && response.data.status && response.data.message) {
       // Convert akrab message format ke array format untuk compatibility
-      return convertAkrabMessageToArray(response.data.message);
+      return await convertAkrabMessageToArray(response.data.message);
     } else {
       throw new Error('Format response tidak sesuai dari KHFY AKRAB API');
     }
@@ -105,8 +117,21 @@ async function fetchRawStokData() {
 }
 
 // Function untuk convert message akrab ke array format (untuk compatibility dengan sistem existing)
-function convertAkrabMessageToArray(message) {
+async function convertAkrabMessageToArray(message) {
   const products = [];
+  
+  // Fetch nama dari list_product API untuk konsistensi
+  let productNames = {};
+  try {
+    const listProductResponse = await axios.get(LIST_PRODUCT_URL);
+    if (listProductResponse.data && listProductResponse.data.data) {
+      listProductResponse.data.data.forEach(product => {
+        productNames[product.kode_produk] = product.nama_produk.toUpperCase();
+      });
+    }
+  } catch (error) {
+    console.error('Warning: Could not fetch product names from list_product API');
+  }
   
   // Split dengan pattern yang lebih akurat - cari pattern "( space"
   const lines = message.split(/ \(/g).filter(line => line.trim());
@@ -125,9 +150,13 @@ function convertAkrabMessageToArray(message) {
       
       // Skip paket BPA (bekasan) - hanya ambil bulanan
       if (!kode.includes('BPA')) {
+        // Gunakan nama dari list_product API untuk konsistensi
+        const displayName = productNames[kode] || nama.toUpperCase();
+        // Gunakan nama dari list_product API untuk konsistensi
+        const consistentDisplayName = productNames[kode] || nama.toUpperCase();
         products.push({
           kode_produk: kode,
-          nama_produk: nama,
+          nama_produk: consistentDisplayName,
           kosong: stok === 0 ? 1 : 0,  // Convert stok ke format boolean untuk compatibility
           gangguan: 0,  // Selalu 0 karena data akrab sudah filtered
           stok: stok,   // Tambahkan field stok riil
@@ -158,7 +187,7 @@ function parseStokGlobal(stokString) {
         const jumlah = parseInt(match[3]) || 0;
         
         stokData[kode] = {
-          nama: nama,
+          nama: nama.toUpperCase(),
           jumlah: jumlah
         };
       }
@@ -188,7 +217,7 @@ module.exports = (bot) => {
           if (!kode.includes('BPA')) {
             const stok = stokData[kode];
             const nama = stok.nama.replace(/\s+/g, ' ').trim();
-            info += `${nama} = ${stok.jumlah === 0 ? '-' : stok.jumlah}\n`;
+            info += `${nama.toUpperCase()} = ${stok.jumlah === 0 ? '-' : stok.jumlah}\n`;
           }
         });
 

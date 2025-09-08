@@ -23,7 +23,7 @@ async function fetchCombinedProductData() {
       
       return {
         kode_produk: product.kode_produk,
-        nama_produk: product.nama_produk,
+        nama_produk: product.nama_produk.toUpperCase(), // Gunakan nama dari list_product API (konsisten dengan display)
         deskripsi: product.deskripsi,
         harga_final: product.harga_final,
         kode_provider: product.kode_provider,
