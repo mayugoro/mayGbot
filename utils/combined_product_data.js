@@ -7,7 +7,7 @@ const { fetchRawStokData } = require('../menu/cek_stok_global');
 
 async function fetchCombinedProductData() {
   try {
-    console.log('🔄 Fetching combined product data...');
+    // console.log('🔄 Fetching combined product data...');
     
     // Fetch detail produk dari list_product API
     const listProductUrl = 'https://panel.khfy-store.com/api_v2/list_product?provider=KUBER&token=' + process.env.APIKEYG;
