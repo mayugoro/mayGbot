@@ -244,6 +244,8 @@ const init = () => {
           jam INTEGER NOT NULL,
           menit INTEGER NOT NULL,
           target_time TEXT NOT NULL,
+          target_date TEXT NULL,
+          schedule_type TEXT DEFAULT 'time_only',
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           status TEXT DEFAULT 'active'
         )
@@ -252,6 +254,25 @@ const init = () => {
           console.error("Error creating kick_schedule table: ", err.message);
           return reject(err);
         }
+        
+        // Add new columns for existing tables (backward compatibility)
+        db.run(`ALTER TABLE kick_schedule ADD COLUMN target_date TEXT NULL`, (alterErr) => {
+          // Ignore error jika kolom sudah ada
+          if (alterErr && !alterErr.message.includes('duplicate column name')) {
+            console.error("Error adding target_date column:", alterErr.message);
+          } else if (!alterErr) {
+            console.log("target_date column added to kick_schedule table.");
+          }
+        });
+        
+        db.run(`ALTER TABLE kick_schedule ADD COLUMN schedule_type TEXT DEFAULT 'time_only'`, (alterErr) => {
+          // Ignore error jika kolom sudah ada
+          if (alterErr && !alterErr.message.includes('duplicate column name')) {
+            console.error("Error adding schedule_type column:", alterErr.message);
+          } else if (!alterErr) {
+            console.log("schedule_type column added to kick_schedule table.");
+          }
+        });
         
         resolve();
       });
@@ -1094,14 +1115,14 @@ const getUsersWithHistoryCount = () => {
 };
 
 // === Functions untuk kick schedule ===
-const addKickSchedule = (chatId, nomorHp, jam, menit, targetTime) => {
+const addKickSchedule = (chatId, nomorHp, jam, menit, targetTime, targetDate = null, scheduleType = 'time_only') => {
   return new Promise((resolve, reject) => {
     const stmt = db.prepare(`
-      INSERT INTO kick_schedule (chat_id, nomor_hp, jam, menit, target_time) 
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO kick_schedule (chat_id, nomor_hp, jam, menit, target_time, target_date, schedule_type) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     
-    stmt.run([chatId, nomorHp, jam, menit, targetTime], function(err) {
+    stmt.run([chatId, nomorHp, jam, menit, targetTime, targetDate, scheduleType], function(err) {
       if (err) {
         reject(err);
       } else {

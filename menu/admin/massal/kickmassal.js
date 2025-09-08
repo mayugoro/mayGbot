@@ -14,6 +14,103 @@ const ADMIN_ID = process.env.ADMIN_ID;
 const scheduledKicks = new Map(); // key: chatId, value: { nomor_hp, waktu, timeoutId }
 const kickStates = new Map(); // key: chatId, value: { step, nomor_hp }
 
+// === DATE PARSING UTILITIES ===
+
+// Function untuk parsing tanggal dengan format fleksibel
+const parseFlexibleDate = (dateInput) => {
+  const cleanInput = dateInput.trim().toLowerCase();
+  const today = new Date();
+  
+  // Reset time to start of day for date comparison
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  
+  // Handle relative dates
+  if (cleanInput === 'today' || cleanInput === 'hari ini') {
+    return { date: todayStart, valid: true, format: 'relative', original: dateInput };
+  }
+  
+  if (cleanInput === 'tomorrow' || cleanInput === 'besok') {
+    const tomorrow = new Date(todayStart);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return { date: tomorrow, valid: true, format: 'relative', original: dateInput };
+  }
+  
+  // Handle +Ndays format (+1day, +3days, +7days)
+  const relativeDaysPattern = /^\+(\d+)days?$/;
+  const relativeDaysMatch = cleanInput.match(relativeDaysPattern);
+  if (relativeDaysMatch) {
+    const daysToAdd = parseInt(relativeDaysMatch[1]);
+    const futureDate = new Date(todayStart);
+    futureDate.setDate(futureDate.getDate() + daysToAdd);
+    return { date: futureDate, valid: true, format: 'relative_days', original: dateInput };
+  }
+  
+  // Handle absolute date formats
+  const formats = [
+    // DD/MM/YYYY atau DD/MM/YY
+    /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/,
+    // DD-MM-YYYY atau DD-MM-YY  
+    /^(\d{1,2})-(\d{1,2})-(\d{2,4})$/,
+    // DD.MM.YYYY atau DD.MM.YY
+    /^(\d{1,2})\.(\d{1,2})\.(\d{2,4})$/
+  ];
+  
+  for (const format of formats) {
+    const match = cleanInput.match(format);
+    if (match) {
+      let day = parseInt(match[1]);
+      let month = parseInt(match[2]);
+      let year = parseInt(match[3]);
+      
+      // Handle 2-digit year (convert to 4-digit)
+      if (year < 100) {
+        year += (year < 50) ? 2000 : 1900;
+      }
+      
+      // Validate ranges
+      if (day < 1 || day > 31 || month < 1 || month > 12 || year < 2025) {
+        continue;
+      }
+      
+      // Create date (month is 0-indexed in JavaScript)
+      const parsedDate = new Date(year, month - 1, day);
+      
+      // Validate that the date is actually valid (e.g., not 31/02/2025)
+      if (parsedDate.getDate() !== day || parsedDate.getMonth() !== (month - 1) || parsedDate.getFullYear() !== year) {
+        continue;
+      }
+      
+      // Check if date is in the past
+      if (parsedDate < todayStart) {
+        return { valid: false, error: 'Date cannot be in the past', original: dateInput };
+      }
+      
+      return { date: parsedDate, valid: true, format: 'absolute', original: dateInput };
+    }
+  }
+  
+  return { valid: false, error: 'Invalid date format', original: dateInput };
+};
+
+// Function untuk format tanggal untuk display
+const formatDateForDisplay = (date, includeDay = true) => {
+  const options = { 
+    year: 'numeric', 
+    month: '2-digit', 
+    day: '2-digit',
+    weekday: includeDay ? 'long' : undefined
+  };
+  
+  return date.toLocaleDateString('id-ID', options);
+};
+
+// Function untuk create combined datetime
+const createCombinedDateTime = (dateObj, jam, menit) => {
+  const combined = new Date(dateObj);
+  combined.setHours(jam, menit, 0, 0);
+  return combined;
+};
+
 // Helper function untuk format nomor internasional (sama dengan kick1.js)
 function formatNomorToInternational(nomor) {
   let cleanNomor = nomor.replace(/\D/g, '');
@@ -328,7 +425,115 @@ const kickSemuaAnggotaScheduled = async (nomor_hp, chatId, bot) => {
   }
 };
 
-// Function untuk schedule kick (mendukung single nomor atau array nomor)
+// Function untuk schedule kick dengan date support (NEW)
+const scheduleKickWithDate = async (scheduleData, chatId, bot) => {
+  const { nomorList, jam, menit, scheduleType, targetDate } = scheduleData;
+  let targetTime;
+  
+  if (scheduleType === 'date_time' && targetDate) {
+    // Date-based scheduling
+    targetTime = createCombinedDateTime(targetDate, jam, menit);
+    
+    // Validate future time
+    const now = new Date();
+    if (targetTime <= now) {
+      throw new Error(`Target time ${targetTime.toLocaleString('id-ID')} is in the past`);
+    }
+  } else {
+    // Legacy time-only scheduling
+    const now = new Date();
+    targetTime = new Date();
+    targetTime.setHours(jam, menit || 0, 0, 0);
+    
+    // Jika waktu sudah lewat hari ini, set untuk besok
+    if (targetTime <= now) {
+      targetTime.setDate(targetTime.getDate() + 1);
+    }
+  }
+  
+  const delay = targetTime.getTime() - Date.now();
+  
+  // Process each number for database storage and timeout management
+  for (const nomor of nomorList) {
+    // Create unique key for this schedule (chatId + nomor_hp)
+    const scheduleKey = `${chatId}_${nomor}`;
+    
+    // Cancel previous scheduled kick if exists for this specific number
+    if (scheduledKicks.has(scheduleKey)) {
+      clearTimeout(scheduledKicks.get(scheduleKey).timeoutId);
+      scheduledKicks.delete(scheduleKey);
+    }
+    
+    // Save to database with enhanced data
+    try {
+      await addKickSchedule(
+        chatId.toString(), 
+        nomor, 
+        jam, 
+        menit, 
+        targetTime.toISOString(),
+        targetDate ? targetDate.toISOString().split('T')[0] : null, // YYYY-MM-DD format
+        scheduleType
+      );
+    } catch (error) {
+      console.error('Error saving schedule to database:', error.message);
+      // Continue execution even if database save fails
+    }
+  }
+  
+  // Create single timeout for all numbers (parallel execution)
+  const batchKey = `${chatId}_BATCH_${Date.now()}`;
+  const timeoutId = setTimeout(() => {
+    // Execute kick for all numbers in parallel
+    kickSemuaAnggotaScheduled(nomorList, chatId, bot).finally(() => {
+      // Clean up all schedules after completion
+      nomorList.forEach(nomor => {
+        const individualKey = `${chatId}_${nomor}`;
+        scheduledKicks.delete(individualKey);
+        
+        // Mark as completed in database
+        completeKickSchedule(chatId.toString(), nomor).catch(error => {
+          console.error('Error completing schedule:', error.message);
+        });
+      });
+      
+      // Clean up batch schedule
+      scheduledKicks.delete(batchKey);
+    });
+  }, delay);
+  
+  // Store batch timeout info in memory
+  scheduledKicks.set(batchKey, {
+    nomor_hp_list: nomorList,
+    jam,
+    menit,
+    targetTime: targetTime.toISOString(),
+    targetDate: targetDate ? targetDate.toISOString().split('T')[0] : null,
+    scheduleType,
+    timeoutId,
+    type: 'batch'
+  });
+  
+  // Also store individual entries for status tracking
+  nomorList.forEach(nomor => {
+    const individualKey = `${chatId}_${nomor}`;
+    scheduledKicks.set(individualKey, {
+      nomor_hp: nomor,
+      jam,
+      menit,
+      targetTime: targetTime.toISOString(),
+      targetDate: targetDate ? targetDate.toISOString().split('T')[0] : null,
+      scheduleType,
+      timeoutId, // Same timeout for all numbers in batch
+      batchKey,
+      type: 'individual'
+    });
+  });
+  
+  return targetTime;
+};
+
+// Function untuk schedule kick (mendukung single nomor atau array nomor) - LEGACY COMPATIBILITY
 const scheduleKick = async (nomor_hp, waktu, chatId, bot) => {
   const now = new Date();
   const [jam, menit] = waktu.split(':').map(Number);
@@ -464,13 +669,21 @@ module.exports = (bot) => {
       for (const [chatId, schedules] of Object.entries(schedulesByChat)) {
         for (const schedule of schedules) {
           try {
-            // Reconstruct target time
-            const targetTime = new Date();
-            targetTime.setHours(schedule.jam, schedule.menit, 0, 0);
+            // Reconstruct target time with date support
+            let targetTime;
             
-            // Jika waktu sudah lewat hari ini, set untuk besok
-            if (targetTime <= now) {
-              targetTime.setDate(targetTime.getDate() + 1);
+            if (schedule.target_date && schedule.schedule_type === 'date_time') {
+              // Date-based scheduling
+              targetTime = createCombinedDateTime(schedule.target_date, schedule.jam, schedule.menit);
+            } else {
+              // Legacy time-only scheduling
+              targetTime = new Date();
+              targetTime.setHours(schedule.jam, schedule.menit, 0, 0);
+              
+              // Jika waktu sudah lewat hari ini, set untuk besok
+              if (targetTime <= now) {
+                targetTime.setDate(targetTime.getDate() + 1);
+              }
             }
             
             const delay = targetTime.getTime() - now.getTime();
@@ -523,7 +736,9 @@ module.exports = (bot) => {
               targetTime: targetTime.toISOString(),
               timeoutId,
               type: 'individual',
-              chat_id: schedule.chat_id
+              chat_id: schedule.chat_id,
+              target_date: schedule.target_date || null,
+              schedule_type: schedule.schedule_type || 'time_only'
             });
             
             loadedCount++;
@@ -532,7 +747,15 @@ module.exports = (bot) => {
             const menitFormatted = String(schedule.menit).padStart(2, '0');
             const timeRemaining = getTimeRemaining(targetTime);
             
-            // console.log(`✅ [KICKMASSAL] Loaded schedule: ${schedule.nomor_hp} → ${jamFormatted}:${menitFormatted} (${timeRemaining})`);
+            // Enhanced logging dengan date info
+            let logMessage = `✅ [KICKMASSAL] Loaded schedule: ${schedule.nomor_hp} → ${jamFormatted}:${menitFormatted}`;
+            if (schedule.target_date && schedule.schedule_type === 'date_time') {
+              const formattedDate = formatDateForDisplay(schedule.target_date);
+              logMessage += ` pada ${formattedDate}`;
+            }
+            logMessage += ` (${timeRemaining})`;
+            
+            // console.log(logMessage);
             
           } catch (error) {
             errorCount++;
@@ -586,20 +809,22 @@ module.exports = (bot) => {
         
         const content = 
           `🎯 <b>KICK MASSAL MANAGER</b>\n\n` +
-          `📝 <b>API1 COMBO Strategy (NEW):</b>\n` +
+          `📝 <b>API1 COMBO Strategy:</b>\n` +
           `• API1+CEKSLOT1: Hit 1x untuk collect semua data\n` +
           `• API1+KICK1: Hit Nx untuk kick setiap member\n` +
           `• family_member_id validation dari Step 1\n` +
           `• No fallback - 100% API1 precision\n` +
           `• 20 detik delay antar kick slot\n\n` +
-          `🚀 <b>Processing Mode:</b>\n` +
+          `�️ <b>DATE-BASED SCHEDULING (NEW!):</b>\n` +
+          `• Time only: 23:00 (hari ini/besok)\n` +
+          `• Date + Time: 15/09/2025 18:00\n` +
+          `• Relative dates: today, tomorrow, +3days\n` +
+          `• Multiple formats: DD/MM/YYYY, DD-MM-YYYY\n` +
+          `• Database persistent: Restart-safe scheduling\n\n` +
+          `� <b>Processing Mode:</b>\n` +
           `• Multiple nomor: Parallel execution\n` +
           `• Members per nomor: Sequential (20s delay)\n` +
-          `• Data collection: 1x per nomor HP\n\n` +
-          `🔧 <b>Flow Pattern (sama dengan kick1.js):</b>\n` +
-          `• Hit API1+CEKSLOT1 → collect family_member_id\n` +
-          `• Loop API1+KICK1 → kick each member (20s)\n` +
-          `• Real-time progress tracking\n\n` +
+          `• Future dates: Multi-day scheduling\n\n` +
           `⚡ <b>Pilih aksi:</b>`;
 
         // Cek apakah message memiliki caption (dari photo message)
@@ -718,20 +943,27 @@ module.exports = (bot) => {
           }
           
           let listText = `📋 <b>JADWAL KICK AKTIF</b>\n\n`;
-          listText += `<code>Nomor        : Jam Kick : Status</code>\n`;
-          listText += `<code>----------------------------------</code>\n`;
+          listText += `<code>Nomor        : Waktu     : Tanggal    : Status</code>\n`;
+          listText += `<code>--------------------------------------------</code>\n`;
           
           for (const schedule of schedules) {
             const jamFormatted = String(schedule.jam).padStart(2, '0');
             const menitFormatted = String(schedule.menit).padStart(2, '0');
             const jamKick = `${jamFormatted}:${menitFormatted}`;
             
+            // Format tanggal
+            let tanggalInfo = 'Harian   '; // Default for time-only mode
+            if (schedule.target_date && schedule.schedule_type === 'date_time') {
+              const formattedDate = formatDateForDisplay(schedule.target_date);
+              tanggalInfo = formattedDate.padEnd(9); // Pad untuk alignment
+            }
+            
             // Check if schedule is still active in memory
             const scheduleKey = `${chatId}_${schedule.nomor_hp}`;
             const isActiveInMemory = scheduledKicks.has(scheduleKey);
             const status = isActiveInMemory ? '✅' : '⏸️';
             
-            listText += `<code>${schedule.nomor_hp} : ${jamKick} : ${status}</code>\n`;
+            listText += `<code>${schedule.nomor_hp} : ${jamKick} : ${tanggalInfo} : ${status}</code>\n`;
           }
           
           listText += `\n💡 <b>Status:</b> ✅ = Aktif, ⏸️ = Tertunda\n`;
@@ -1065,14 +1297,130 @@ module.exports = (bot) => {
           await bot.deleteMessage(chatId, msg.message_id);
         } catch (e) {}
         
-        // Update state with multiple numbers
-        state.step = 'input_waktu';
+        // Update state with multiple numbers - go to date input step
+        state.step = 'input_tanggal';
         state.nomor_hp_list = validNumbers; // Store as array
         kickStates.set(chatId, state);
         
         const inputMsg = await bot.sendMessage(chatId,
           `✅ <b>Nomor HP diterima (${validNumbers.length} nomor):</b>\n\n` +
           validNumbers.map(num => `• ${num}`).join('\n') + '\n\n' +
+          `📅 <b>MASUKAN TANGGAL KICK (OPSIONAL)</b>\n\n` +
+          `🗓️ <b>Format yang didukung:</b>\n` +
+          `• <code>today</code> atau <code>hari ini</code> - Hari ini\n` +
+          `• <code>tomorrow</code> atau <code>besok</code> - Besok\n` +
+          `• <code>+3days</code> - 3 hari dari sekarang\n` +
+          `• <code>15/09/2025</code> - Format DD/MM/YYYY\n` +
+          `• <code>15-09-2025</code> - Format DD-MM-YYYY\n` +
+          `• <code>15.09.2025</code> - Format DD.MM.YYYY\n\n` +
+          `💡 <b>Contoh input:</b>\n` +
+          `• <code>today</code> - Hari ini\n` +
+          `• <code>tomorrow</code> - Besok\n` +
+          `• <code>+7days</code> - Seminggu lagi\n` +
+          `• <code>31/12/2025</code> - Tanggal spesifik\n\n` +
+          `⚠️ <b>SKIP untuk mode lama:</b>\n` +
+          `Ketik <code>skip</code> untuk gunakan mode lama (hari ini/besok otomatis)\n\n` +
+          `🎯 <b>Processing mode:</b>\n` +
+          `• Date + Time scheduling: Multi-day planning\n` +
+          `• Database persistent: Restart-safe\n` +
+          `• Flexible dates: Support berbagai format\n\n` +
+          `💡 Ketik "exit" untuk membatalkan`,
+          { parse_mode: 'HTML' }
+        );
+        
+        // Simpan message ID input baru
+        const currentState = kickStates.get(chatId);
+        currentState.inputMessageId = inputMsg.message_id;
+        kickStates.set(chatId, currentState);
+        
+      } else if (state.step === 'input_tanggal') {
+        // Handle date input step
+        const cleanText = text.trim().toLowerCase();
+        
+        // Check for skip command (use old time-only mode)
+        if (cleanText === 'skip') {
+          // Skip to time input with legacy mode
+          state.step = 'input_waktu';
+          state.schedule_type = 'time_only';
+          state.target_date = null;
+          kickStates.set(chatId, state);
+          
+          // Hapus input user dan form
+          if (state.inputMessageId) {
+            try {
+              await bot.deleteMessage(chatId, state.inputMessageId);
+            } catch (e) {}
+          }
+          try {
+            await bot.deleteMessage(chatId, msg.message_id);
+          } catch (e) {}
+          
+          const inputMsg = await bot.sendMessage(chatId,
+            `⏭️ <b>Mode lama dipilih - Time only scheduling</b>\n\n` +
+            `⏰ <b>MASUKAN WAKTU KICK</b>\n\n` +
+            `✅ <b>Format yang didukung:</b>\n` +
+            `• <code>23:00</code> (HH:MM) - Standard\n` +
+            `• <code>23.00</code> (HH.MM) - Titik\n` +
+            `• <code>2300</code> (HHMM) - Tanpa separator\n` +
+            `• <code>23;00</code> (HH;MM) - Semicolon\n` +
+            `• <code>23</code> (HH) - Otomatis :00\n` +
+            `• <code>9</code> (H) - Otomatis 09:00\n\n` +
+            `⚠️ <b>Jika waktu sudah lewat, akan di-set untuk besok.</b>\n\n` +
+            `💡 Ketik "exit" untuk membatalkan`,
+            { parse_mode: 'HTML' }
+          );
+          
+          const currentState = kickStates.get(chatId);
+          currentState.inputMessageId = inputMsg.message_id;
+          kickStates.set(chatId, currentState);
+          return;
+        }
+        
+        // Parse date input
+        const dateResult = parseFlexibleDate(text);
+        
+        if (!dateResult.valid) {
+          await bot.sendMessage(chatId,
+            `❌ <b>Format tanggal tidak valid!</b>\n\n` +
+            `${dateResult.error || 'Format tidak dikenali'}\n\n` +
+            `🗓️ <b>Format yang didukung:</b>\n` +
+            `• <code>today</code> atau <code>hari ini</code>\n` +
+            `• <code>tomorrow</code> atau <code>besok</code>\n` +
+            `• <code>+3days</code> (3 hari dari sekarang)\n` +
+            `• <code>15/09/2025</code> (DD/MM/YYYY)\n` +
+            `• <code>15-09-2025</code> (DD-MM-YYYY)\n` +
+            `• <code>15.09.2025</code> (DD.MM.YYYY)\n\n` +
+            `⚠️ <b>Tanggal harus di masa depan!</b>\n\n` +
+            `Coba lagi atau ketik "skip" untuk mode lama atau "exit" untuk batal.`,
+            { parse_mode: 'HTML' }
+          );
+          await bot.deleteMessage(chatId, msg.message_id);
+          return;
+        }
+        
+        // Hapus input user dan form
+        if (state.inputMessageId) {
+          try {
+            await bot.deleteMessage(chatId, state.inputMessageId);
+          } catch (e) {}
+        }
+        try {
+          await bot.deleteMessage(chatId, msg.message_id);
+        } catch (e) {}
+        
+        // Update state with date
+        state.step = 'input_waktu';
+        state.schedule_type = 'date_time';
+        state.target_date = dateResult.date;
+        state.date_format = dateResult.format;
+        state.date_original = dateResult.original;
+        kickStates.set(chatId, state);
+        
+        const displayDate = formatDateForDisplay(dateResult.date);
+        
+        const inputMsg = await bot.sendMessage(chatId,
+          `✅ <b>Tanggal diterima: ${displayDate}</b>\n` +
+          `📝 Input: "${dateResult.original}" (${dateResult.format})\n\n` +
           `⏰ <b>MASUKAN WAKTU KICK</b>\n\n` +
           `✅ <b>Format yang didukung:</b>\n` +
           `• <code>23:00</code> (HH:MM) - Standard\n` +
@@ -1081,22 +1429,13 @@ module.exports = (bot) => {
           `• <code>23;00</code> (HH;MM) - Semicolon\n` +
           `• <code>23</code> (HH) - Otomatis :00\n` +
           `• <code>9</code> (H) - Otomatis 09:00\n\n` +
-          `� <b>Contoh input yang valid:</b>\n` +
-          `• Jam 6 pagi: <code>6</code>, <code>06</code>, <code>6:00</code>, <code>6.00</code>, <code>600</code>, <code>6;00</code>\n` +
-          `• Jam 6:30 pagi: <code>6:30</code>, <code>6.30</code>, <code>630</code>, <code>6;30</code>\n` +
-          `• Jam 11 malam: <code>23</code>, <code>23:00</code>, <code>23.00</code>, <code>2300</code>, <code>23;00</code>\n` +
-          `• Tengah malam: <code>0</code>, <code>00</code>, <code>0:00</code>, <code>0.00</code>, <code>0000</code>, <code>0;00</code>\n\n` +
-          `🚀 <b>API1 COMBO Execution:</b>\n` +
-          `• ${validNumbers.length} nomor akan diproses PARALLEL\n` +
-          `• Per nomor: API1+CEKSLOT1 (1x) → API1+KICK1 (Nx)\n` +
-          `• Member kick: Sequential dengan 20s delay\n` +
-          `• 100% API1 precision - No fallback\n\n` +
-          `⚠️ <b>Jika waktu sudah lewat, akan di-set untuk besok.</b>\n\n` +
+          `🗓️ <b>Jadwal akan dibuat untuk:</b>\n` +
+          `📅 ${displayDate}\n` +
+          `⏰ [Waktu yang akan dimasukkan]\n\n` +
           `💡 Ketik "exit" untuk membatalkan`,
           { parse_mode: 'HTML' }
         );
         
-        // Simpan message ID input baru
         const currentState = kickStates.get(chatId);
         currentState.inputMessageId = inputMsg.message_id;
         kickStates.set(chatId, currentState);
@@ -1222,19 +1561,43 @@ module.exports = (bot) => {
         const formattedTime = `${jamFormatted}:${menitFormatted}`;
         
         try {
-          const targetTime = await scheduleKick(nomorList, formattedTime, chatId, bot);
+          // Prepare scheduling data
+          const scheduleData = {
+            nomorList,
+            jam,
+            menit,
+            formattedTime,
+            scheduleType: state.schedule_type || 'time_only',
+            targetDate: state.target_date || null,
+            dateFormat: state.date_format || null,
+            originalDateInput: state.date_original || null
+          };
+          
+          const targetTime = await scheduleKickWithDate(scheduleData, chatId, bot);
           
           const waktuFormatted = `${jamFormatted}:${menitFormatted}`;
           
-          const today = new Date();
-          const isToday = targetTime.toDateString() === today.toDateString();
-          const tanggalInfo = isToday ? 'hari ini' : 'besok';
+          // Enhanced date info for confirmation
+          let tanggalInfo = '';
+          let scheduleTypeInfo = '';
+          
+          if (state.schedule_type === 'date_time' && state.target_date) {
+            const displayDate = formatDateForDisplay(state.target_date);
+            tanggalInfo = displayDate;
+            scheduleTypeInfo = 'Date + Time Scheduling';
+          } else {
+            const today = new Date();
+            const isToday = targetTime.toDateString() === today.toDateString();
+            tanggalInfo = isToday ? 'hari ini' : 'besok';
+            scheduleTypeInfo = 'Time-only Scheduling (Legacy)';
+          }
           
           const confirmMsg = await bot.sendMessage(chatId,
             `✅ <b>KICK MASSAL BERHASIL DIJADWALKAN!</b>\n\n` +
             `📱 <b>Total nomor HP:</b> ${nomorList.length}\n` +
-            `⏰ <b>Waktu kick:</b> ${waktuFormatted} (${tanggalInfo})\n` +
-            `🎯 <b>Mode:</b> API1 COMBO Processing\n` +
+            `📅 <b>Tanggal:</b> ${tanggalInfo}\n` +
+            `⏰ <b>Waktu kick:</b> ${waktuFormatted}\n` +
+            `🎯 <b>Mode:</b> ${scheduleTypeInfo}\n` +
             `📝 <b>Input format:</b> ${format} → ${text} → ${waktuFormatted}\n\n` +
             nomorList.map(num => `• ${num}`).join('\n') + '\n\n' +
             `💡 <b>Execution Strategy:</b>\n` +
