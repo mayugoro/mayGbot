@@ -1,18 +1,20 @@
 const { getUserSaldo, getHargaPaketDynamic, getKonfigurasi } = require('../../../db');
+const { fetchCombinedProductData } = require('../../../utils/combined_product_data');
 
 // === DYNAMIC KEYBOARD GENERATOR UNTUK BULANAN GLOBAL ===
 // Generate keyboard berdasarkan response API secara dinamis
 async function generateDynamicBulananGlobalKeyboard() {
   try {
-    const { fetchRawStokData } = require('../../cek_stok_global');
-    const rawData = await fetchRawStokData();
+    const products = await fetchCombinedProductData();
     
-    // Filter hanya paket bulanan (non-BPA) yang tersedia
-    const availablePackages = rawData.filter(product => 
-      !product.kode_produk.includes('BPA') && 
-      product.kosong === 0 && 
-      product.gangguan === 0
-    );
+    // Filter hanya paket yang tersedia dan ada stoknya
+    const availablePackages = products.filter(product => {
+      // Cek stok riil dari API gabungan
+      const stokRiil = product.stok || 0;
+      const kosong = product.stok_kosong || product.kosong;
+      
+      return stokRiil > 0 && !kosong; // Hanya tampilkan jika stok > 0 dan tidak kosong
+    });
     
     // Generate keyboard buttons dinamis
     const keyboard = [];
@@ -52,18 +54,19 @@ async function generateDynamicBulananGlobalKeyboard() {
 // Mapping kode produk ke nama paket berdasarkan API response
 async function getDynamicProductMapping() {
   try {
-    const { fetchRawStokData } = require('../../cek_stok_global');
-    const rawData = await fetchRawStokData();
+    const products = await fetchCombinedProductData();
     
     const mapping = {};
-    rawData.forEach(product => {
-      // Map kode produk ke data lengkap
+    products.forEach(product => {
+      // Map kode produk ke data lengkap dari API gabungan
       mapping[product.kode_produk.toLowerCase()] = {
         kode: product.kode_produk,
         nama: product.nama_produk,
-        available: (product.kosong === 0 && product.gangguan === 0),
-        deskripsi: product.deskripsi || '',
-        harga: product.harga_final || 0
+        stok: product.stok || 0, // Stok riil dari API cek_stock
+        deskripsi: product.deskripsi || '', // Deskripsi lengkap dari list_product
+        harga: product.harga_final || 0, // Harga dari list_product
+        kosong: product.stok_kosong || product.kosong,
+        gangguan: product.stok_gangguan || product.gangguan
       };
     });
     
@@ -82,27 +85,22 @@ const generateDetailPaketGlobalKeyboard = (kodeProduK) => [
   ]
 ];
 
-// Preload template pesan untuk detail paket global (dynamic)
+// Preload template pesan untuk detail paket global (dynamic) dengan detail berdasarkan kode
 const generateDetailPaketGlobal = async (productData, stokCount = 0) => {
-  const statusStok = stokCount > 0 ? `✅ Tersedia` : '❌ Habis';
+  const statusStok = stokCount > 0 ? `✅ Tersedia (${stokCount})` : '❌ Habis';
   
   // Priority untuk harga: database berdasarkan kode produk -> API harga -> fallback 'Hubungi admin'
   let hargaDisplay = 'Hubungi admin';
   let finalHarga = 0;
   
   try {
-    // Gunakan fungsi database dinamis untuk cek harga berdasarkan kode produk
-    // console.log(`🔍 Checking price for product: ${productData.kode}, fallback: ${productData.nama?.toLowerCase()}`);
     finalHarga = await getHargaPaketDynamic(productData.kode, productData.nama?.toLowerCase());
-    // console.log(`💰 Database price result: ${finalHarga}`);
     
     if (finalHarga > 0) {
       hargaDisplay = finalHarga.toLocaleString('id-ID');
-      // console.log(`✅ Using database price: ${hargaDisplay}`);
     } else if (productData.harga > 0) {
       finalHarga = productData.harga;
       hargaDisplay = productData.harga.toLocaleString('id-ID');
-      // console.log(`🔄 Using API price: ${hargaDisplay}`);
     }
   } catch (error) {
     console.error('Error getting price from database:', error);
@@ -112,20 +110,28 @@ const generateDetailPaketGlobal = async (productData, stokCount = 0) => {
     }
   }
   
+  // Gunakan deskripsi langsung dari API (bukan statis)
+  let deskripsiPaket = 'Detail tidak tersedia';
+  if (productData.deskripsi && productData.deskripsi.trim()) {
+    // Format deskripsi dari API dengan line breaks yang proper
+    deskripsiPaket = productData.deskripsi
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .trim();
+  }
+  
   return {
     message: `🌍 <b>Detail BULANAN GLOBAL ${productData.nama.toUpperCase()}</b>\n\n` +
       `📦 <b>Kode Produk:</b> ${productData.kode}\n\n` +
       `📝 <b>Detail Paket:</b>\n` +
-      `${productData.deskripsi || 'Deskripsi tidak tersedia'}\n\n` +
+      `${deskripsiPaket}\n\n` +
       `💰 <b>Detail Harga:</b>\n` +
       `💸 Rp. ${hargaDisplay}\n\n` +
       `📊 <b>Status Stok:</b> ${statusStok}\n\n` +
       `📝 <b>Catatan:</b>\n` +
-      `• ✅Kuota sesuai area coverage\n` +
-      `• ✅Aktif segera setelah pembelian\n` +
-      `• ✅Full garansi AKRAB GLOBAL\n` +
-      `• ✅Berlaku untuk XL,Axis,Live-on✨`,
-    finalHarga: finalHarga // Return harga untuk proses transaksi
+      `✅ Official, resmi, bergaransi\n` +
+      `✅ Berlaku untuk XL, Axis, Live-on✨`,
+    finalHarga: finalHarga
   };
 };
 
@@ -137,25 +143,24 @@ const generateUserDetail = (userId, username, saldo, uptime) => {
          '⌚ <b>Uptime</b>  : <code>' + uptime + '</code>';
 };
 
-// Function untuk fetch stok global dan ambil hanya paket bulanan (bukan BPA) - Updated untuk KHFY API
+// Function untuk fetch stok global dan ambil hanya paket bulanan (bukan BPA) - Updated untuk Combined API
 async function fetchStokPaketBulanan() {
   try {
-    const { fetchRawStokData } = require('../../cek_stok_global');
-    
-    // Fetch raw data dari KHFY API
-    const rawData = await fetchRawStokData();
+    // Fetch data gabungan dari API list_product + cek_stock
+    const products = await fetchCombinedProductData();
     
     // Convert ke format yang dibutuhkan sistem existing
     const paketBulanan = {};
-    rawData.forEach(product => {
-      if (!product.kode_produk.includes('BPA')) {
-        // Hanya ambil paket yang TIDAK mengandung BPA
-        const stok = (product.kosong === 0 && product.gangguan === 0) ? 1 : 0;
-        paketBulanan[product.kode_produk] = {
-          nama: product.nama_produk,
-          jumlah: stok
-        };
-      }
+    products.forEach(product => {
+      // Data sudah difilter non-BPA dari fetchCombinedProductData
+      // Gunakan stok riil dari API gabungan
+      const stokRiil = product.stok || 0;
+      paketBulanan[product.kode_produk] = {
+        nama: product.nama_produk,
+        jumlah: stokRiil, // Stok riil dari cek_stock API
+        harga: product.harga_final, // Harga dari list_product API
+        deskripsi: product.deskripsi // Deskripsi lengkap dari list_product API
+      };
     });
     
     return paketBulanan;
@@ -289,9 +294,9 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
           const stokPaketBulanan = await fetchStokPaketBulanan();
           const stokCount = stokPaketBulanan[kodeProduK]?.jumlah || 0;
           
-          if (stokCount === 0 || !productData.available) {
+          if (stokCount === 0) {
             return bot.answerCallbackQuery(id, {
-              text: `❌ Stok paket ${productData.nama} habis atau sedang gangguan.\n\nSilakan pilih paket lain yang masih tersedia.`,
+              text: `❌ Stok paket ${productData.nama} habis.\n\nSilakan pilih paket lain yang masih tersedia.`,
               show_alert: true
             });
           }
