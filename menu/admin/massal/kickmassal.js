@@ -94,14 +94,46 @@ const parseFlexibleDate = (dateInput) => {
 
 // Function untuk format tanggal untuk display
 const formatDateForDisplay = (date, includeDay = true) => {
-  const options = { 
-    year: 'numeric', 
-    month: '2-digit', 
-    day: '2-digit',
-    weekday: includeDay ? 'long' : undefined
-  };
-  
-  return date.toLocaleDateString('id-ID', options);
+  try {
+    // Convert string to Date object if needed
+    let dateObj;
+    if (typeof date === 'string') {
+      dateObj = new Date(date);
+    } else if (date instanceof Date) {
+      dateObj = date;
+    } else {
+      return 'Invalid Date';
+    }
+    
+    // Check if date is valid
+    if (isNaN(dateObj.getTime())) {
+      return 'Invalid Date';
+    }
+    
+    // Check for today/tomorrow
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    // Compare dates only (ignore time)
+    const targetDateOnly = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const tomorrowOnly = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate());
+    
+    if (targetDateOnly.getTime() === todayOnly.getTime()) {
+      return 'Hari ini';
+    } else if (targetDateOnly.getTime() === tomorrowOnly.getTime()) {
+      return 'Besok';
+    } else {
+      // Format as DD.MM.YYYY dengan pemisah titik
+      const day = dateObj.getDate().toString().padStart(2, '0');
+      const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+      const year = dateObj.getFullYear();
+      return `${day}.${month}.${year}`;
+    }
+  } catch (error) {
+    return 'Error';
+  }
 };
 
 // Function untuk create combined datetime
@@ -951,11 +983,18 @@ module.exports = (bot) => {
             const menitFormatted = String(schedule.menit).padStart(2, '0');
             const jamKick = `${jamFormatted}:${menitFormatted}`;
             
-            // Format tanggal
+            // Format tanggal dengan safe checking
             let tanggalInfo = 'Harian   '; // Default for time-only mode
-            if (schedule.target_date && schedule.schedule_type === 'date_time') {
-              const formattedDate = formatDateForDisplay(schedule.target_date);
-              tanggalInfo = formattedDate.padEnd(9); // Pad untuk alignment
+            try {
+              // Cek apakah ada target_date yang valid (bukan null/empty)
+              // Tidak perlu cek schedule_type karena jika ada target_date berarti itu date-based
+              if (schedule.target_date && schedule.target_date.trim() !== '') {
+                const formattedDate = formatDateForDisplay(schedule.target_date);
+                tanggalInfo = formattedDate.padEnd(9); // Pad untuk alignment
+              }
+            } catch (error) {
+              // Fallback untuk compatibility dengan database lama
+              tanggalInfo = 'Harian   ';
             }
             
             // Check if schedule is still active in memory
