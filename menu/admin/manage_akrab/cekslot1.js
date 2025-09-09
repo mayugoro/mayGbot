@@ -35,12 +35,12 @@ const getSlotInfoAPI1Only = async (nomor_hp) => {
     formData.append('token', API_PRIMARY_TOKEN);
     formData.append('id_parent', formattedNomor);
 
-    console.log('🚀 API Request:');
-    console.log('📡 URL:', API_PRIMARY_BASE + API_PRIMARY_INFO_ENDPOINT);
-    console.log('📝 Payload:', {
-      token: API_PRIMARY_TOKEN ? API_PRIMARY_TOKEN.substring(0, 10) + '...' : 'KOSONG',
-      id_parent: formattedNomor
-    });
+    // console.log('🚀 API Request:');
+    // console.log('📡 URL:', API_PRIMARY_BASE + API_PRIMARY_INFO_ENDPOINT);
+    // console.log('📝 Payload:', {
+    //   token: API_PRIMARY_TOKEN ? API_PRIMARY_TOKEN.substring(0, 10) + '...' : 'KOSONG',
+    //   id_parent: formattedNomor
+    // });
 
     const response = await axios.post(API_PRIMARY_BASE + API_PRIMARY_INFO_ENDPOINT, formData, {
       headers: {
@@ -50,9 +50,9 @@ const getSlotInfoAPI1Only = async (nomor_hp) => {
     });
 
     // Uncomment for debugging: console.log('🔍 API Response:', JSON.stringify(response.data, null, 2));
-    console.log('🔍 API Response:', JSON.stringify(response.data, null, 2));
-    console.log('🔍 Response Status:', response.data?.status);
-    console.log('🔍 Response Data:', response.data?.data);
+    // console.log('🔍 API Response:', JSON.stringify(response.data, null, 2));
+    // console.log('🔍 Response Status:', response.data?.status);
+    // console.log('🔍 Response Data:', response.data?.data);
 
     if ((response.data?.status === 'success' || response.data?.status === true) && response.data?.data?.member_info) {
       const memberInfo = response.data.data.member_info;
@@ -67,10 +67,10 @@ const getSlotInfoAPI1Only = async (nomor_hp) => {
       const childMembers = allMembers.filter(member => member.member_type === 'CHILD');
       
       // Debug: log raw member data untuk melihat field yang tersedia
-      console.log('🔍 Raw Child Members Data:');
-      childMembers.forEach((member, index) => {
-        console.log(`Member ${index + 1}:`, JSON.stringify(member, null, 2));
-      });
+      // console.log('🔍 Raw Child Members Data:');
+      // childMembers.forEach((member, index) => {
+      //   console.log(`Member ${index + 1}:`, JSON.stringify(member, null, 2));
+      // });
       
       const slots = childMembers.map((member, index) => ({
         parent_id: memberInfo.parent_msisdn || formattedNomor,
