@@ -130,7 +130,7 @@ const generateDetailPaketGlobal = async (productData, stokCount = 0) => {
   }
   
   return {
-    message: `🌍 <b>Detail BULANAN GLOBAL ${productData.nama.toUpperCase()}</b>\n\n` +
+    message: `🌍 <b>Detail BULANAN GLOBAL ${(productData.nama || 'UNKNOWN').toUpperCase()}</b>\n\n` +
       `📦 <b>Kode Produk:</b> ${productData.kode}\n\n` +
       `📝 <b>Detail Paket:</b>\n` +
       `${deskripsiPaket}\n\n` +
@@ -209,7 +209,7 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
 
         // Ambil minimal saldo dari database (gunakan config global)
         const minSaldo = await getKonfigurasi('min_saldo_global');
-        const minSaldoValue = minSaldo ? parseInt(minSaldo) : 150000;
+        const minSaldoValue = minSaldo ? (parseInt(minSaldo) || 150000) : 150000;
 
         // Pop-up alert untuk penolakan akses
         if (saldo < minSaldoValue) {
@@ -305,7 +305,7 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
           
           if (stokCount === 0) {
             return bot.answerCallbackQuery(id, {
-              text: `❌ Stok paket ${productData.nama} habis.\n\nSilakan pilih paket lain yang masih tersedia.`,
+              text: `❌ Stok paket ${productData.nama || 'UNKNOWN'} habis.\n\nSilakan pilih paket lain yang masih tersedia.`,
               show_alert: true
             });
           }

@@ -133,14 +133,17 @@ const generateMainKeyboard = (userId) => {
 const setStateBulananGlobal = async (chatId, state) => {
   const { userId, kodeProduK, namaProduK, hargaProduK, productData } = state;
   
+  // Inisialisasi hargaValue di scope yang lebih tinggi
+  let hargaValue = 0;
+  
   // === VALIDASI SALDO SEBELUM PROSES ===
   try {
     const { getUserSaldo, getHargaPaketDynamic } = require('../../../db');
     const saldoUser = await getUserSaldo(userId);
     
     // Priority untuk harga: database berdasarkan kode produk -> API harga -> fallback 0
-    const hargaValue = await getHargaPaketDynamic(kodeProduK, namaProduK?.toLowerCase()) || 
-                      parseInt(hargaProduK) || 0;
+    hargaValue = await getHargaPaketDynamic(kodeProduK, namaProduK?.toLowerCase()) || 
+                 parseInt(hargaProduK) || 0;
     
     if (saldoUser < hargaValue) {
       // Saldo tidak cukup - gunakan nama produk dinamis
@@ -242,6 +245,9 @@ module.exports = (bot) => {
 
     const { userId, kodeProduK, namaProduK, hargaProduK } = state;
     
+    // Normalize nomor untuk digunakan di seluruh function termasuk error handling
+    const normalizedNumber = formatNomorTo628(text);
+    
     
     // BATALKAN TIMEOUT TIMER karena user sudah input
     if (state.timeoutId) {
@@ -249,8 +255,8 @@ module.exports = (bot) => {
       delete state.timeoutId;
     }
 
-    // NORMALISASI NOMOR INPUT ke format 628
-    const normalizedNumber = formatNomorTo628(text);
+    // NORMALISASI NOMOR INPUT ke format 628 (sudah dilakukan di atas)
+    // const normalizedNumber = formatNomorTo628(text); // Removed duplicate
     
     // Validasi basic nomor HP
     if (normalizedNumber.length < 12 || normalizedNumber.length > 15) {
@@ -274,6 +280,8 @@ module.exports = (bot) => {
     const startTime = Date.now();
     const processingMsg = await bot.sendMessage(chatId, '⏳ <b>Memproses pembelian global...</b>', { parse_mode: 'HTML' });
     
+    // Generate unique transaction ID (di luar try block agar bisa diakses di catch)
+    const trxId = `TRX${Date.now()}${Math.random().toString(36).substr(2, 5)}`;
 
     try {
       // === API AKRAB GLOBAL INTEGRATION ===
@@ -286,7 +294,7 @@ module.exports = (bot) => {
       const timeFormat = day + month + year;
 
       // Generate unique transaction ID
-      const trxId = `TRX${Date.now()}${Math.random().toString(36).substr(2, 5)}`;
+      // const trxId = `TRX${Date.now()}${Math.random().toString(36).substr(2, 5)}`; // Moved outside try block
 
       // Gunakan kode produk dinamis dari API
       const kodeProduk = state.kodeProduK; // Langsung gunakan kode dari API (XLA14, XLA32, dll)
@@ -317,8 +325,8 @@ module.exports = (bot) => {
       // === PROSES RESPONSE DAN POTONG SALDO ===
       const { kurangiSaldo, getUserSaldo } = require('../../../db');
       
-      // Gunakan harga dinamis dari state
-      const hargaValue = parseInt(hargaProduK);
+      // Gunakan harga dinamis dari state dengan robust NaN handling
+      const hargaValue = parseInt(hargaProduK) || 0;
       
 
       let teksHasil = '';
@@ -339,7 +347,9 @@ module.exports = (bot) => {
           await kurangiSaldo(userId, hargaValue);
           
           // Ambil saldo SETELAH dipotong untuk display
-          const saldoAkhir = await getUserSaldo(userId);
+          // Ambil saldo akhir setelah transaksi dengan proper handling
+          const saldoAkhirData = await getUserSaldo(userId);
+          const saldoAkhir = saldoAkhirData ? saldoAkhirData.saldo : 0;
           
           teksHasil = `✅ Sukses !!\n\n` +
             `<code>Detail         : Sukses AKRAB GLOBAL 🌍\n` +
@@ -384,8 +394,9 @@ module.exports = (bot) => {
           isPending = true;
           await kurangiSaldo(userId, hargaValue);
           
-          // Ambil saldo SETELAH dipotong untuk display
-          const saldoAkhir = await getUserSaldo(userId);
+          // Ambil saldo SETELAH dipotong untuk display dengan proper handling
+          const saldoAkhirData = await getUserSaldo(userId);
+          const saldoAkhir = saldoAkhirData ? saldoAkhirData.saldo : 0;
           
           teksHasil = `⏳ Pending !!\n\n` +
             `<code>Detail         : Sedang diproses\n` +
@@ -463,11 +474,12 @@ module.exports = (bot) => {
           // ❌ GAGAL LAINNYA - Potong biaya gagal
           const { getKonfigurasi, kurangiSaldo, getUserSaldo } = require('../../../db');
           const biayaGagal = await getKonfigurasi('harga_gagal') || '100';
-          const biayaGagalValue = parseInt(biayaGagal);
+          const biayaGagalValue = parseInt(biayaGagal) || 100;
           await kurangiSaldo(userId, biayaGagalValue);
           
-          // Ambil saldo user setelah dipotong biaya gagal (untuk display)
-          const saldoAkhir = await getUserSaldo(userId);
+          // Ambil saldo user setelah dipotong biaya gagal (untuk display) dengan proper handling
+          const saldoAkhirData = await getUserSaldo(userId);
+          const saldoAkhir = saldoAkhirData ? saldoAkhirData.saldo : 0;
           const saldoAwal = saldoAkhir + biayaGagalValue;
           
           // Gunakan msg jika ada, fallback ke message
@@ -508,10 +520,10 @@ module.exports = (bot) => {
         }
       } else {
         // Response tidak sesuai format
-        const { getKonfigurasi, potongSaldo } = require('../../../db');
+        const { getKonfigurasi, kurangiSaldo } = require('../../../db');
         const biayaGagal = await getKonfigurasi('harga_gagal') || '100';
-        const biayaGagalValue = parseInt(biayaGagal);
-        await potongSaldo(userId, biayaGagalValue, `BULANAN GLOBAL ${namaProduK} (ERROR)`);
+        const biayaGagalValue = parseInt(biayaGagal) || 100;
+        await kurangiSaldo(userId, biayaGagalValue, `BULANAN GLOBAL ${namaProduK} (ERROR)`);
         
         teksHasil = `❌ <b>BULANAN GLOBAL ERROR</b>\n\n` +
           `📱 Nomor: ${normalizedNumber}\n` +
@@ -552,12 +564,37 @@ module.exports = (bot) => {
       
       setTimeout(async () => {
         try {
+          // Ambil data saldo terbaru dan hitung uptime
+          const { getUserSaldo } = require('../../../db');
+          const saldoTerbaru = await getUserSaldo(userId);
+          const saldoValue = saldoTerbaru ? parseInt(saldoTerbaru.saldo) : 0;
+          
+          // Format uptime function
+          const formatUptime = (ms) => {
+            let s = Math.floor(ms / 1000);
+            const hari = Math.floor(s / 86400);
+            s %= 86400;
+            const jam = Math.floor(s / 3600);
+            s %= 3600;
+            const menit = Math.floor(s / 60);
+            const detik = s % 60;
+            let hasil = [];
+            if (hari > 0) hasil.push(`${hari} hari`);
+            if (jam > 0) hasil.push(`${jam} jam`);
+            if (menit > 0) hasil.push(`${menit} menit`);
+            if (detik > 0 || hasil.length === 0) hasil.push(`${detik} detik`);
+            return hasil.join(' ');
+          };
+          
+          // Estimasi uptime (bisa disesuaikan dengan BOT_START_TIME jika tersedia)
+          const uptime = formatUptime(Date.now() - (Date.now() - 3600000)); // Placeholder untuk sementara
+          
           const keyboard = generateMainKeyboard(userId);
           await bot.sendPhoto(chatId, 'welcome.jpg', {
             caption: `💌 <b>ID</b>           : <code>${userId}</code>\n` +
                     `💌 <b>User</b>       : <code>${msg.from?.username || '-'}</code>\n` +
-                    `📧 <b>Saldo</b>     : <code>Memuat...</code>\n` +
-                    `⌚ <b>Uptime</b>  : <code>Memuat...</code>`,
+                    `📧 <b>Saldo</b>     : <code>Rp. ${saldoValue.toLocaleString('id-ID')}</code>\n` +
+                    `⌚ <b>Uptime</b>  : <code>${uptime}</code>`,
             parse_mode: 'HTML',
             reply_markup: { inline_keyboard: keyboard }
           });
@@ -567,64 +604,103 @@ module.exports = (bot) => {
 
 
     } catch (err) {
-      console.error(`Error processing bulanan global: ${err.message}`);
+      // Jangan log timeout error, langsung handle
       const executionTime = Math.floor((Date.now() - startTime) / 1000);
       
       // Error handling dengan biaya gagal
-      const { getKonfigurasi, potongSaldo } = require('../../../db');
+      const { getKonfigurasi, kurangiSaldo, getUserSaldo } = require('../../../db');
       const biayaGagal = await getKonfigurasi('harga_gagal') || '100';
-      const biayaGagalValue = parseInt(biayaGagal);
+      const biayaGagalValue = parseInt(biayaGagal) || 100;
 
       let teksError = '';
       
-      // Special handling untuk timeout/network error
-      if (err.code === 'ECONNRESET' || err.message.includes('socket hang up') || err.message.includes('timeout')) {
-        // Timeout biasanya berarti masih diproses, potong saldo penuh
-        const hargaValue = parseInt(hargaProduK);
-        await potongSaldo(userId, hargaValue, `BULANAN GLOBAL ${namaProduK} (TIMEOUT)`);
+      // Special handling untuk timeout/network error - ikuti pola penanganan sukses
+      if (err.code === 'ECONNRESET' || err.message.includes('socket hang up') || err.message.includes('timeout') || err.code === 'ECONNABORTED') {
+        // Ambil saldo SEBELUM potong untuk history (sama seperti transaksi sukses)
+        const saldoAwalData = await getUserSaldo(userId);
+        const saldoAwalValue = saldoAwalData && typeof saldoAwalData.saldo === 'number' ? saldoAwalData.saldo : 0;
         
-        teksError = `⏳ <b>BULANAN GLOBAL TIMEOUT</b>\n\n` +
-          `📱 Nomor: ${normalizedNumber}\n` +
-          `📦 Paket: ${namaProduK}\n` +
-          `💰 Harga: Rp. ${hargaValue.toLocaleString('id-ID')}\n` +
-          `⏱️ Waktu: ${executionTime}s\n\n` +
-          `📋 Status: Koneksi timeout\n\n` +
-          `⚠️ <i>Kemungkinan transaksi sedang diproses</i>\n` +
-          `💬 <i>Jika paket tidak masuk dalam 5 menit, hubungi admin</i>\n` +
-          `🌍 <i>Powered by AKRAB GLOBAL</i>`;
+        // Timeout biasanya berarti masih diproses, potong saldo penuh
+        const hargaValue = parseInt(hargaProduK) || 0;
+        await kurangiSaldo(userId, hargaValue, `BULANAN GLOBAL ${namaProduK} (TIMEOUT)`);
+        
+        // Ambil saldo SETELAH dipotong untuk display (sama seperti transaksi sukses)
+        const saldoAkhirData = await getUserSaldo(userId);
+        const saldoAkhir = saldoAkhirData && typeof saldoAkhirData.saldo === 'number' ? saldoAkhirData.saldo : 0;
+        
+        teksError = `♻️ <b>Pending !!</b>\n\n` +
+          `<b>Detail</b>         : <code>Kemungkinan transaksi sedang diproses</code>\n` +
+          `<b>Jenis paket</b>    : <code>${namaProduK}</code>\n` +
+          `<b>Nomor</b>          : <code>${normalizedNumber}</code>\n` +
+          `<b>TRX ID</b>         : <code>${trxId || 'TIMEOUT_' + Date.now()}</code>\n` +
+          `<b>Provider</b>       : <code>AKRAB GLOBAL</code>\n` +
+          `<b>Saldo awal</b>     : <code>Rp. ${saldoAwalValue.toLocaleString('id-ID')}</code>\n` +
+          `<b>Saldo terpotong</b>: <code>Rp. ${hargaValue.toLocaleString('id-ID')}</code>\n` +
+          `<b>Saldo akhir</b>    : <code>Rp. ${saldoAkhir.toLocaleString('id-ID')}</code>\n` +
+          `<b>Waktu eksekusi</b> : <code>${executionTime}+ detik</code> ♻️\n\n` +
+          `💬 <i>Jika paket tidak masuk dalam 5 menit, hubungi admin</i>`;
+
+        // Log transaksi timeout ke grup/channel dengan penanganan error yang aman
+        try {
+          const { logTransaction } = require('../../../transaction_logger');
+          await logTransaction(bot, {
+            userId: userId,
+            username: msg.from?.username || 'unknown',
+            kategori: `BULANAN GLOBAL ${namaProduK}`,
+            nomor: formatNomorTo08(normalizedNumber), 
+            pengelola: 'AKRAB_GLOBAL',
+            status: 'pending', // Status pending untuk timeout
+            harga: hargaValue,
+            saldoSebelum: saldoAwalValue,
+            saldoSesudah: saldoAkhir,
+            provider: 'AKRAB_GLOBAL',
+            error: `TIMEOUT: ${err.message || 'Connection timeout'}`,
+            trxId: trxId || 'TIMEOUT_TRX'
+          });
+        } catch (logError) {
+          // Silent handling - tidak menampilkan error logging
+        }
       } else {
-        // Error lainnya, potong biaya gagal
-        await potongSaldo(userId, biayaGagalValue, `BULANAN GLOBAL ${namaProduK} (ERROR)`);
+        // Error lainnya - Ambil saldo sebelum dipotong untuk history
+        const saldoAwalData = await getUserSaldo(userId);
+        const saldoAwalValue = saldoAwalData && typeof saldoAwalData.saldo === 'number' ? saldoAwalData.saldo : 0;
+        
+        // Potong biaya gagal
+        await kurangiSaldo(userId, biayaGagalValue, `BULANAN GLOBAL ${namaProduK} (ERROR)`);
+        
+        // Ambil saldo setelah dipotong
+        const saldoAkhirData = await getUserSaldo(userId);
+        const saldoAkhir = saldoAkhirData && typeof saldoAkhirData.saldo === 'number' ? saldoAkhirData.saldo : 0;
         
         teksError = `❌ <b>BULANAN GLOBAL ERROR</b>\n\n` +
           `📱 Nomor: ${normalizedNumber}\n` +
           `📦 Paket: ${namaProduK}\n` +
           `💰 Biaya: Rp. ${biayaGagalValue.toLocaleString('id-ID')}\n` +
           `⏱️ Waktu: ${executionTime}s\n\n` +
-          `📋 Error: ${err.message}\n\n` +
+          `📋 Error: ${err.message || 'Network error'}\n\n` +
           `🔄 <i>Silakan coba lagi atau hubungi admin</i>\n` +
           `🌍 <i>Powered by AKRAB GLOBAL</i>`;
-      }
-
-
-      // Log transaksi error ke grup/channel
-      try {
-        const { logTransaction } = require('../../../transaction_logger');
-        await logTransaction(bot, {
-          userId: userId,
-          username: msg.from?.username,
-          kategori: `BULANAN GLOBAL ${namaProduK}`,
-          nomor: formatNomorTo08(state.nomor), // Nomor customer/pembeli dalam format 08
-          pengelola: 'AKRAB_GLOBAL', // Provider
-          status: 'failed',
-          harga: 0, // Tidak ada potongan saldo untuk error jaringan
-          saldoSebelum: 0,
-          saldoSesudah: 0,
-          provider: 'AKRAB_GLOBAL',
-          error: `Network Error: ${err.message}`
-        });
-      } catch (logError) {
-        console.error('Warning: Failed to log error transaction:', logError.message);
+          
+        // Log transaksi error ke grup/channel dengan penanganan error yang aman
+        try {
+          const { logTransaction } = require('../../../transaction_logger');
+          await logTransaction(bot, {
+            userId: userId,
+            username: msg.from?.username || 'unknown',
+            kategori: `BULANAN GLOBAL ${namaProduK}`,
+            nomor: formatNomorTo08(normalizedNumber),
+            pengelola: 'AKRAB_GLOBAL',
+            status: 'failed',
+            harga: biayaGagalValue,
+            saldoSebelum: saldoAwalValue,
+            saldoSesudah: saldoAkhir,
+            provider: 'AKRAB_GLOBAL',
+            error: `Network Error: ${err.message || 'Unknown error'}`,
+            trxId: trxId || 'ERROR_TRX'
+          });
+        } catch (logError) {
+          // Silent handling - tidak menampilkan error logging
+        }
       }
 
       // Kirim hasil error
@@ -653,12 +729,37 @@ module.exports = (bot) => {
       
       setTimeout(async () => {
         try {
+          // Ambil data saldo terbaru dan hitung uptime untuk error handling
+          const { getUserSaldo } = require('../../../db');
+          const saldoTerbaru = await getUserSaldo(userId);
+          const saldoValue = saldoTerbaru ? parseInt(saldoTerbaru.saldo) : 0;
+          
+          // Format uptime function
+          const formatUptime = (ms) => {
+            let s = Math.floor(ms / 1000);
+            const hari = Math.floor(s / 86400);
+            s %= 86400;
+            const jam = Math.floor(s / 3600);
+            s %= 3600;
+            const menit = Math.floor(s / 60);
+            const detik = s % 60;
+            let hasil = [];
+            if (hari > 0) hasil.push(`${hari} hari`);
+            if (jam > 0) hasil.push(`${jam} jam`);
+            if (menit > 0) hasil.push(`${menit} menit`);
+            if (detik > 0 || hasil.length === 0) hasil.push(`${detik} detik`);
+            return hasil.join(' ');
+          };
+          
+          // Estimasi uptime 
+          const uptime = formatUptime(Date.now() - (Date.now() - 3600000)); 
+          
           const keyboard = generateMainKeyboard(userId);
           await bot.sendPhoto(chatId, 'welcome.jpg', {
             caption: `💌 <b>ID</b>           : <code>${userId}</code>\n` +
                     `💌 <b>User</b>       : <code>${msg.from?.username || '-'}</code>\n` +
-                    `📧 <b>Saldo</b>     : <code>Memuat...</code>\n` +
-                    `⌚ <b>Uptime</b>  : <code>Memuat...</code>`,
+                    `📧 <b>Saldo</b>     : <code>Rp. ${saldoValue.toLocaleString('id-ID')}</code>\n` +
+                    `⌚ <b>Uptime</b>  : <code>${uptime}</code>`,
             parse_mode: 'HTML',
             reply_markup: { inline_keyboard: keyboard }
           });
