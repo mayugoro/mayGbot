@@ -1213,7 +1213,7 @@ module.exports = (bot) => {
             }
             
             // SET_KUBER dengan member_id yang fresh
-            // console.log(`� SET_KUBER: Member found via robust extraction`);
+            // console.log(`🔍 SET_KUBER: Member found via robust extraction`);
             
             // SET_KUBER calculation
 

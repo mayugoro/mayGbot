@@ -158,7 +158,7 @@ module.exports = (bot) => {
           `⚡ <b>MEMPROSES STEP 1: API1+CEKSLOT1...</b>\n\n` +
           `📞 <b>Pengelola:</b> ${cleanNumber}\n` +
           `🔄 <b>Status:</b> Mengambil data anggota keluarga...\n\n` +
-          `� <b>COMBO:</b> API1+CEKSLOT1+EDITKUBER1`,
+          `🔗 <b>COMBO:</b> API1+CEKSLOT1+EDITKUBER1`,
           { parse_mode: 'HTML' }
         );
 
@@ -264,8 +264,8 @@ module.exports = (bot) => {
           `📞 <b>Pengelola:</b> ${state.pengelola}\n` +
           `👤 <b>Anggota:</b> ${state.selectedMember.alias} (${state.selectedMember.msisdn})\n` +
           `📊 <b>Kuber Baru:</b> ${kuberNumber} GB\n\n` +
-          `� <b>Status:</b> Mengirim request edit kuber...\n` +
-          `� <b>COMBO:</b> API1+CEKSLOT1+EDITKUBER1`,
+          `🔄 <b>Status:</b> Mengirim request edit kuber...\n` +
+          `🔗 <b>COMBO:</b> API1+CEKSLOT1+EDITKUBER1`,
           { parse_mode: 'HTML' }
         );
 
@@ -302,10 +302,10 @@ module.exports = (bot) => {
 
           let responseText = `⚙️ <b>HASIL EDIT KUBER - API1+CEKSLOT1+EDITKUBER1</b>\n\n`;
           responseText += `📞 <b>Pengelola:</b> ${state.pengelola}\n`;
-          responseText += `� <b>Anggota:</b> ${state.selectedMember.alias}\n`;
-          responseText += `� <b>Nomor:</b> ${state.selectedMember.msisdn}\n`;
+          responseText += `👤 <b>Anggota:</b> ${state.selectedMember.alias}\n`;
+          responseText += `📱 <b>Nomor:</b> ${state.selectedMember.msisdn}\n`;
           responseText += `📊 <b>Kuber Baru:</b> ${kuberNumber} GB\n`;
-          responseText += `� <b>Sumber API:</b> 🟢 KHFY API1\n\n`;
+          responseText += `🔗 <b>Sumber API:</b> 🟢 KHFY API1\n\n`;
 
           if (response.data?.status === 'success' || response.data?.status === true) {
             responseText += `✅ <b>BERHASIL MENGUBAH KUBER!</b>\n\n`;
@@ -314,22 +314,22 @@ module.exports = (bot) => {
             responseText += `📋 <b>Detail Anggota:</b>\n`;
             responseText += `💌 Member ID: <code>${state.selectedMember.family_member_id}</code>\n`;
             responseText += `✨ Nama: ${state.selectedMember.alias}\n`;
-            responseText += `� Nomor: ${state.selectedMember.msisdn}\n`;
+            responseText += `📱 Nomor: ${state.selectedMember.msisdn}\n`;
             responseText += `⚡ Slot ID: ${state.selectedMember.slot_id}\n`;
             responseText += `♻️ Kuber Baru: ${kuberNumber} GB\n\n`;
             
-            responseText += `� <b>Total Anggota Keluarga:</b> ${state.slotData.slots.length} orang\n`;
+            responseText += `👥 <b>Total Anggota Keluarga:</b> ${state.slotData.slots.length} orang\n`;
           } else {
             responseText += `❌ <b>GAGAL MENGUBAH KUBER</b>\n\n`;
             responseText += `🔍 <b>Error:</b> ${response.data?.message || 'Tidak ada response dari API'}\n\n`;
             
-            responseText += `� <b>Detail Request:</b>\n`;
-            responseText += `� Member ID: <code>${state.selectedMember.family_member_id}</code>\n`;
+            responseText += `📋 <b>Detail Request:</b>\n`;
+            responseText += `💌 Member ID: <code>${state.selectedMember.family_member_id}</code>\n`;
             responseText += `✨ Nama: ${state.selectedMember.alias}\n`;
-            responseText += `� Nomor: ${state.selectedMember.msisdn}\n`;
+            responseText += `📱 Nomor: ${state.selectedMember.msisdn}\n`;
             responseText += `♻️ Kuber Diminta: ${kuberNumber} GB\n\n`;
             
-            responseText += `� <b>Solusi:</b>\n`;
+            responseText += `💡 <b>Solusi:</b>\n`;
             responseText += `• Pastikan member_id valid\n`;
             responseText += `• Pastikan kuber dalam range yang diizinkan\n`;
             responseText += `• Coba cek slot terlebih dahulu\n`;
@@ -350,9 +350,9 @@ module.exports = (bot) => {
           
           let responseText = `⚙️ <b>HASIL EDIT KUBER - API1+CEKSLOT1+EDITKUBER1</b>\n\n`;
           responseText += `📞 <b>Pengelola:</b> ${state.pengelola}\n`;
-          responseText += `� <b>Anggota:</b> ${state.selectedMember.alias}\n`;
+          responseText += `👤 <b>Anggota:</b> ${state.selectedMember.alias}\n`;
           responseText += `📧 <b>Nomor:</b> ${state.selectedMember.msisdn}\n`;
-          responseText += `� <b>Kuber Baru:</b> ${kuberNumber} GB\n\n`;
+          responseText += `📊 <b>Kuber Baru:</b> ${kuberNumber} GB\n\n`;
           responseText += `❌ <b>GAGAL MENGUBAH KUBER</b>\n\n`;
           responseText += `🔍 <b>Error:</b> ${error.message}\n\n`;
           responseText += `💡 <b>Kemungkinan:</b>\n`;
