@@ -1,7 +1,7 @@
 const axios = require('axios');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-const { normalizePhoneNumber, isValidIndonesianPhone } = require('./utils/normalize');
+const { normalizePhoneNumber, isValidIndonesianPhone, extractPhonesFromMultilineText } = require('./utils/normalize');
 
 // Storage untuk dompul states
 const dompulStates = new Map(); // key: chatId, value: { step, inputMessageId }
@@ -228,29 +228,9 @@ module.exports = (bot) => {
         return;
       }
 
-      // Parse nomor HP (multiple lines) - deteksi absolut dengan normalisasi
-      const lines = text.split(/\n|\r/).map(line => line.trim()).filter(line => line);
-      const validNumbers = [];
-      
-      for (const line of lines) {
-        // Regex untuk mendeteksi nomor 9-16 digit di mana saja dalam teks
-        const numberMatches = line.match(/\d{9,16}/g);
-        
-        if (numberMatches) {
-          for (const match of numberMatches) {
-            // Normalize nomor menggunakan utility
-            const normalizedNumber = normalizePhoneNumber(match);
-            
-            // Validasi menggunakan utility dan tambahkan jika valid
-            if (normalizedNumber && isValidIndonesianPhone(normalizedNumber)) {
-              validNumbers.push(normalizedNumber);
-            }
-          }
-        }
-      }
-      
-      // Hilangkan duplikasi nomor
-      const uniqueNumbers = [...new Set(validNumbers)];
+      // Parse nomor HP menggunakan utility - deteksi absolut dengan normalisasi
+      const validNumbers = extractPhonesFromMultilineText(text);
+      const uniqueNumbers = validNumbers; // Already deduplicated by utility
       
       if (uniqueNumbers.length === 0) {
         await bot.sendMessage(chatId, 

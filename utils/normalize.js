@@ -1,4 +1,53 @@
 /**
+ * Ekstrak dan normalisasi nomor telepon dari teks yang mengandung simbol/teks lain
+ * @param {string} text - Teks yang mungkin mengandung nomor telepon
+ * @returns {string[]} - Array nomor telepon yang sudah dinormalisasi dan valid
+ */
+const extractAndNormalizePhones = (text) => {
+  if (!text || typeof text !== 'string') return [];
+  
+  // Regex untuk mendeteksi nomor 9-16 digit di mana saja dalam teks
+  const numberMatches = text.match(/\d{9,16}/g);
+  
+  if (!numberMatches) return [];
+  
+  const validNumbers = [];
+  
+  for (const match of numberMatches) {
+    // Normalize nomor menggunakan fungsi yang ada
+    const normalizedNumber = normalizePhoneNumber(match);
+    
+    // Validasi dan tambahkan jika valid
+    if (normalizedNumber && isValidIndonesianPhone(normalizedNumber)) {
+      validNumbers.push(normalizedNumber);
+    }
+  }
+  
+  return validNumbers;
+};
+
+/**
+ * Ekstrak nomor telepon dari multiple lines dengan simbol/teks
+ * @param {string} text - Teks multi-line yang mungkin mengandung nomor telepon
+ * @returns {string[]} - Array nomor telepon unik yang sudah dinormalisasi dan valid
+ */
+const extractPhonesFromMultilineText = (text) => {
+  if (!text || typeof text !== 'string') return [];
+  
+  // Split by lines dan filter empty lines
+  const lines = text.split(/\n|\r/).map(line => line.trim()).filter(line => line);
+  const allNumbers = [];
+  
+  for (const line of lines) {
+    const numbersFromLine = extractAndNormalizePhones(line);
+    allNumbers.push(...numbersFromLine);
+  }
+  
+  // Remove duplicates menggunakan Set
+  return [...new Set(allNumbers)];
+};
+
+/**
  * Normalisasi nomor telepon ke format 08xxxxxxxxxx
  * @param {string} nomor - Nomor telepon input
  * @returns {string} - Nomor dalam format 08xxxxxxxxxx atau null jika invalid
@@ -76,5 +125,7 @@ const formatForLogger = (nomor) => {
 module.exports = {
   normalizePhoneNumber,
   isValidIndonesianPhone,
-  formatForLogger
+  formatForLogger,
+  extractAndNormalizePhones,
+  extractPhonesFromMultilineText
 };
