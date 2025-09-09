@@ -64,6 +64,9 @@ const processCekPulsaRequest = async (chatId, uniqueNumbers, bot) => {
     let totalSuccess = 0;
     let totalFailed = 0;
     let completedCount = 0;
+    
+    // Array untuk menyimpan nomor dengan pulsa bermasalah
+    let problematicNumbers = [];
 
     // Function untuk process single nomor
     const processSingleNomor = async (nomor_hp, index) => {
@@ -133,8 +136,20 @@ const processCekPulsaRequest = async (chatId, uniqueNumbers, bot) => {
             
             if (saldoAmount === 0) {
               saldoIndicator = ' ❗❗'; // Pulsa habis
+              // Tambahkan ke daftar nomor bermasalah
+              problematicNumbers.push({
+                nomor: result.nomor,
+                amount: saldoAmount,
+                indicator: '❗❗'
+              });
             } else if (saldoAmount < 10000) {
               saldoIndicator = ' ⚠️⚠️'; // Pulsa di bawah 10rb
+              // Tambahkan ke daftar nomor bermasalah
+              problematicNumbers.push({
+                nomor: result.nomor,
+                amount: saldoAmount,
+                indicator: '⚠️⚠️'
+              });
             } else if (saldoAmount > 150000) {
               saldoIndicator = ' ✅✅'; // Pulsa di atas 150rb
             }
@@ -170,8 +185,20 @@ const processCekPulsaRequest = async (chatId, uniqueNumbers, bot) => {
                 
                 if (saldoAmount === 0) {
                   saldoIndicator = ' ❗❗'; // Pulsa habis
+                  // Tambahkan ke daftar nomor bermasalah
+                  problematicNumbers.push({
+                    nomor: result.nomor,
+                    amount: saldoAmount,
+                    indicator: '❗❗'
+                  });
                 } else if (saldoAmount < 10000) {
                   saldoIndicator = ' ⚠️⚠️'; // Pulsa di bawah 10rb
+                  // Tambahkan ke daftar nomor bermasalah
+                  problematicNumbers.push({
+                    nomor: result.nomor,
+                    amount: saldoAmount,
+                    indicator: '⚠️⚠️'
+                  });
                 } else if (saldoAmount > 150000) {
                   saldoIndicator = ' ✅✅'; // Pulsa di atas 150rb
                 }
@@ -242,7 +269,24 @@ const processCekPulsaRequest = async (chatId, uniqueNumbers, bot) => {
     // Tunggu SEMUA hasil dikirim (concurrent execution)
     await Promise.allSettled(allPromises);
 
-    // Tidak perlu summary - hasil sudah dikirim real-time
+    // Kirim daftar nomor bermasalah jika ada (hanya untuk multiple numbers)
+    if (problematicNumbers.length > 0 && uniqueNumbers.length > 1) {
+      let problemText = '───────────────────\n';
+      problemText += '<b>📋 DAFTAR NOMOR BERMASALAH:</b>\n\n';
+      
+      // Urutkan berdasarkan tingkat masalah (❗❗ dulu, lalu ⚠️⚠️)
+      problematicNumbers.sort((a, b) => {
+        if (a.indicator === '❗❗' && b.indicator === '⚠️⚠️') return -1;
+        if (a.indicator === '⚠️⚠️' && b.indicator === '❗❗') return 1;
+        return 0;
+      });
+      
+      for (const item of problematicNumbers) {
+        problemText += `<code>${item.nomor}</code>${item.indicator} Rp.${item.amount.toLocaleString()}\n`;
+      }
+      
+      await bot.sendMessage(chatId, problemText, { parse_mode: 'HTML' });
+    }
     
   } catch (error) {
     console.error('❌ Error dalam processCekPulsaRequest:', error);
