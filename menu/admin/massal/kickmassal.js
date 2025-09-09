@@ -269,8 +269,8 @@ const kickSemuaAnggotaSingle = async (nomor_hp, chatId, bot) => {
     await bot.editMessageText(
       `✅ <b>Tidak ada anggota untuk di-kick di nomor ${nomor_hp}</b>\n\n` +
       `📊 Total slot: ${allSlots.length}\n` +
-      `� Anggota valid: 0\n` +
-      `�📡 Sumber: 🟢 KHFY API1 COMBO`, 
+      `🟢 Anggota valid: 0\n` +
+      `📡 Sumber: 🟢 KHFY API1 COMBO`, 
       {
         chat_id: chatId,
         message_id: statusMsg.message_id,
@@ -847,13 +847,13 @@ module.exports = (bot) => {
           `• family_member_id validation dari Step 1\n` +
           `• No fallback - 100% API1 precision\n` +
           `• 20 detik delay antar kick slot\n\n` +
-          `�️ <b>DATE-BASED SCHEDULING (NEW!):</b>\n` +
+          `📝 <b>DATE-BASED SCHEDULING (NEW!):</b>\n` +
           `• Time only: 23:00 (hari ini/besok)\n` +
           `• Date + Time: 15/09/2025 18:00\n` +
           `• Relative dates: today, tomorrow, +3days\n` +
           `• Multiple formats: DD/MM/YYYY, DD-MM-YYYY\n` +
           `• Database persistent: Restart-safe scheduling\n\n` +
-          `� <b>Processing Mode:</b>\n` +
+          `📝 <b>Processing Mode:</b>\n` +
           `• Multiple nomor: Parallel execution\n` +
           `• Members per nomor: Sequential (20s delay)\n` +
           `• Future dates: Multi-day scheduling\n\n` +

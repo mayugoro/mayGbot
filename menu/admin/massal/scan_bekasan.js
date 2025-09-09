@@ -493,7 +493,7 @@ module.exports = (bot) => {
     
     // Kirim status awal
     try {
-      currentStatusMsg = await bot.sendMessage(chatId, `� HARDCORE SCAN ${nomorList.length} nomor - NO RATE LIMIT!`);
+      currentStatusMsg = await bot.sendMessage(chatId, `📝 HARDCORE SCAN ${nomorList.length} nomor - NO RATE LIMIT!`);
     } catch (e) {
       console.error('Error sending initial status:', e);
     }
@@ -639,7 +639,7 @@ module.exports = (bot) => {
     // Update status ke scanning
     try {
       if (currentStatusMsg) {
-        await bot.editMessageText(`� LAUNCHING ${nomorList.length} CONCURRENT API CALLS!`, {
+        await bot.editMessageText(`♻️ LAUNCHING ${nomorList.length} CONCURRENT API CALLS!`, {
           chat_id: chatId,
           message_id: currentStatusMsg.message_id
         });
@@ -877,7 +877,7 @@ module.exports = (bot) => {
         `SLOT ⚠️        : ${totalSlotWarning}\n` +
         `SLOT ✅        : ${totalSlotNormal}\n` +
         `\n` +
-        `� API KHFY    : ${primaryCount}\n` +
+        `🟢 API KHFY    : ${primaryCount}\n` +
         `⚪ API H-P     : ${secondaryCount}\n` +
         `⚪ H-P Retry   : ${retryCount}\n` +
         `❌ Both Failed : ${failedCount}\n` +

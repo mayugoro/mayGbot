@@ -596,7 +596,7 @@ const processAddKickMassal = async (nomor_pengelola_list, nomor_tumbal, chatId, 
     finalMessage += `⚪ <b>API H-P:</b> ${globalApiStats.hidepulsa}\n`;
     finalMessage += `❌ <b>API GAGAL:</b> ${globalApiStats.failed}\n\n`;
     finalMessage += `👤 <b>Nomor Tumbal:</b> ${nomor_tumbal}\n`;
-    finalMessage += `� <b>Efisiensi:</b> ${totalSlotProcessed > 0 ? ((totalSuccess / totalSlotProcessed) * 100).toFixed(1) : 0}%\n`;
+    finalMessage += `📝 <b>Efisiensi:</b> ${totalSlotProcessed > 0 ? ((totalSuccess / totalSlotProcessed) * 100).toFixed(1) : 0}%\n`;
     
     // Detail per pengelola yang gagal
     if (Object.keys(statusTracker).length > 0) {
