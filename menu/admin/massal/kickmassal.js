@@ -92,6 +92,33 @@ const parseFlexibleDate = (dateInput) => {
   return { valid: false, error: 'Invalid date format', original: dateInput };
 };
 
+// Function untuk format tanggal ke YYYY-MM-DD (timezone safe)
+const formatDateToYYYYMMDD = (date) => {
+  try {
+    let dateObj;
+    if (typeof date === 'string') {
+      dateObj = new Date(date);
+    } else if (date instanceof Date) {
+      dateObj = date;
+    } else {
+      return null;
+    }
+    
+    if (isNaN(dateObj.getTime())) {
+      return null;
+    }
+    
+    // Use local date components to avoid timezone issues
+    const year = dateObj.getFullYear();
+    const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+    const day = dateObj.getDate().toString().padStart(2, '0');
+    
+    return `${year}-${month}-${day}`;
+  } catch (error) {
+    return null;
+  }
+};
+
 // Function untuk format tanggal untuk display
 const formatDateForDisplay = (date, includeDay = true) => {
   try {
@@ -504,7 +531,7 @@ const scheduleKickWithDate = async (scheduleData, chatId, bot) => {
         jam, 
         menit, 
         targetTime.toISOString(),
-        targetDate ? targetDate.toISOString().split('T')[0] : null, // YYYY-MM-DD format
+        targetDate ? formatDateToYYYYMMDD(targetDate) : null, // YYYY-MM-DD format (timezone safe)
         scheduleType
       );
     } catch (error) {
