@@ -1,6 +1,7 @@
 const axios = require('axios');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const { normalizePhoneNumber, isValidIndonesianPhone } = require('./utils/normalize');
 
 // Storage untuk dompul states
 const dompulStates = new Map(); // key: chatId, value: { step, inputMessageId }
@@ -68,30 +69,16 @@ const xlAxisSeries = [
 
 // Function untuk cek apakah nomor adalah XL/Axis
 const isXLAxisNumber = (nomor) => {
-  // Pastikan nomor dalam format 08xxx
-  let checkNumber = nomor;
-  if (checkNumber.startsWith('62')) {
-    checkNumber = '0' + checkNumber.substring(2);
-  } else if (checkNumber.length === 10 && !checkNumber.startsWith('0')) {
-    checkNumber = '0' + checkNumber;
-  }
-  
-  // Cek 4 digit pertama
-  const prefix = checkNumber.substring(0, 4);
+  // Nomor sudah dalam format 08xxxxxxx, langsung cek prefix
+  const prefix = nomor.substring(0, 4);
   return xlAxisSeries.includes(prefix);
 };
 
 // Function untuk cek dompul single nomor menggunakan KMSP Store API
 const checkDompul = async (nomor_hp) => {
   try {
-    // Format nomor HP
-    let formattedMsisdn = nomor_hp.replace(/\D/g, '');
-    if (formattedMsisdn.startsWith('62')) {
-      formattedMsisdn = '0' + formattedMsisdn.substring(2);
-    }
-    if (!formattedMsisdn.startsWith('0') && formattedMsisdn.length >= 10 && formattedMsisdn.length <= 11) {
-      formattedMsisdn = '0' + formattedMsisdn;
-    }
+    // Nomor sudah dinormalisasi ke format 08xxxxxxx, langsung gunakan
+    const formattedMsisdn = nomor_hp;
 
     const params = {
       msisdn: formattedMsisdn,
@@ -241,14 +228,24 @@ module.exports = (bot) => {
         return;
       }
 
-      // Parse nomor HP (multiple lines)
+      // Parse nomor HP (multiple lines) - deteksi absolut dengan normalisasi
       const lines = text.split(/\n|\r/).map(line => line.trim()).filter(line => line);
       const validNumbers = [];
       
       for (const line of lines) {
-        const cleanNumber = line.replace(/\D/g, '');
-        if (cleanNumber.length >= 10 && cleanNumber.length <= 15) {
-          validNumbers.push(cleanNumber);
+        // Regex untuk mendeteksi nomor 9-16 digit di mana saja dalam teks
+        const numberMatches = line.match(/\d{9,16}/g);
+        
+        if (numberMatches) {
+          for (const match of numberMatches) {
+            // Normalize nomor menggunakan utility
+            const normalizedNumber = normalizePhoneNumber(match);
+            
+            // Validasi menggunakan utility dan tambahkan jika valid
+            if (normalizedNumber && isValidIndonesianPhone(normalizedNumber)) {
+              validNumbers.push(normalizedNumber);
+            }
+          }
         }
       }
       
@@ -257,8 +254,8 @@ module.exports = (bot) => {
       
       if (uniqueNumbers.length === 0) {
         await bot.sendMessage(chatId, 
-          '❌ <b>Tidak ada nomor yang valid!</b>\n\n' +
-          'Format: 10-15 digit angka per baris.\n' +
+          '❌ <b>Tidak ada nomor Indonesia yang valid!</b>\n\n' +
+          'Format: Nomor Indonesia 08xxxxxxxx\n' +
           'Coba lagi atau ketik "exit" untuk batal.',
           { parse_mode: 'HTML' }
         );
@@ -284,16 +281,11 @@ module.exports = (bot) => {
       // Function untuk process single nomor
       const processSingleNomor = async (nomor_hp, index) => {
         try {
+          // Nomor sudah dinormalisasi ke format 08xxxxxxx, langsung gunakan untuk display
+          const displayNumber = nomor_hp;
+          
           // Cek apakah nomor adalah XL/Axis
           if (!isXLAxisNumber(nomor_hp)) {
-            // Format nomor ke 08xxxxx untuk display
-            let displayNumber = nomor_hp;
-            if (displayNumber.startsWith('62')) {
-              displayNumber = '0' + displayNumber.substring(2);
-            } else if (displayNumber.length === 10 && !displayNumber.startsWith('0')) {
-              displayNumber = '0' + displayNumber;
-            }
-            
             return {
               success: false,
               nomor: displayNumber,
@@ -305,14 +297,6 @@ module.exports = (bot) => {
 
           // Hit API cek dompul
           const result = await checkDompul(nomor_hp);
-          
-          // Format nomor ke 08xxxxx untuk display
-          let displayNumber = nomor_hp;
-          if (displayNumber.startsWith('62')) {
-            displayNumber = '0' + displayNumber.substring(2);
-          } else if (displayNumber.length === 10 && !displayNumber.startsWith('0')) {
-            displayNumber = '0' + displayNumber;
-          }
 
           return {
             success: result.status === 'success',
@@ -324,13 +308,8 @@ module.exports = (bot) => {
           };
 
         } catch (error) {
-          // Format nomor untuk display
-          let displayNumber = nomor_hp;
-          if (displayNumber.startsWith('62')) {
-            displayNumber = '0' + displayNumber.substring(2);
-          } else if (displayNumber.length === 10 && !displayNumber.startsWith('0')) {
-            displayNumber = '0' + displayNumber;
-          }
+          // Nomor sudah dinormalisasi, langsung gunakan
+          const displayNumber = nomor_hp;
 
           return {
             success: false,
