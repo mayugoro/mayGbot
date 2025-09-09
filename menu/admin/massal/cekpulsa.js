@@ -126,7 +126,20 @@ const processCekPulsaRequest = async (chatId, uniqueNumbers, bot) => {
             // Format field yang diminta user
             resultText = `📡 Status: ${apiData.subscription_status || 'N/A'}\n`;
             resultText += `💳 Subscriber: ${result.data.subscriber || 'N/A'}\n`;
-            resultText += `💰 Saldo: Rp ${apiData.balance?.remaining?.toLocaleString() || '0'}\n`;
+            
+            // Format saldo dengan indikator visual di belakang (2 simbol)
+            const saldoAmount = apiData.balance?.remaining || 0;
+            let saldoIndicator = ''; // Indikator di belakang
+            
+            if (saldoAmount === 0) {
+              saldoIndicator = ' ❗❗'; // Pulsa habis
+            } else if (saldoAmount < 10000) {
+              saldoIndicator = ' ⚠️⚠️'; // Pulsa di bawah 10rb
+            } else if (saldoAmount > 150000) {
+              saldoIndicator = ' ✅✅'; // Pulsa di atas 150rb
+            }
+            
+            resultText += `💰 Pulsa: Rp ${saldoAmount.toLocaleString()}${saldoIndicator}\n`;
             
             // Format tanggal expired yang lebih readable
             let expiredDate = 'N/A';
@@ -151,7 +164,19 @@ const processCekPulsaRequest = async (chatId, uniqueNumbers, bot) => {
                 resultText += `💬 Message: ${result.data.message}\n`;
               }
               if (result.data.balance || result.data.saldo) {
-                resultText += `💰 Pulsa: ${result.data.balance || result.data.saldo}\n`;
+                // Format saldo dengan indikator visual di belakang (2 simbol) untuk fallback
+                const saldoAmount = parseInt(result.data.balance || result.data.saldo || 0);
+                let saldoIndicator = ''; // Indikator di belakang
+                
+                if (saldoAmount === 0) {
+                  saldoIndicator = ' ❗❗'; // Pulsa habis
+                } else if (saldoAmount < 10000) {
+                  saldoIndicator = ' ⚠️⚠️'; // Pulsa di bawah 10rb
+                } else if (saldoAmount > 150000) {
+                  saldoIndicator = ' ✅✅'; // Pulsa di atas 150rb
+                }
+                
+                resultText += `💰 Pulsa: Rp ${saldoAmount.toLocaleString()}${saldoIndicator}\n`;
               }
               if (result.data.operator) {
                 resultText += `📱 Provider: ${result.data.operator}\n`;
