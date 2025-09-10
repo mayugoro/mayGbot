@@ -201,23 +201,57 @@ class ModernSlotManager {
     return validSlots;
   }
 
-  static async getAvailableSlots(phone) {
-    try {
-      const result = await getSlotInfoAPI1Only(phone);
-      if (!result.success) {
-        return { success: false, error: result.error || 'Failed to get slot info' };
+  static async getAvailableSlots(phone, maxRetries = 3) {
+    console.log(`🔄 CEKSLOT API with retry system (max ${maxRetries} attempts)`);
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🚀 CEKSLOT Attempt ${attempt}/${maxRetries}...`);
+        const startTime = Date.now();
+        
+        const result = await getSlotInfoAPI1Only(phone);
+        const responseTime = Date.now() - startTime;
+        
+        if (result.success) {
+          console.log(`✅ CEKSLOT SUCCESS on attempt ${attempt} (${responseTime}ms)`);
+          const validSlots = this.filterValidSlots(result.slots || []);
+          return {
+            success: true,
+            slots: validSlots,
+            totalSlots: (result.slots || []).length,
+            validSlots: validSlots.length,
+            attempts: attempt,
+            responseTime
+          };
+        } else {
+          console.log(`❌ CEKSLOT FAILED on attempt ${attempt}: ${result.error}`);
+          
+          // If this is not the last attempt, wait before retry
+          if (attempt < maxRetries) {
+            const retryDelay = attempt * 2000; // Progressive delay: 2s, 4s, 6s
+            console.log(`⏳ Waiting ${retryDelay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+          }
+        }
+      } catch (error) {
+        console.log(`💥 CEKSLOT ERROR on attempt ${attempt}: ${error.message}`);
+        
+        // If this is not the last attempt, wait before retry
+        if (attempt < maxRetries) {
+          const retryDelay = attempt * 2000; // Progressive delay: 2s, 4s, 6s
+          console.log(`⏳ Waiting ${retryDelay}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
       }
-
-      const validSlots = this.filterValidSlots(result.slots || []);
-      return {
-        success: true,
-        slots: validSlots,
-        totalSlots: (result.slots || []).length,
-        validSlots: validSlots.length
-      };
-    } catch (error) {
-      return { success: false, error: error.message };
     }
+    
+    // All attempts failed
+    console.log(`❌ CEKSLOT FAILED after ${maxRetries} attempts`);
+    return { 
+      success: false, 
+      error: `CEKSLOT API failed after ${maxRetries} attempts`,
+      attempts: maxRetries
+    };
   }
 }
 
@@ -270,20 +304,53 @@ class ModernComboProcessor {
       const waitDuration = Date.now() - waitStart;
       console.log(`✅ Wait completed in ${waitDuration}ms`);
 
-      // Step 3: Get member ID for kick (get fresh slot data after ADD)
+      // Step 3: Get member ID for kick (get fresh slot data after ADD with retry)
       console.log('🔍 Step 3: Getting fresh slot data for KICK preparation...');
-      const postAddSlotResult = await getSlotInfoAPI1Only(parentPhone);
       
-      if (!postAddSlotResult.success) {
-        console.log('❌ Post-ADD CEKSLOT failed');
-        console.log(`💬 Error: ${postAddSlotResult.error}`);
+      let postAddSlotResult = null;
+      const maxRetries = 3;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`🚀 Post-ADD CEKSLOT Attempt ${attempt}/${maxRetries}...`);
+          postAddSlotResult = await getSlotInfoAPI1Only(parentPhone);
+          
+          if (postAddSlotResult.success) {
+            console.log(`✅ Post-ADD CEKSLOT SUCCESS on attempt ${attempt}`);
+            break;
+          } else {
+            console.log(`❌ Post-ADD CEKSLOT FAILED on attempt ${attempt}: ${postAddSlotResult.error}`);
+            
+            // If this is not the last attempt, wait before retry
+            if (attempt < maxRetries) {
+              const retryDelay = attempt * 1500; // Progressive delay: 1.5s, 3s, 4.5s
+              console.log(`⏳ Waiting ${retryDelay}ms before retry...`);
+              await new Promise(resolve => setTimeout(resolve, retryDelay));
+            }
+          }
+        } catch (error) {
+          console.log(`💥 Post-ADD CEKSLOT ERROR on attempt ${attempt}: ${error.message}`);
+          
+          // If this is not the last attempt, wait before retry
+          if (attempt < maxRetries) {
+            const retryDelay = attempt * 1500; // Progressive delay: 1.5s, 3s, 4.5s
+            console.log(`⏳ Waiting ${retryDelay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+          }
+        }
+      }
+      
+      if (!postAddSlotResult || !postAddSlotResult.success) {
+        console.log(`❌ Post-ADD CEKSLOT failed after ${maxRetries} attempts`);
+        console.log(`💬 Error: ${postAddSlotResult?.error || 'Unknown error'}`);
         return {
           success: false,
           step: 'CEKSLOT_POST_ADD',
-          error: `Failed to get fresh slot info for kick: ${postAddSlotResult.error}`,
+          error: `Failed to get fresh slot info for kick after ${maxRetries} attempts: ${postAddSlotResult?.error || 'Unknown error'}`,
           duration: Date.now() - startTime,
           addSuccess: true,
-          slotIndex
+          slotIndex,
+          attempts: maxRetries
         };
       }
 
@@ -978,21 +1045,57 @@ async function smartKickTumbal(parentPhone) {
   const startTime = Date.now();
   
   try {
-    // Step 1: Get slot info to find tumbal members
+    // Step 1: Get slot info to find tumbal members (with retry system)
     console.log('🔍 Step 1: Getting member list from CEKSLOT API...');
-    const slotResult = await getSlotInfoAPI1Only(normalizePhone(parentPhone));
-    const cekslotDuration = Date.now() - startTime;
+    
+    let slotResult = null;
+    let cekslotDuration = 0;
+    const maxRetries = 3;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🚀 CEKSLOT Attempt ${attempt}/${maxRetries} for KICK operation...`);
+        const attemptStartTime = Date.now();
+        
+        slotResult = await getSlotInfoAPI1Only(normalizePhone(parentPhone));
+        cekslotDuration = Date.now() - attemptStartTime;
+        
+        if (slotResult.success) {
+          console.log(`✅ CEKSLOT SUCCESS on attempt ${attempt} (${cekslotDuration}ms)`);
+          break;
+        } else {
+          console.log(`❌ CEKSLOT FAILED on attempt ${attempt}: ${slotResult.error}`);
+          
+          // If this is not the last attempt, wait before retry
+          if (attempt < maxRetries) {
+            const retryDelay = attempt * 2000; // Progressive delay: 2s, 4s, 6s
+            console.log(`⏳ Waiting ${retryDelay}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+          }
+        }
+      } catch (error) {
+        console.log(`💥 CEKSLOT ERROR on attempt ${attempt}: ${error.message}`);
+        
+        // If this is not the last attempt, wait before retry
+        if (attempt < maxRetries) {
+          const retryDelay = attempt * 2000; // Progressive delay: 2s, 4s, 6s
+          console.log(`⏳ Waiting ${retryDelay}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+      }
+    }
     
     console.log(`⏱️  CEKSLOT Response Time: ${cekslotDuration}ms`);
     
-    if (!slotResult.success) {
-      console.log('❌ CEKSLOT failed, cannot show members');
-      console.log(`💬 Error: ${slotResult.error}`);
+    if (!slotResult || !slotResult.success) {
+      console.log(`❌ CEKSLOT failed after ${maxRetries} attempts, cannot show members`);
+      console.log(`💬 Error: ${slotResult?.error || 'Unknown error'}`);
       return {
         success: false,
-        error: slotResult.error,
+        error: slotResult?.error || `CEKSLOT failed after ${maxRetries} attempts`,
         step: 'CEKSLOT',
-        cekslotDuration
+        cekslotDuration,
+        attempts: maxRetries
       };
     }
     
