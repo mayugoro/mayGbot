@@ -7,7 +7,7 @@ const MASSAL_MENU_KEYBOARD = [
     { text: '🦵 KICK MASSAL', callback_data: 'kick_massal' }
   ],
   [
-    { text: '⚡ ADD + KICK', callback_data: 'addkick_start' }
+    { text: '⚡ ADD + KICK (Modern)', callback_data: 'modern_addkick_start' }
   ],
   [
     { text: '✨ CEK PULSA', callback_data: 'cek_pulsa' }
@@ -30,7 +30,7 @@ module.exports = (bot) => {
     const msgId = message?.message_id;
 
     // === PENGECEKAN ADMIN UNTUK SEMUA FITUR MASSAL ===
-    const massalCallbacks = ['menu_massal', 'infoakrab', 'kick_massal', 'addkick_start', 'cek_pulsa', 'reset_tanggal'];
+    const massalCallbacks = ['menu_massal', 'infoakrab', 'kick_massal', 'modern_addkick_start', 'modern_addkick_begin', 'modern_addkick_parallel', 'modern_addkick_cancel', 'modern_addkick_confirm', 'modern_addkick_confirm_parallel', 'cek_pulsa', 'reset_tanggal'];
     if (massalCallbacks.includes(data)) {
       if (from.id.toString() !== process.env.ADMIN_ID) {
         return bot.answerCallbackQuery(id, {
@@ -115,8 +115,8 @@ module.exports = (bot) => {
     // console.log('✅ [MASSAL] scan_bekasan loaded');
     require('./massal/kickmassal')(bot);
     // console.log('✅ [MASSAL] kickmassal loaded');
-    require('./massal/addkick')(bot);
-    // console.log('✅ [MASSAL] addkick loaded');
+    require('./massal/add_kick')(bot);
+    // console.log('✅ [MASSAL] add_kick loaded (Modern V2.0)');
     require('./massal/cekpulsa')(bot);
     // console.log('✅ [MASSAL] cekpulsa loaded');
     require('./massal/tanggalreset')(bot);
@@ -126,7 +126,7 @@ module.exports = (bot) => {
     // console.log('📁 Pastikan folder massal/ dan file-filenya sudah dibuat:');
     // console.log('   - ./massal/scan_bekasan.js');
     // console.log('   - ./massal/kickmassal.js');
-    // console.log('   - ./massal/addkick.js');
+    // console.log('   - ./massal/add_kick.js (Modern V2.0)');
     // console.log('   - ./massal/cekpulsa.js');
     // console.log('   - ./massal/tanggalreset.js');
   }
