@@ -1,19 +1,19 @@
 // === PRELOAD INLINE KEYBOARDS ===
 const MASSAL_MENU_KEYBOARD = [
   [
-    { text: '🔍 SCAN BEKASAN', callback_data: 'infoakrab' }
+    { text: '✨ CEK PULSA', callback_data: 'cek_pulsa' }
   ],
   [
     { text: '🦵 KICK MASSAL', callback_data: 'kick_massal' }
   ],
   [
-    { text: '⚡ ADD + KICK (Modern)', callback_data: 'modern_addkick_start' }
-  ],
-  [
-    { text: '✨ CEK PULSA', callback_data: 'cek_pulsa' }
+    { text: '🔍 SCAN BEKASAN', callback_data: 'infoakrab' }
   ],
   [
     { text: '🗒️ CEK TANGGAL RESET', callback_data: 'reset_tanggal' }
+  ],
+  [
+    { text: '⚡ ADD-KICK (BEKASAN)', callback_data: 'modern_addkick_start' }
   ],
   [
     { text: '🔙 KEMBALI', callback_data: 'menu_admin' }
