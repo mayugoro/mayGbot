@@ -4,6 +4,9 @@ const MASSAL_MENU_KEYBOARD = [
     { text: '✨ CEK PULSA', callback_data: 'cek_pulsa' }
   ],
   [
+    { text: '⌚ MASA AKTIF', callback_data: 'masa_aktif' }
+  ],
+  [
     { text: '🦵 KICK MASSAL', callback_data: 'kick_massal' }
   ],
   [
