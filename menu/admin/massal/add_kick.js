@@ -231,20 +231,21 @@ class ModernComboProcessor {
     };
   }
 
-  async executeCombo(parentPhone, slot, tumbalPhone) {
+  async executeCombo(parentPhone, slot, tumbalPhone, slotIndex = 0) {
     console.log('\n🎯 EXECUTING MODERN COMBO (SMART ADD + KICK)...');
     console.log(`📱 Parent: ${parentPhone}`);
     console.log(`📱 Tumbal: ${tumbalPhone}`);
+    console.log(`🎰 Slot Index: ${slotIndex} (target slot for this iteration)`);
     console.log(`⏰ Start Time: ${formatIndonesianTime()}`);
     console.log('='.repeat(60));
     
     const startTime = Date.now();
     
     try {
-      // SMART AUTO-GENERATION: Use Smart ADD logic instead of manual slot selection
-      // Step 1: Use Smart ADD to auto-generate parameters and add member
-      console.log('🚀 Step 1: SMART ADD - Auto-generating parameters and adding member...');
-      const smartAddResult = await smartAdd(parentPhone, tumbalPhone, 'TUMBAL');
+      // SMART AUTO-GENERATION: Use Smart ADD logic with specific slot index
+      // Step 1: Use Smart ADD to auto-generate parameters and add member to specific slot
+      console.log(`🚀 Step 1: SMART ADD - Auto-generating parameters for slot index ${slotIndex}...`);
+      const smartAddResult = await smartAdd(parentPhone, tumbalPhone, 'TUMBAL', slotIndex);
       
       if (!smartAddResult.success) {
         console.log('❌ SMART ADD FAILED - Cannot proceed with combo');
@@ -254,12 +255,13 @@ class ModernComboProcessor {
           step: 'SMART_ADD',
           error: smartAddResult.error,
           duration: Date.now() - startTime,
-          smartAddResult
+          smartAddResult,
+          slotIndex
         };
       }
 
       console.log('✅ SMART ADD SUCCESS - Proceeding to wait phase...');
-      console.log(`🎯 Slot Used: ${smartAddResult.slotUsed}`);
+      console.log(`🎯 Slot Used: ${smartAddResult.slotUsed} (index ${slotIndex})`);
 
       // Step 2: Wait 60 seconds after successful ADD (as requested)
       console.log(`⏳ Step 2: WAITING ${this.timings.addWait/1000}s (1 minute) after ADD...`);
@@ -280,7 +282,8 @@ class ModernComboProcessor {
           step: 'CEKSLOT_POST_ADD',
           error: `Failed to get fresh slot info for kick: ${postAddSlotResult.error}`,
           duration: Date.now() - startTime,
-          addSuccess: true
+          addSuccess: true,
+          slotIndex
         };
       }
 
@@ -307,7 +310,8 @@ class ModernComboProcessor {
           error: 'Tumbal member not found for kick after ADD',
           duration: Date.now() - startTime,
           addSuccess: true,
-          availableMembers
+          availableMembers,
+          slotIndex
         };
       }
 
@@ -329,6 +333,7 @@ class ModernComboProcessor {
         console.log(`   └── Smart ADD: ${smartAddResult.totalDuration}ms`);
         console.log(`   └── Wait: ${waitDuration}ms`);
         console.log(`   └── Kick: ${kickResult.duration}ms`);
+        console.log(`🎰 Slot Index ${slotIndex} processing complete!`);
       } else {
         console.log('❌ MODERN COMBO FAILED AT KICK STEP');
         console.log(`💬 Error: ${kickResult.error}`);
@@ -343,6 +348,7 @@ class ModernComboProcessor {
         kickSuccess: kickResult.success,
         slotUsed: smartAddResult.slotUsed,
         memberId: targetMember.family_member_id,
+        slotIndex: slotIndex,
         slotData: {
           slot_id: smartAddResult.slotUsed,
           alias: targetMember.alias,
@@ -357,7 +363,8 @@ class ModernComboProcessor {
         success: false,
         step: 'EXCEPTION',
         error: error.message,
-        duration: Date.now() - startTime
+        duration: Date.now() - startTime,
+        slotIndex
       };
     }
   }
@@ -558,8 +565,8 @@ class ModernBatchProcessor {
           });
           await tracker.updateStatusMessage();
 
-          // Execute Smart Combo: Smart ADD → WAIT 60s → Smart KICK  
-          const comboResult = await this.combo.executeCombo(phone, null, tumbalPhone);
+          // Execute Smart Combo: Smart ADD → WAIT 60s → Smart KICK with specific slot index
+          const comboResult = await this.combo.executeCombo(phone, null, tumbalPhone, j);
           
           // Record result
           tracker.recordSlotResult(comboResult.success);
@@ -679,8 +686,8 @@ class ModernBatchProcessor {
           });
           await tracker.updateStatusMessage();
 
-          // Execute Smart Combo: Smart ADD → WAIT 60s → Smart KICK
-          const comboResult = await this.combo.executeCombo(phone, null, tumbalPhone);
+          // Execute Smart Combo: Smart ADD → WAIT 60s → Smart KICK with specific slot index
+          const comboResult = await this.combo.executeCombo(phone, null, tumbalPhone, j);
           
           console.log(`📊 [${phone}] Slot ${j + 1} result: ${comboResult.success ? '✅ Success' : '❌ Failed'}`);
           if (!comboResult.success) {
@@ -834,11 +841,12 @@ class ModernBatchProcessor {
 // ===== SMART ADD/KICK FUNCTIONS (AUTO-GENERATE PARAMETERS) =====
 
 // Smart ADD function - Auto generate parameters from CEKSLOT with strict slot filtering
-async function smartAdd(parentPhone, tumbalPhone, tumbalName = 'TUMBAL') {
+async function smartAdd(parentPhone, tumbalPhone, tumbalName = 'TUMBAL', slotIndex = 0) {
   console.log('\n🧠 SMART ADD - Auto generating parameters...');
   console.log(`📱 Parent: ${parentPhone}`);
   console.log(`📱 Tumbal: ${tumbalPhone}`);
   console.log(`👤 Alias: ${tumbalName}`);
+  console.log(`🎰 Slot Index: ${slotIndex} (which slot to use)`);
   console.log(`⏰ Time: ${formatIndonesianTime()}`);
   console.log('-'.repeat(50));
   
@@ -877,14 +885,29 @@ async function smartAdd(parentPhone, tumbalPhone, tumbalName = 'TUMBAL') {
       };
     }
     
-    // Step 2: Auto select slot pertama yang kosong
-    const selectedSlot = slotResult.slots[0];
+    // FIXED: Check if the requested slot index is available
+    if (slotIndex >= slotResult.slots.length) {
+      console.log(`❌ Slot index ${slotIndex} not available (only ${slotResult.slots.length} slots found)`);
+      return {
+        success: false,
+        error: `Slot index ${slotIndex} not available, only ${slotResult.slots.length} valid slots found`,
+        step: 'SLOT_INDEX_OUT_OF_RANGE',
+        cekslotDuration,
+        totalSlots: slotResult.totalSlots,
+        validSlots: slotResult.slots.length,
+        requestedIndex: slotIndex
+      };
+    }
+    
+    // Step 2: Auto select slot berdasarkan index yang diminta
+    const selectedSlot = slotResult.slots[slotIndex];
     const autoSlotId = selectedSlot.slot_id;
     const autoMemberId = selectedSlot.family_member_id || '';
     const autoAlias = tumbalName;
     
     console.log('✅ Auto-generated parameters:');
     console.log(`   🎯 Slot ID: ${autoSlotId}`);
+    console.log(`   🎯 Slot Index: ${slotIndex}/${slotResult.slots.length - 1}`);
     console.log(`   🆔 Member ID: ${autoMemberId ? autoMemberId.substring(0, 30) + '...' : 'Empty'}`);
     console.log(`   👤 Alias: ${autoAlias}`);
     console.log(`   🎲 Add Chances: ${selectedSlot.add_chances}`);
@@ -924,6 +947,7 @@ async function smartAdd(parentPhone, tumbalPhone, tumbalName = 'TUMBAL') {
       slotData: selectedSlot,
       availableSlots: slotResult.slots.length,
       totalSlots: slotResult.totalSlots,
+      slotIndex: slotIndex,
       autoGenerated: {
         slotId: autoSlotId,
         memberId: autoMemberId,
