@@ -14,15 +14,34 @@ const ADMIN_ID = process.env.ADMIN_ID;
 const scheduledKicks = new Map(); // key: chatId, value: { nomor_hp, waktu, timeoutId }
 const kickStates = new Map(); // key: chatId, value: { step, nomor_hp }
 
+// === TIMEZONE UTILITIES ===
+
+// Function untuk mendapatkan waktu Indonesia (UTC+7)
+const getIndonesianTime = () => {
+  const now = new Date();
+  // Convert to Indonesia timezone (UTC+7)
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const indonesianTime = new Date(utc + (7 * 3600000));
+  return indonesianTime;
+};
+
+// Function untuk membuat Date object dengan timezone Indonesia
+const createIndonesianDate = (year, month, date, hours = 0, minutes = 0, seconds = 0) => {
+  // Create date in local timezone first
+  const localDate = new Date(year, month, date, hours, minutes, seconds);
+  // No need to adjust for timezone offset as we want Indonesian local time
+  return localDate;
+};
+
 // === DATE PARSING UTILITIES ===
 
 // Function untuk parsing tanggal dengan format fleksibel
 const parseFlexibleDate = (dateInput) => {
   const cleanInput = dateInput.trim().toLowerCase();
-  const today = new Date();
+  const today = getIndonesianTime();
   
   // Reset time to start of day for date comparison
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const todayStart = createIndonesianDate(today.getFullYear(), today.getMonth(), today.getDate());
   
   // Handle relative dates
   if (cleanInput === 'today' || cleanInput === 'hari ini') {
@@ -30,7 +49,7 @@ const parseFlexibleDate = (dateInput) => {
   }
   
   if (cleanInput === 'tomorrow' || cleanInput === 'besok') {
-    const tomorrow = new Date(todayStart);
+    const tomorrow = createIndonesianDate(today.getFullYear(), today.getMonth(), today.getDate());
     tomorrow.setDate(tomorrow.getDate() + 1);
     return { date: tomorrow, valid: true, format: 'relative', original: dateInput };
   }
@@ -40,7 +59,7 @@ const parseFlexibleDate = (dateInput) => {
   const relativeDaysMatch = cleanInput.match(relativeDaysPattern);
   if (relativeDaysMatch) {
     const daysToAdd = parseInt(relativeDaysMatch[1]);
-    const futureDate = new Date(todayStart);
+    const futureDate = createIndonesianDate(today.getFullYear(), today.getMonth(), today.getDate());
     futureDate.setDate(futureDate.getDate() + daysToAdd);
     return { date: futureDate, valid: true, format: 'relative_days', original: dateInput };
   }
@@ -73,14 +92,16 @@ const parseFlexibleDate = (dateInput) => {
       }
       
       // Create date (month is 0-indexed in JavaScript)
-      const parsedDate = new Date(year, month - 1, day);
+      const parsedDate = createIndonesianDate(year, month - 1, day);
       
       // Validate that the date is actually valid (e.g., not 31/02/2025)
       if (parsedDate.getDate() !== day || parsedDate.getMonth() !== (month - 1) || parsedDate.getFullYear() !== year) {
         continue;
       }
       
-      // Check if date is in the past
+      // Check if date is in the past (using Indonesian time)
+      const todayIndonesian = getIndonesianTime();
+      const todayStart = createIndonesianDate(todayIndonesian.getFullYear(), todayIndonesian.getMonth(), todayIndonesian.getDate());
       if (parsedDate < todayStart) {
         return { valid: false, error: 'Date cannot be in the past', original: dateInput };
       }
@@ -137,15 +158,15 @@ const formatDateForDisplay = (date, includeDay = true) => {
       return 'Invalid Date';
     }
     
-    // Check for today/tomorrow
-    const today = new Date();
-    const tomorrow = new Date(today);
+    // Check for today/tomorrow (using Indonesian time)
+    const today = getIndonesianTime();
+    const tomorrow = createIndonesianDate(today.getFullYear(), today.getMonth(), today.getDate());
     tomorrow.setDate(tomorrow.getDate() + 1);
     
     // Compare dates only (ignore time)
-    const targetDateOnly = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
-    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const tomorrowOnly = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate());
+    const targetDateOnly = createIndonesianDate(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate());
+    const todayOnly = createIndonesianDate(today.getFullYear(), today.getMonth(), today.getDate());
+    const tomorrowOnly = createIndonesianDate(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate());
     
     if (targetDateOnly.getTime() === todayOnly.getTime()) {
       return 'Hari ini';
@@ -493,16 +514,15 @@ const scheduleKickWithDate = async (scheduleData, chatId, bot) => {
     // Date-based scheduling
     targetTime = createCombinedDateTime(targetDate, jam, menit);
     
-    // Validate future time
-    const now = new Date();
+    // Validate future time (using Indonesian time)
+    const now = getIndonesianTime();
     if (targetTime <= now) {
       throw new Error(`Target time ${targetTime.toLocaleString('id-ID')} is in the past`);
     }
   } else {
-    // Legacy time-only scheduling
-    const now = new Date();
-    targetTime = new Date();
-    targetTime.setHours(jam, menit || 0, 0, 0);
+    // Legacy time-only scheduling (using Indonesian time)
+    const now = getIndonesianTime();
+    targetTime = createIndonesianDate(now.getFullYear(), now.getMonth(), now.getDate(), jam, menit || 0, 0);
     
     // Jika waktu sudah lewat hari ini, set untuk besok
     if (targetTime <= now) {
@@ -510,7 +530,7 @@ const scheduleKickWithDate = async (scheduleData, chatId, bot) => {
     }
   }
   
-  const delay = targetTime.getTime() - Date.now();
+  const delay = targetTime.getTime() - getIndonesianTime().getTime();
   
   // Process each number for database storage and timeout management
   for (const nomor of nomorList) {
@@ -594,12 +614,11 @@ const scheduleKickWithDate = async (scheduleData, chatId, bot) => {
 
 // Function untuk schedule kick (mendukung single nomor atau array nomor) - LEGACY COMPATIBILITY
 const scheduleKick = async (nomor_hp, waktu, chatId, bot) => {
-  const now = new Date();
+  const now = getIndonesianTime();
   const [jam, menit] = waktu.split(':').map(Number);
   
-  // Set target time
-  const targetTime = new Date();
-  targetTime.setHours(jam, menit || 0, 0, 0);
+  // Set target time (using Indonesian time)
+  const targetTime = createIndonesianDate(now.getFullYear(), now.getMonth(), now.getDate(), jam, menit || 0, 0);
   
   // Jika waktu sudah lewat hari ini, set untuk besok
   if (targetTime <= now) {
@@ -678,9 +697,9 @@ const scheduleKick = async (nomor_hp, waktu, chatId, bot) => {
   return targetTime;
 };
 
-// Function untuk format time remaining
+// Function untuk format time remaining (using Indonesian time)
 const getTimeRemaining = (targetTime) => {
-  const now = new Date();
+  const now = getIndonesianTime();
   const diff = targetTime.getTime() - now.getTime();
   
   if (diff <= 0) return "Sedang diproses...";
@@ -711,7 +730,7 @@ module.exports = (bot) => {
       let loadedCount = 0;
       let expiredCount = 0;
       let errorCount = 0;
-      const now = new Date();
+      const now = getIndonesianTime();
       
       // console.log(`📋 [KICKMASSAL] Found ${allSchedules.length} scheduled kicks in database`);
       
@@ -735,9 +754,9 @@ module.exports = (bot) => {
               // Date-based scheduling
               targetTime = createCombinedDateTime(schedule.target_date, schedule.jam, schedule.menit);
             } else {
-              // Legacy time-only scheduling
-              targetTime = new Date();
-              targetTime.setHours(schedule.jam, schedule.menit, 0, 0);
+              // Legacy time-only scheduling (using Indonesian time)
+              const today = getIndonesianTime();
+              targetTime = createIndonesianDate(today.getFullYear(), today.getMonth(), today.getDate(), schedule.jam, schedule.menit, 0);
               
               // Jika waktu sudah lewat hari ini, set untuk besok
               if (targetTime <= now) {
@@ -1068,14 +1087,14 @@ module.exports = (bot) => {
           let reactivatedCount = 0;
           let expiredCount = 0;
           let errorCount = 0;
-          const now = new Date();
+          const now = getIndonesianTime();
           
           // Process each schedule from database
           for (const schedule of schedules) {
             try {
-              // Reconstruct target time
-              const targetTime = new Date();
-              targetTime.setHours(schedule.jam, schedule.menit, 0, 0);
+              // Reconstruct target time (using Indonesian time)
+              const today = getIndonesianTime();
+              const targetTime = createIndonesianDate(today.getFullYear(), today.getMonth(), today.getDate(), schedule.jam, schedule.menit, 0);
               
               // Jika waktu sudah lewat hari ini, set untuk besok
               if (targetTime <= now) {
@@ -1652,7 +1671,7 @@ module.exports = (bot) => {
             tanggalInfo = displayDate;
             scheduleTypeInfo = 'Date + Time Scheduling';
           } else {
-            const today = new Date();
+            const today = getIndonesianTime();
             const isToday = targetTime.toDateString() === today.toDateString();
             tanggalInfo = isToday ? 'hari ini' : 'besok';
             scheduleTypeInfo = 'Time-only Scheduling (Legacy)';
