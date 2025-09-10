@@ -1,4 +1,4 @@
-// Default use API FROM KHFY STORE
+// INI API KHFY STORE
 
 const axios = require('axios');
 const { freezeStok, getKuotaPaket } = require('../../db');

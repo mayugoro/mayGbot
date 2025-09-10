@@ -1,4 +1,4 @@
-//default use API FROM HIDEPULSA
+// INI API HIDEPULSA
 const axios = require('axios');
 const { freezeStok, getKuotaPaket } = require('../../db');
 const { normalizePhoneNumber, isValidIndonesianPhone } = require('../../utils/normalize');
