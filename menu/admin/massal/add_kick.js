@@ -821,46 +821,35 @@ class ModernBatchProcessor {
   }
 
   async sendParallelFinalSummary(tracker, managerPhones, tumbalPhones, results) {
-    const endTime = getIndonesianTime();
-    const totalTime = Math.floor((endTime - tracker.startTime) / 1000);
-    const apiStats = this.api.getStats();
-
-    let summary = `📊 <b>PARALLEL ADD-KICK V2.0 - FINAL SUMMARY</b>\n\n`;
-    summary += `⏰ <b>Completed:</b> ${formatIndonesianTime(endTime)}\n`;
-    summary += `🕐 <b>Duration:</b> ${Math.floor(totalTime/60)}m ${totalTime%60}s\n\n`;
-    
-    summary += `👥 <b>MANAGERS PROCESSED:</b>\n`;
-    summary += `✅ Success: ${tracker.stats.managers.completed}/${tracker.totalManagers}\n`;
-    summary += `❌ Failed: ${tracker.stats.managers.failed}/${tracker.totalManagers}\n\n`;
-    
-    summary += `🎯 <b>COMBO RESULTS:</b>\n`;
+    let summary = `🎯 <b>COMBO RESULTS:</b>\n`;
     summary += `✅ Success: ${tracker.stats.slots.success}\n`;
     summary += `❌ Failed: ${tracker.stats.slots.failed}\n`;
     summary += `📋 Total Slots: ${tracker.stats.slots.total}\n\n`;
     
-    if (tracker.stats.slots.total > 0) {
-      const efficiency = Math.floor((tracker.stats.slots.success / tracker.stats.slots.total) * 100);
-      const slotsPerMin = totalTime > 0 ? Math.floor(tracker.stats.slots.total / totalTime * 60) : 0;
-      summary += `📈 <b>PERFORMANCE:</b>\n`;
-      summary += `⚡ Efficiency: ${efficiency}%\n`;
-      summary += `🚀 Speed: ${slotsPerMin} slots/min\n`;
-      summary += `⏱️ Avg per slot: ${Math.floor(totalTime / tracker.stats.slots.total)}s\n\n`;
-    }
+    // Add failed section if there are any failures
+    const failedResults = [];
+    managerPhones.forEach((manager, index) => {
+      const result = results.find(r => r.phone === manager);
+      if (!result?.success) {
+        failedResults.push({ manager, tumbal: tumbalPhones[index] });
+      }
+    });
     
-    summary += `📡 <b>API STATISTICS:</b>\n`;
-    summary += `✅ API Success: ${apiStats.success}\n`;
-    summary += `❌ API Failed: ${apiStats.failed}\n`;
-    summary += `📊 API Total: ${apiStats.total}\n\n`;
+    if (failedResults.length > 0) {
+      summary += `❌ <b>FAILED</b>\n`;
+      failedResults.forEach(failed => {
+        summary += `❌ ${failed.manager} → ${failed.tumbal}\n`;
+      });
+      summary += `\n`;
+    }
     
     summary += `👤 <b>Tumbal Mapping:</b>\n`;
     managerPhones.forEach((manager, index) => {
       const result = results.find(r => r.phone === manager);
-      const status = result?.success ? '✅' : '❌';
-      summary += `${status} ${manager} → ${tumbalPhones[index]}\n`;
+      if (result?.success) {
+        summary += `✅ ${manager} → ${tumbalPhones[index]}\n`;
+      }
     });
-    
-    summary += `\n🚀 <b>Strategy:</b> Parallel Modern (1 tumbal per manager)\n`;
-    summary += `⚡ <b>Advantages:</b> Concurrent processing + dedicated tumbals + faster completion`;
 
     await this.bot.sendMessage(this.chatId, summary, { parse_mode: 'HTML' });
   }
