@@ -76,7 +76,13 @@ class ModernAPIClient {
     
     for (let attempt = 1; attempt <= retries + 1; attempt++) {
       try {
-        // console.log(`🚀 API ${endpoint.toUpperCase()} - Attempt ${attempt}/${retries + 1}`);
+        console.log(`🚀 API ${endpoint.toUpperCase()} - Attempt ${attempt}/${retries + 1}`);
+        console.log('🔧 API URL:', url);
+        console.log('📋 Request data:', {
+          ...data,
+          token: data.token ? data.token.substring(0, 10) + '...' : 'None',
+          member_id: data.member_id ? data.member_id.substring(0, 20) + '...' : data.member_id
+        });
         
         const formData = new URLSearchParams(data);
         const response = await axios.post(url, formData, {
@@ -86,11 +92,18 @@ class ModernAPIClient {
 
         this.stats.total++;
         
-        if (response.data?.status === 'success' || response.data?.success === true) {
+        // CORRECTED: Check for both string and boolean status formats
+        if (response.data?.status === 'success' || 
+            response.data?.success === true || 
+            response.data?.status === true) {  // ADD: Handle boolean true status
           this.stats.success++;
+          console.log(`✅ ${endpoint.toUpperCase()} API SUCCESS`);
+          console.log(`📋 Response:`, JSON.stringify(response.data, null, 2));
           return { success: true, data: response.data };
         } else {
           this.stats.failed++;
+          console.log(`❌ ${endpoint.toUpperCase()} API FAILED`);
+          console.log(`📋 Response:`, JSON.stringify(response.data, null, 2));
           return { success: false, error: response.data?.message || 'API response failed' };
         }
         
@@ -98,9 +111,14 @@ class ModernAPIClient {
         if (attempt === retries + 1) {
           this.stats.total++;
           this.stats.failed++;
+          console.log(`💥 ${endpoint.toUpperCase()} API EXCEPTION:`);
+          console.log(`📛 Error: ${error.message}`);
+          if (error.response) {
+            console.log(`📋 Response Data:`, error.response.data);
+          }
           return { success: false, error: error.message };
         }
-        // console.log(`⚠️ Retry attempt ${attempt} for ${endpoint}`);
+        console.log(`⚠️ Retry attempt ${attempt} for ${endpoint}`);
         await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Progressive delay
       }
     }
@@ -110,11 +128,12 @@ class ModernAPIClient {
     const data = {
       token: this.config.token,
       id_parent: normalizePhone(parentPhone),
-      msisdn: normalizePhone(memberPhone),
       member_id: familyMemberId,
+      msisdn: normalizePhone(memberPhone),
       slot_id: slotId,
+      alias: memberName,  // Use alias instead of parent_name/child_name
       parent_name: 'XL',
-      child_name: memberName
+      child_name: 'XL'    // Match test_smart_add.js format exactly
     };
 
     return await this.makeRequest('add', data);
@@ -142,36 +161,44 @@ class ModernAPIClient {
 // ===== MODERN SLOT MANAGER =====
 class ModernSlotManager {
   static filterValidSlots(slots) {
-    return slots.filter(slot => {
+    console.log('\n🔍 FILTERING VALID SLOTS...');
+    console.log(`📊 Total slots received: ${slots.length}`);
+    
+    const validSlots = slots.filter(slot => {
       const slotId = slot.slot_id;
       const alias = (slot.alias || '').trim();
       const msisdn = (slot.msisdn || '').trim();
       const addChances = parseInt(slot.add_chances) || 0;
       
-      // More strict empty checks - must be truly empty
-      const isEmptyAlias = alias === '' || alias === '-' || alias === null || alias === undefined;
-      const isEmptyMsisdn = msisdn === '' || msisdn === '-' || msisdn === null || msisdn === undefined;
-      
-      // Additional check: ensure no registered member exists
-      const hasNoRegisteredMember = !slot.family_member_id || slot.family_member_id === '' || slot.family_member_id === '-';
+      // CORRECTED LOGIC: Match test_smart_add.js filtering logic exactly
+      // Only check alias, msisdn, and add_chances - don't check family_member_id
+      const isEmptyAlias = !alias || alias === '-';
+      const isEmptyMsisdn = !msisdn || msisdn === '-';
+      const hasValidAddChances = addChances > 0; // Allow any add_chances > 0
       
       // Valid slot criteria
       const isValidSlot = slotId && slotId !== '0' && slotId !== 0;
-      const hasCorrectAddChances = addChances === 2; // Only add_chances = 2
       
-      // Skip if add_chances is 0, 1, or 3
-      const skipInvalidAddChances = addChances !== 0 && addChances !== 1 && addChances !== 3;
+      // Final validation: slot must have empty alias/msisdn and valid add_chances
+      const isAvailableSlot = isEmptyAlias && isEmptyMsisdn && hasValidAddChances;
       
-      // Final validation: slot must be completely empty
-      const isCompletelyEmpty = isEmptyAlias && isEmptyMsisdn && hasNoRegisteredMember;
-      
-      // Debug logging for rejected slots
-      if (!isCompletelyEmpty || !hasCorrectAddChances || !isValidSlot) {
-        // console.log(`🔍 SLOT FILTERED OUT - Slot ${slotId}: alias='${alias}', msisdn='${msisdn}', add_chances=${addChances}, member_id='${slot.family_member_id}'`);
+      // Debug logging for all slots
+      if (isAvailableSlot && isValidSlot) {
+        console.log(`✅ VALID SLOT - Slot ${slotId}: alias='${alias}', msisdn='${msisdn}', add_chances=${addChances}`);
+      } else {
+        console.log(`🔍 SLOT FILTERED OUT - Slot ${slotId}: alias='${alias}', msisdn='${msisdn}', add_chances=${addChances}, valid_slot=${isValidSlot}, available=${isAvailableSlot}`);
       }
       
-      return isValidSlot && isCompletelyEmpty && hasCorrectAddChances && skipInvalidAddChances;
+      return isValidSlot && isAvailableSlot;
     });
+    
+    console.log(`📈 SLOT FILTERING RESULT:`);
+    console.log(`  🟢 Valid Slots: ${validSlots.length}`);
+    console.log(`  🔴 Filtered Out: ${slots.length - validSlots.length}`);
+    console.log(`  📊 Total Slots: ${slots.length}`);
+    console.log('-'.repeat(50));
+    
+    return validSlots;
   }
 
   static async getAvailableSlots(phone) {
@@ -205,114 +232,127 @@ class ModernComboProcessor {
   }
 
   async executeCombo(parentPhone, slot, tumbalPhone) {
+    console.log('\n🎯 EXECUTING MODERN COMBO (SMART ADD + KICK)...');
+    console.log(`📱 Parent: ${parentPhone}`);
+    console.log(`📱 Tumbal: ${tumbalPhone}`);
+    console.log(`⏰ Start Time: ${formatIndonesianTime()}`);
+    console.log('='.repeat(60));
+    
     const startTime = Date.now();
     
     try {
-      // Step 1: Get fresh slot info (CEKSLOT first)
-      // console.log(`🎯 COMBO START - Slot ${slot.slot_id}: CEKSLOT → ADD → WAIT 60s → KICK`);
+      // SMART AUTO-GENERATION: Use Smart ADD logic instead of manual slot selection
+      // Step 1: Use Smart ADD to auto-generate parameters and add member
+      console.log('🚀 Step 1: SMART ADD - Auto-generating parameters and adding member...');
+      const smartAddResult = await smartAdd(parentPhone, tumbalPhone, 'TUMBAL');
       
-      const freshSlotResult = await getSlotInfoAPI1Only(parentPhone);
-      if (!freshSlotResult.success) {
+      if (!smartAddResult.success) {
+        console.log('❌ SMART ADD FAILED - Cannot proceed with combo');
+        console.log(`💬 Error: ${smartAddResult.error}`);
         return {
           success: false,
-          step: 'CEKSLOT',
-          error: `Failed to get fresh slot info: ${freshSlotResult.error}`,
-          duration: Date.now() - startTime
-        };
-      }
-
-      // Verify slot is still available and get updated family_member_id
-      const currentSlot = freshSlotResult.slots.find(s => s.slot_id === slot.slot_id);
-      if (!currentSlot) {
-        return {
-          success: false,
-          step: 'CEKSLOT',
-          error: `Slot ${slot.slot_id} not found in fresh data`,
-          duration: Date.now() - startTime
-        };
-      }
-
-      // Check if slot is still empty
-      const isSlotEmpty = (!currentSlot.alias || currentSlot.alias === '-') && 
-                         (!currentSlot.msisdn || currentSlot.msisdn === '-');
-      
-      if (!isSlotEmpty) {
-        return {
-          success: false,
-          step: 'CEKSLOT',
-          error: `Slot ${slot.slot_id} is no longer empty`,
+          step: 'SMART_ADD',
+          error: smartAddResult.error,
           duration: Date.now() - startTime,
-          slotStatus: {
-            alias: currentSlot.alias,
-            msisdn: currentSlot.msisdn
-          }
+          smartAddResult
         };
       }
 
-      // Step 2: Add member with fresh slot data
-      const addResult = await this.api.addMember(
-        parentPhone,
-        tumbalPhone,
-        currentSlot.slot_id,
-        'TUMBAL',
-        currentSlot.family_member_id || ''
+      console.log('✅ SMART ADD SUCCESS - Proceeding to wait phase...');
+      console.log(`🎯 Slot Used: ${smartAddResult.slotUsed}`);
+
+      // Step 2: Wait 60 seconds after successful ADD (as requested)
+      console.log(`⏳ Step 2: WAITING ${this.timings.addWait/1000}s (1 minute) after ADD...`);
+      const waitStart = Date.now();
+      await new Promise(resolve => setTimeout(resolve, this.timings.addWait));
+      const waitDuration = Date.now() - waitStart;
+      console.log(`✅ Wait completed in ${waitDuration}ms`);
+
+      // Step 3: Get member ID for kick (get fresh slot data after ADD)
+      console.log('🔍 Step 3: Getting fresh slot data for KICK preparation...');
+      const postAddSlotResult = await getSlotInfoAPI1Only(parentPhone);
+      
+      if (!postAddSlotResult.success) {
+        console.log('❌ Post-ADD CEKSLOT failed');
+        console.log(`💬 Error: ${postAddSlotResult.error}`);
+        return {
+          success: false,
+          step: 'CEKSLOT_POST_ADD',
+          error: `Failed to get fresh slot info for kick: ${postAddSlotResult.error}`,
+          duration: Date.now() - startTime,
+          addSuccess: true
+        };
+      }
+
+      // Find the added tumbal member for kicking
+      const normalizedTumbal = normalizePhone(tumbalPhone);
+      const targetMember = postAddSlotResult.slots.find(slot => 
+        slot.msisdn === normalizedTumbal && 
+        slot.family_member_id && 
+        slot.family_member_id !== '-'
       );
 
-      if (!addResult.success) {
-        return {
-          success: false,
-          step: 'ADD',
-          error: addResult.error,
-          duration: Date.now() - startTime,
-          slotData: currentSlot
-        };
-      }
-
-      // Step 3: Wait 1 minute as requested
-      // console.log(`⏳ WAIT ${this.timings.addWait/1000}s (1 minute) after ADD...`);
-      await new Promise(resolve => setTimeout(resolve, this.timings.addWait));
-
-      // Step 4: Get member ID for kick (fresh lookup after wait)
-      let memberIdToKick = addResult.data?.member_id || addResult.data?.data?.member_id;
-      
-      if (!memberIdToKick) {
-        // Get fresh slot info after ADD to find the added member
-        const postAddSlotResult = await getSlotInfoAPI1Only(parentPhone);
-        if (postAddSlotResult.success && postAddSlotResult.slots) {
-          const targetSlot = postAddSlotResult.slots.find(s => 
-            s.slot_id === currentSlot.slot_id && 
-            s.msisdn === normalizePhone(tumbalPhone)
-          );
-          memberIdToKick = targetSlot?.family_member_id;
-        }
-      }
-
-      if (!memberIdToKick) {
+      if (!targetMember || !targetMember.family_member_id) {
+        console.log('❌ Target tumbal member not found for kick');
+        console.log(`🔍 Looking for: ${normalizedTumbal}`);
+        const availableMembers = postAddSlotResult.slots.filter(s => s.family_member_id).map(s => ({
+          alias: s.alias,
+          msisdn: s.msisdn,
+          slot: s.slot_id
+        }));
+        console.log(`📋 Available members:`, availableMembers);
         return {
           success: false,
           step: 'KICK_PREP',
-          error: 'Member ID not found for kick after ADD',
+          error: 'Tumbal member not found for kick after ADD',
           duration: Date.now() - startTime,
           addSuccess: true,
-          slotData: currentSlot
+          availableMembers
         };
       }
 
-      // Step 5: Kick member
-      const kickResult = await this.api.kickMember(parentPhone, memberIdToKick);
+      console.log('✅ Target tumbal member found for kick:');
+      console.log(`   📱 MSISDN: ${targetMember.msisdn}`);
+      console.log(`   👤 Alias: ${targetMember.alias}`);
+      console.log(`   🆔 Member ID: ${targetMember.family_member_id.substring(0, 30)}...`);
+      console.log(`   🎰 Slot: ${targetMember.slot_id}`);
+
+      // Step 4: Execute Smart KICK
+      console.log('\n🚀 Step 4: EXECUTING SMART KICK...');
+      const kickResult = await executeKickTumbal(parentPhone, targetMember.family_member_id);
+
+      const totalDuration = Date.now() - startTime;
+      
+      if (kickResult.success) {
+        console.log('🎉 MODERN COMBO COMPLETED SUCCESSFULLY!');
+        console.log(`⏱️  Total Duration: ${totalDuration}ms`);
+        console.log(`   └── Smart ADD: ${smartAddResult.totalDuration}ms`);
+        console.log(`   └── Wait: ${waitDuration}ms`);
+        console.log(`   └── Kick: ${kickResult.duration}ms`);
+      } else {
+        console.log('❌ MODERN COMBO FAILED AT KICK STEP');
+        console.log(`💬 Error: ${kickResult.error}`);
+      }
 
       return {
         success: kickResult.success,
         step: kickResult.success ? 'COMPLETE' : 'KICK',
         error: kickResult.success ? null : kickResult.error,
-        duration: Date.now() - startTime,
+        duration: totalDuration,
         addSuccess: true,
         kickSuccess: kickResult.success,
-        memberId: memberIdToKick,
-        slotData: currentSlot
+        slotUsed: smartAddResult.slotUsed,
+        memberId: targetMember.family_member_id,
+        slotData: {
+          slot_id: smartAddResult.slotUsed,
+          alias: targetMember.alias,
+          msisdn: targetMember.msisdn
+        }
       };
 
     } catch (error) {
+      console.log('💥 MODERN COMBO EXCEPTION:');
+      console.log(`📛 Error: ${error.message}`);
       return {
         success: false,
         step: 'EXCEPTION',
@@ -457,19 +497,28 @@ class ModernBatchProcessor {
 
   // NEW: Parallel processing with one tumbal per manager
   async processParallelBatch(managerPhones, tumbalPhones) {
+    console.log('\n🚀 STARTING PARALLEL BATCH PROCESSING...');
+    console.log(`👥 Managers: ${managerPhones.length}`);
+    console.log(`📱 Tumbals: ${tumbalPhones.length}`);
+    console.log(`⏰ Start Time: ${formatIndonesianTime()}`);
+    console.log('='.repeat(60));
+    
     const tracker = new ModernProgressTracker(managerPhones.length, this.bot, this.chatId);
     await tracker.createStatusMessage();
 
-    // console.log(`🚀 PARALLEL BATCH START - ${managerPhones.length} managers, ${tumbalPhones.length} tumbals`);
-
     // Validate tumbal count matches manager count
     if (tumbalPhones.length !== managerPhones.length) {
+      console.log('❌ VALIDATION FAILED: Tumbal count mismatch');
+      console.log(`Expected: ${managerPhones.length} tumbals`);
+      console.log(`Received: ${tumbalPhones.length} tumbals`);
       await this.bot.sendMessage(this.chatId, 
         `❌ <b>Error:</b> Jumlah tumbal (${tumbalPhones.length}) harus sama dengan jumlah pengelola (${managerPhones.length})`,
         { parse_mode: 'HTML' }
       );
       return;
     }
+
+    console.log('✅ VALIDATION PASSED: Tumbal count matches manager count');
 
     // Process all managers in parallel (serentak)
     const managerPromises = managerPhones.map(async (phone, index) => {
@@ -493,24 +542,24 @@ class ModernBatchProcessor {
           return { phone, success: false, reason: 'no_valid_slots' };
         }
 
-        // Process each valid slot sequentially for this manager
-        const slots = slotResult.slots;
+        // SMART AUTO-GENERATION: Process available slots using Smart ADD logic
+        const availableSlotCount = slotResult.validSlots;
         let managerSuccess = 0;
         
-        for (let j = 0; j < slots.length; j++) {
-          const slot = slots[j];
+        // Process each available slot using Smart ADD (auto-parameter generation)
+        for (let j = 0; j < availableSlotCount; j++) {
           
           // Update progress for current slot
           tracker.updateManagerStatus(phone, 'processing', {
             currentSlot: j + 1,
-            totalSlots: slots.length,
+            totalSlots: availableSlotCount,
             successSlots: managerSuccess,
             tumbal: tumbalPhone
           });
           await tracker.updateStatusMessage();
 
-          // Execute sequential combo: CEKSLOT → ADD → WAIT 60s → KICK
-          const comboResult = await this.combo.executeCombo(phone, slot, tumbalPhone);
+          // Execute Smart Combo: Smart ADD → WAIT 60s → Smart KICK  
+          const comboResult = await this.combo.executeCombo(phone, null, tumbalPhone);
           
           // Record result
           tracker.recordSlotResult(comboResult.success);
@@ -519,35 +568,43 @@ class ModernBatchProcessor {
           // Update progress with step details
           const stepDetail = comboResult.step === 'COMPLETE' ? 'Complete' : 
                            comboResult.step === 'KICK' ? 'Kick Failed' :
-                           comboResult.step === 'ADD' ? 'Add Failed' :
-                           comboResult.step === 'CEKSLOT' ? 'CekSlot Failed' : 
+                           comboResult.step === 'SMART_ADD' ? 'Smart ADD Failed' :
+                           comboResult.step === 'CEKSLOT_POST_ADD' ? 'Post-ADD CekSlot Failed' : 
+                           comboResult.step === 'KICK_PREP' ? 'Kick Prep Failed' :
                            'Processing';
           
           tracker.updateManagerStatus(phone, 'processing', {
             currentSlot: j + 1,
-            totalSlots: slots.length,
+            totalSlots: availableSlotCount,
             successSlots: managerSuccess,
             lastStep: stepDetail,
+            slotUsed: comboResult.slotUsed || 'Unknown',
             tumbal: tumbalPhone
           });
           await tracker.updateStatusMessage();
 
+          // If Smart ADD failed, break the loop as no more slots might be available
+          if (!comboResult.success && comboResult.step === 'SMART_ADD') {
+            console.log(`⚠️ Smart ADD failed for ${phone}, stopping slot processing`);
+            break;
+          }
+
           // Interval between slots (except last slot for this manager)
-          if (j < slots.length - 1) {
+          if (j < availableSlotCount - 1) {
             await new Promise(resolve => setTimeout(resolve, this.combo.timings.slotInterval));
           }
         }
 
         // Mark manager as completed
         tracker.updateManagerStatus(phone, 'completed', {
-          totalSlots: slots.length,
+          totalSlots: availableSlotCount,
           successSlots: managerSuccess,
           tumbal: tumbalPhone
         });
         tracker.recordManagerResult(true);
         await tracker.updateStatusMessage();
 
-        return { phone, success: true, slotsProcessed: slots.length, successSlots: managerSuccess };
+        return { phone, success: true, slotsProcessed: availableSlotCount, successSlots: managerSuccess };
 
       } catch (error) {
         console.error(`❌ Manager ${phone} error:`, error);
@@ -572,45 +629,63 @@ class ModernBatchProcessor {
 
   // ORIGINAL: Sequential processing (legacy method)
   async processBatch(managerPhones, tumbalPhone) {
+    console.log('\n🚀 STARTING SEQUENTIAL BATCH PROCESSING...');
+    console.log(`👥 Managers: ${managerPhones.length}`);
+    console.log(`📱 Tumbal: ${tumbalPhone}`);
+    console.log(`⏰ Start Time: ${formatIndonesianTime()}`);
+    console.log('='.repeat(60));
+    
     const tracker = new ModernProgressTracker(managerPhones.length, this.bot, this.chatId);
     await tracker.createStatusMessage();
 
-    // console.log(`🚀 MODERN BATCH START - ${managerPhones.length} managers, tumbal: ${tumbalPhone}`);
-
     for (let i = 0; i < managerPhones.length; i++) {
       const phone = managerPhones[i];
+      console.log(`\n📍 [${i + 1}/${managerPhones.length}] SEQUENTIAL PROCESSING: ${phone}`);
+      
       tracker.startProcessingManager();
       tracker.updateManagerStatus(phone, 'processing');
       await tracker.updateStatusMessage();
 
       try {
-        // Step 1: Get available slots for this manager
+        // SMART AUTO-GENERATION: Check if slots are available, but use Smart ADD logic
+        console.log(`🔍 Getting available slots for ${phone}...`);
         const slotResult = await ModernSlotManager.getAvailableSlots(phone);
         
         if (!slotResult.success || slotResult.validSlots === 0) {
+          console.log(`❌ No valid slots for ${phone}: ${slotResult.error || 'No slots available'}`);
           tracker.updateManagerStatus(phone, 'failed', { reason: 'no_valid_slots' });
           tracker.recordManagerResult(false);
           await tracker.updateStatusMessage();
           continue;
         }
 
-        // Process each valid slot sequentially (CEKSLOT → ADD → WAIT 1min → KICK)
-        const slots = slotResult.slots;
+        console.log(`✅ Found ${slotResult.validSlots} valid slots for ${phone}`);
+
+        // SMART PROCESSING: Process available slots using Smart ADD logic
+        const availableSlotCount = slotResult.validSlots;
         let managerSuccess = 0;
         
-        for (let j = 0; j < slots.length; j++) {
-          const slot = slots[j];
+        console.log(`🎯 Processing ${availableSlotCount} slots for ${phone}...`);
+        
+        // Process each available slot using Smart ADD (auto-parameter generation)
+        for (let j = 0; j < availableSlotCount; j++) {
+          console.log(`\n📍 [${phone}] Processing slot ${j + 1}/${availableSlotCount}...`);
           
           // Update progress for current slot
           tracker.updateManagerStatus(phone, 'processing', {
             currentSlot: j + 1,
-            totalSlots: slots.length,
+            totalSlots: availableSlotCount,
             successSlots: managerSuccess
           });
           await tracker.updateStatusMessage();
 
-          // Execute sequential combo: CEKSLOT → ADD → WAIT 60s → KICK
-          const comboResult = await this.combo.executeCombo(phone, slot, tumbalPhone);
+          // Execute Smart Combo: Smart ADD → WAIT 60s → Smart KICK
+          const comboResult = await this.combo.executeCombo(phone, null, tumbalPhone);
+          
+          console.log(`📊 [${phone}] Slot ${j + 1} result: ${comboResult.success ? '✅ Success' : '❌ Failed'}`);
+          if (!comboResult.success) {
+            console.log(`💬 Error: ${comboResult.error}`);
+          }
           
           // Record result
           tracker.recordSlotResult(comboResult.success);
@@ -619,27 +694,38 @@ class ModernBatchProcessor {
           // Update progress with step details
           const stepDetail = comboResult.step === 'COMPLETE' ? 'Complete' : 
                            comboResult.step === 'KICK' ? 'Kick Failed' :
-                           comboResult.step === 'ADD' ? 'Add Failed' :
-                           comboResult.step === 'CEKSLOT' ? 'CekSlot Failed' : 
+                           comboResult.step === 'SMART_ADD' ? 'Smart ADD Failed' :
+                           comboResult.step === 'CEKSLOT_POST_ADD' ? 'Post-ADD CekSlot Failed' : 
+                           comboResult.step === 'KICK_PREP' ? 'Kick Prep Failed' :
                            'Processing';
           
           tracker.updateManagerStatus(phone, 'processing', {
             currentSlot: j + 1,
-            totalSlots: slots.length,
+            totalSlots: availableSlotCount,
             successSlots: managerSuccess,
-            lastStep: stepDetail
+            lastStep: stepDetail,
+            slotUsed: comboResult.slotUsed || 'Unknown'
           });
           await tracker.updateStatusMessage();
 
+          // If Smart ADD failed, break the loop as no more slots might be available
+          if (!comboResult.success && comboResult.step === 'SMART_ADD') {
+            console.log(`⚠️ Smart ADD failed for ${phone}, stopping slot processing`);
+            break;
+          }
+
           // Interval between slots (except last slot for this manager)
-          if (j < slots.length - 1) {
+          if (j < availableSlotCount - 1) {
+            console.log(`⏳ Waiting ${this.combo.timings.slotInterval}ms before next slot...`);
             await new Promise(resolve => setTimeout(resolve, this.combo.timings.slotInterval));
           }
         }
 
+        console.log(`🏁 [${phone}] Manager completed: ${managerSuccess}/${availableSlotCount} slots successful`);
+
         // Mark manager as completed
         tracker.updateManagerStatus(phone, 'completed', {
-          totalSlots: slots.length,
+          totalSlots: availableSlotCount,
           successSlots: managerSuccess
         });
         tracker.recordManagerResult(true);
@@ -652,6 +738,8 @@ class ModernBatchProcessor {
 
       await tracker.updateStatusMessage();
     }
+
+    console.log('\n🎉 ALL SEQUENTIAL PROCESSING COMPLETED!');
 
     // Send final summary
     await this.sendFinalSummary(tracker, tumbalPhone);
@@ -743,6 +831,251 @@ class ModernBatchProcessor {
   }
 }
 
+// ===== SMART ADD/KICK FUNCTIONS (AUTO-GENERATE PARAMETERS) =====
+
+// Smart ADD function - Auto generate parameters from CEKSLOT with strict slot filtering
+async function smartAdd(parentPhone, tumbalPhone, tumbalName = 'TUMBAL') {
+  console.log('\n🧠 SMART ADD - Auto generating parameters...');
+  console.log(`📱 Parent: ${parentPhone}`);
+  console.log(`📱 Tumbal: ${tumbalPhone}`);
+  console.log(`👤 Alias: ${tumbalName}`);
+  console.log(`⏰ Time: ${formatIndonesianTime()}`);
+  console.log('-'.repeat(50));
+  
+  const startTime = Date.now();
+  
+  try {
+    // Step 1: Hit CEKSLOT API untuk mendapatkan slot info
+    console.log('🔍 Step 1: Getting slot info from CEKSLOT API...');
+    const slotResult = await ModernSlotManager.getAvailableSlots(normalizePhone(parentPhone));
+    const cekslotDuration = Date.now() - startTime;
+    
+    console.log(`⏱️  CEKSLOT Response Time: ${cekslotDuration}ms`);
+    
+    if (!slotResult.success) {
+      console.log('❌ CEKSLOT failed, cannot proceed with ADD');
+      console.log(`💬 Error: ${slotResult.error}`);
+      return {
+        success: false,
+        error: slotResult.error,
+        step: 'CEKSLOT',
+        cekslotDuration
+      };
+    }
+    
+    console.log(`📊 Found ${slotResult.totalSlots} total slots, ${slotResult.validSlots} valid empty slots`);
+    
+    if (!slotResult.slots || slotResult.slots.length === 0) {
+      console.log('❌ No empty slots available, cannot proceed with ADD');
+      return {
+        success: false,
+        error: 'No available slots found (strict filtering: add_chances=2, empty slots only)',
+        step: 'NO_SLOTS',
+        cekslotDuration,
+        totalSlots: slotResult.totalSlots,
+        validSlots: 0
+      };
+    }
+    
+    // Step 2: Auto select slot pertama yang kosong
+    const selectedSlot = slotResult.slots[0];
+    const autoSlotId = selectedSlot.slot_id;
+    const autoMemberId = selectedSlot.family_member_id || '';
+    const autoAlias = tumbalName;
+    
+    console.log('✅ Auto-generated parameters:');
+    console.log(`   🎯 Slot ID: ${autoSlotId}`);
+    console.log(`   🆔 Member ID: ${autoMemberId ? autoMemberId.substring(0, 30) + '...' : 'Empty'}`);
+    console.log(`   👤 Alias: ${autoAlias}`);
+    console.log(`   🎲 Add Chances: ${selectedSlot.add_chances}`);
+    
+    // Step 3: Execute ADD API dengan parameter yang auto-generated
+    console.log('\n🚀 Step 2: Executing ADD API with auto-generated parameters...');
+    const apiClient = new ModernAPIClient(API_CONFIG);
+    const addResult = await apiClient.addMember(
+      normalizePhone(parentPhone),
+      normalizePhone(tumbalPhone),
+      selectedSlot.slot_id,
+      tumbalName,
+      selectedSlot.family_member_id || ''
+    );
+    
+    const addDuration = Date.now() - startTime - cekslotDuration;
+    console.log(`⏱️  ADD Response Time: ${addDuration}ms`);
+    
+    if (addResult.success) {
+      console.log('✅ SMART ADD SUCCESS:');
+      console.log(`📋 Response:`, JSON.stringify(addResult.data, null, 2));
+    } else {
+      console.log('❌ SMART ADD FAILED:');
+      console.log(`📋 Response:`, JSON.stringify(addResult.data, null, 2));
+      console.log(`💬 Error: ${addResult.error}`);
+    }
+    
+    return {
+      success: addResult.success,
+      data: addResult.data,
+      error: addResult.error,
+      step: addResult.success ? 'COMPLETED' : 'ADD',
+      cekslotDuration,
+      addDuration,
+      totalDuration: Date.now() - startTime,
+      slotUsed: selectedSlot.slot_id,
+      slotData: selectedSlot,
+      availableSlots: slotResult.slots.length,
+      totalSlots: slotResult.totalSlots,
+      autoGenerated: {
+        slotId: autoSlotId,
+        memberId: autoMemberId,
+        alias: autoAlias,
+        addChances: selectedSlot.add_chances
+      }
+    };
+    
+  } catch (error) {
+    console.log('💥 SMART ADD EXCEPTION:');
+    console.log(`📛 Error: ${error.message}`);
+    return {
+      success: false,
+      error: error.message,
+      step: 'EXCEPTION',
+      totalDuration: Date.now() - startTime
+    };
+  }
+}
+
+// Smart KICK function - Show tumbal members only and let user choose
+async function smartKickTumbal(parentPhone) {
+  console.log('\n🧠 SMART KICK TUMBAL - Finding tumbal members...');
+  console.log(`📱 Parent: ${parentPhone}`);
+  console.log(`⏰ Time: ${formatIndonesianTime()}`);
+  console.log('-'.repeat(50));
+  
+  const startTime = Date.now();
+  
+  try {
+    // Step 1: Get slot info to find tumbal members
+    console.log('🔍 Step 1: Getting member list from CEKSLOT API...');
+    const slotResult = await getSlotInfoAPI1Only(normalizePhone(parentPhone));
+    const cekslotDuration = Date.now() - startTime;
+    
+    console.log(`⏱️  CEKSLOT Response Time: ${cekslotDuration}ms`);
+    
+    if (!slotResult.success) {
+      console.log('❌ CEKSLOT failed, cannot show members');
+      console.log(`💬 Error: ${slotResult.error}`);
+      return {
+        success: false,
+        error: slotResult.error,
+        step: 'CEKSLOT',
+        cekslotDuration
+      };
+    }
+    
+    // Step 2: Filter only tumbal members (alias contains 'TUMBAL' or similar patterns)
+    const tumbalMembers = slotResult.slots.filter(slot => {
+      const alias = (slot.alias || '').toLowerCase();
+      const msisdn = slot.msisdn || '';
+      const hasFamilyMemberId = slot.family_member_id && slot.family_member_id !== '-';
+      
+      // Check if it's a tumbal by alias or if it's a registered member with proper MSISDN
+      const isTumbal = alias.includes('tumbal') || 
+                       alias.includes('xl') || 
+                       (hasFamilyMemberId && msisdn && msisdn !== '-');
+      
+      return isTumbal && hasFamilyMemberId;
+    });
+    
+    console.log(`📊 Found ${slotResult.slots.length} total slots, ${tumbalMembers.length} tumbal members`);
+    
+    if (tumbalMembers.length === 0) {
+      console.log('❌ No tumbal members found to kick');
+      const totalMembers = slotResult.slots.filter(s => s.family_member_id && s.family_member_id !== '-').length;
+      console.log(`📋 Total registered members: ${totalMembers}`);
+      return {
+        success: false,
+        error: 'No tumbal members found to kick',
+        step: 'NO_TUMBAL',
+        cekslotDuration,
+        totalMembers
+      };
+    }
+    
+    console.log('\n👥 TUMBAL MEMBERS FOUND:');
+    console.log('='.repeat(60));
+    tumbalMembers.forEach((slot, index) => {
+      console.log(`${index + 1}. Slot ${slot.slot_id}`);
+      console.log(`   📱 MSISDN: ${slot.msisdn || '-'}`);
+      console.log(`   👤 Alias: ${slot.alias || '-'}`);
+      console.log(`   🆔 Member ID: ${slot.family_member_id ? slot.family_member_id.substring(0, 30) + '...' : '-'}`);
+      console.log('');
+    });
+    console.log('='.repeat(60));
+    
+    return {
+      success: true,
+      tumbalMembers,
+      cekslotDuration,
+      step: 'TUMBAL_LIST_READY'
+    };
+    
+  } catch (error) {
+    console.log('💥 SMART KICK TUMBAL EXCEPTION:');
+    console.log(`📛 Error: ${error.message}`);
+    return {
+      success: false,
+      error: error.message,
+      step: 'EXCEPTION',
+      totalDuration: Date.now() - startTime
+    };
+  }
+}
+
+// Execute KICK for specific tumbal member
+async function executeKickTumbal(parentPhone, memberId) {
+  console.log('\n🚀 EXECUTING KICK TUMBAL...');
+  console.log(`📱 Parent: ${parentPhone}`);
+  console.log(`🆔 Member ID: ${memberId ? memberId.substring(0, 30) + '...' : 'None'}`);
+  console.log(`⏰ Time: ${formatIndonesianTime()}`);
+  console.log('-'.repeat(50));
+  
+  const startTime = Date.now();
+  
+  try {
+    console.log('📤 Sending KICK request...');
+    const apiClient = new ModernAPIClient(API_CONFIG);
+    const kickResult = await apiClient.kickMember(normalizePhone(parentPhone), memberId);
+    
+    const duration = Date.now() - startTime;
+    console.log(`⏱️  KICK Response Time: ${duration}ms`);
+    
+    if (kickResult.success) {
+      console.log('✅ KICK TUMBAL SUCCESS:');
+      console.log(`📋 Response:`, JSON.stringify(kickResult.data, null, 2));
+    } else {
+      console.log('❌ KICK TUMBAL FAILED:');
+      console.log(`📋 Response:`, JSON.stringify(kickResult.data, null, 2));
+      console.log(`💬 Error: ${kickResult.error}`);
+    }
+    
+    return {
+      success: kickResult.success,
+      data: kickResult.data,
+      error: kickResult.error,
+      duration
+    };
+    
+  } catch (error) {
+    console.log('💥 KICK TUMBAL EXCEPTION:');
+    console.log(`📛 Error: ${error.message}`);
+    return {
+      success: false,
+      error: error.message,
+      duration: Date.now() - startTime
+    };
+  }
+}
+
 // ===== MODERN UI HANDLER =====
 const initModernAddKick = (bot) => {
   // Handle modern add-kick callbacks
@@ -753,59 +1086,61 @@ const initModernAddKick = (bot) => {
     if (!chatId) return;
     
     try {
-      console.log(`🐛 DEBUG: Callback received: ${data}`);
-      
       if (data === 'modern_addkick_start') {
-        console.log('🚀 Processing modern_addkick_start callback');
         
-        const keyboard = [
-          [{ text: '🚀 START MODERN ADD-KICK', callback_data: 'modern_addkick_begin' }],
-          [{ text: '⚡ START PARALLEL ADD-KICK', callback_data: 'modern_addkick_parallel' }],
-          [{ text: '🔙 BACK TO MASSAL', callback_data: 'menu_massal' }]
-        ];
-        
-        const content = 
-          `🚀 <b>ADD-KICK MODERN V2.0 - NEXT GENERATION</b>\n\n` +
-          `✨ <b>PILIHAN MODE:</b>\n` +
-          `🔸 <b>Sequential:</b> 1 tumbal untuk semua pengelola (antri)\n` +
-          `🔸 <b>Parallel:</b> 1 tumbal per pengelola (serentak)\n\n` +
-          `✨ <b>NEW FEATURES:</b>\n` +
-          `• Optimized API timing (60s wait)\n` +
-          `• Real-time progress tracking\n` +
-          `• Advanced retry logic\n` +
-          `• Performance metrics\n` +
-          `• Better error handling\n` +
-          `• Smart slot filtering\n\n` +
-          `⚡ <b>PARALLEL MODE ADVANTAGES:</b>\n` +
-          `• Each manager gets dedicated tumbal\n` +
-          `• All managers process simultaneously\n` +
-          `• Same tumbal used for all slots per manager\n` +
-          `• Faster completion time\n` +
-          `• No waiting in queue\n\n` +
-          `🎯 <b>SMART FILTERING (ENHANCED):</b>\n` +
-          `• Only slots with add_chances = 2\n` +
-          `• Empty alias and MSISDN required\n` +
-          `• Valid slot_id (non-zero)\n` +
-          `• No registered members (family_member_id empty)\n` +
-          `• Skip slots with add_chances 0, 1, atau 3\n` +
-          `• Strict empty slot validation\n` +
-          `• Fresh data validation\n\n` +
-          `📊 <b>LIVE MONITORING:</b>\n` +
-          `• Real-time progress bar\n` +
-          `• Success/failure rates\n` +
-          `• Processing speed metrics\n` +
-          `• Time estimation\n\n` +
-          `🚀 <b>Ready to choose your processing mode?</b>`;
+        try {
+          const keyboard = [
+            [{ text: '🚀 START MODERN ADD-KICK', callback_data: 'modern_addkick_begin' }],
+            [{ text: '⚡ START PARALLEL ADD-KICK', callback_data: 'modern_addkick_parallel' }],
+            [{ text: '🔙 BACK TO MASSAL', callback_data: 'menu_massal' }]
+          ];
+          
+          const content = 
+            `🚀 <b>ADD-KICK MODERN V2.0 - SMART AUTO-GENERATION</b>\n\n` +
+            `✨ <b>PILIHAN MODE:</b>\n` +
+            `🔸 <b>Sequential:</b> 1 tumbal untuk semua pengelola (antri)\n` +
+            `🔸 <b>Parallel:</b> 1 tumbal per pengelola (serentak)\n\n` +
+            `🧠 <b>SMART AUTO-GENERATION:</b>\n` +
+            `• Hanya input parent + tumbal phone\n` +
+            `• Auto-generate slot_id dari CEKSLOT\n` +
+            `• Auto-generate member_id\n` +
+            `• Strict slot filtering tetap dipertahankan\n` +
+            `• Tidak perlu input manual parameter\n\n` +
+            `⚡ <b>ADVANTAGES:</b>\n` +
+            `• Real-time progress tracking\n` +
+            `• Smart slot filtering (add_chances=2)\n` +
+            `• Auto parameter generation\n` +
+            `• 60s optimized timing\n\n` +
+            `🚀 <b>Ready to choose your mode?</b>`;
 
-        await bot.editMessageText(content, {
-          chat_id: chatId,
-          message_id: message.message_id,
-          parse_mode: 'HTML',
-          reply_markup: { inline_keyboard: keyboard }
-        });
+          
+          // Check if message has caption (photo message) or text
+          if (message.caption) {
+            // Photo message - edit caption
+            await bot.editMessageCaption(content, {
+              chat_id: chatId,
+              message_id: message.message_id,
+              parse_mode: 'HTML',
+              reply_markup: { inline_keyboard: keyboard }
+            });
+          } else {
+            // Text message - edit text
+            await bot.editMessageText(content, {
+              chat_id: chatId,
+              message_id: message.message_id,
+              parse_mode: 'HTML',
+              reply_markup: { inline_keyboard: keyboard }
+            });
+          }
 
-        await bot.answerCallbackQuery(id);
-        return;
+          await bot.answerCallbackQuery(id);
+          return;
+          
+        } catch (innerError) {
+          console.error('❌ Error in modern_addkick_start handler:', innerError);
+          console.error('Inner error stack:', innerError.stack);
+          throw innerError; // Re-throw để ditangkap oleh catch luar
+        }
 
       } else if (data === 'modern_addkick_parallel') {
         modernAddKickStates.set(chatId, { 
@@ -946,6 +1281,8 @@ const initModernAddKick = (bot) => {
       }
       
     } catch (error) {
+      console.error('❌ Error in callback handler:', error);
+      console.error('Error stack:', error.stack);
       await bot.answerCallbackQuery(id, { text: '❌ Error occurred, please try again!', show_alert: true });
     }
   });
