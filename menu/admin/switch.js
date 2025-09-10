@@ -69,45 +69,52 @@ module.exports = (bot) => {
         
         // Check file existence untuk swap system
         const bekasamActive = fs.existsSync(path.join(bekasamPath, 'handler_bekasan.js'));
-        const bekasamOld = fs.existsSync(path.join(bekasamPath, 'handler_bekasan_old.js'));
-        
         const bulananActive = fs.existsSync(path.join(bulananPath, 'handler_bulanan.js'));
-        const bulananOld = fs.existsSync(path.join(bulananPath, 'handler_bulanan_old.js'));
 
         // Determine active API by reading file content
-        let activeAPI = 'UNKNOWN';
-        let apiType = '';
+        let activeAPI = '';
+        let inactiveAPI = '';
         
         try {
-          if (bekasamActive) {
-            const content = fs.readFileSync(path.join(bekasamPath, 'handler_bekasan.js'), 'utf8');
-            if (content.includes('api.hidepulsa.com')) {
-              activeAPI = 'HIDE API ⚪';
-              apiType = 'HIDE';
-            } else if (content.includes('khairilpedia.com')) {
-              activeAPI = 'KHFY API 🟢';
-              apiType = 'KHFY';
+          if (bekasamActive && bulananActive) {
+            const bekasamContent = fs.readFileSync(path.join(bekasamPath, 'handler_bekasan.js'), 'utf8');
+            const bulananContent = fs.readFileSync(path.join(bulananPath, 'handler_bulanan.js'), 'utf8');
+            
+            // Check first line comment for API type
+            const bekasamFirstLine = bekasamContent.split('\n')[0];
+            const bulananFirstLine = bulananContent.split('\n')[0];
+            
+            if (bekasamFirstLine.includes('INI API HIDEPULSA') || bulananFirstLine.includes('INI API HIDEPULSA')) {
+              activeAPI = '⚪ HIDE';
+              inactiveAPI = '🟢 KHFY';
+            } else if (bekasamFirstLine.includes('INI API KHFY STORE') || bulananFirstLine.includes('INI API KHFY STORE')) {
+              activeAPI = '🟢 KHFY';
+              inactiveAPI = '⚪ HIDE';
             } else {
-              activeAPI = 'TIDAK DIKETAHUI ❓';
+              // Fallback check dengan URL detection
+              if (bekasamContent.includes('api.hidepulsa.com') || bulananContent.includes('api.hidepulsa.com')) {
+                activeAPI = '⚪ HIDE';
+                inactiveAPI = '🟢 KHFY';
+              } else if (bekasamContent.includes('khairilpedia.com') || bulananContent.includes('khairilpedia.com')) {
+                activeAPI = '🟢 KHFY';
+                inactiveAPI = '⚪ HIDE';
+              } else {
+                activeAPI = '❓ TIDAK DIKETAHUI';
+                inactiveAPI = '❓ TIDAK DIKETAHUI';
+              }
             }
+          } else {
+            activeAPI = '❌ FILE TIDAK ADA';
+            inactiveAPI = '❌ FILE TIDAK ADA';
           }
         } catch (error) {
-          activeAPI = 'ERROR READING FILE ❌';
+          activeAPI = '❌ ERROR READING FILE';
+          inactiveAPI = '❌ ERROR READING FILE';
         }
 
-        const content = `❗ <b>STATUS HANDLER FILES</b>\n\n` +
-          `🔄 <b>API Aktif:</b> ${activeAPI}\n\n` +
-          `📁 <b>BEKASAN HANDLER:</b>\n` +
-          `${bekasamActive ? '✅' : '❌'} handler_bekasan.js (AKTIF)\n` +
-          `${bekasamOld ? '📂' : '❌'} handler_bekasan_old.js (BACKUP)\n\n` +
-          `📁 <b>BULANAN HANDLER:</b>\n` +
-          `${bulananActive ? '✅' : '❌'} handler_bulanan.js (AKTIF)\n` +
-          `${bulananOld ? '📂' : '❌'} handler_bulanan_old.js (BACKUP)\n\n` +
-          `💡 <b>Keterangan:</b>\n` +
-          `✅ File aktif digunakan\n` +
-          `📂 File backup tersedia\n` +
-          `❌ File tidak ada\n\n` +
-          `🔄 <b>Swap System:</b> File handler_xxx.js ↔ handler_xxx_old.js`;
+        const content = `SEDANG MENGGUNAKAN API DARI handler_bekasan.js & handler_bulanan.js\n\n` +
+          `API DIGUNAKAN: ${activeAPI}\n` +
+          `API DIISTIRAHATKAN: ${inactiveAPI}`;
 
         if (message.caption) {
           // Message has photo, edit caption
