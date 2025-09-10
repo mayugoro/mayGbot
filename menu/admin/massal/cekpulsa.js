@@ -1,5 +1,6 @@
 require('dotenv').config({ quiet: true });
 const axios = require('axios');
+const { extractPhonesFromMultilineText } = require('../../../utils/normalize');
 
 // Storage untuk cek pulsa states
 const cekPulsaStates = new Map();
@@ -13,14 +14,8 @@ function isAuthorized(id) {
 // Function untuk cek pulsa single nomor menggunakan API1 (KHFY Store)
 const checkPulsaSingle = async (nomor_hp) => {
   try {
-    // Format nomor HP
-    let formattedMsisdn = nomor_hp.replace(/\D/g, '');
-    if (formattedMsisdn.startsWith('62')) {
-      formattedMsisdn = '0' + formattedMsisdn.substring(2);
-    }
-    if (!formattedMsisdn.startsWith('0') && formattedMsisdn.length >= 10 && formattedMsisdn.length <= 11) {
-      formattedMsisdn = '0' + formattedMsisdn;
-    }
+    // Nomor sudah dinormalisasi ke format 08xxxxxxx, langsung gunakan
+    const formattedMsisdn = nomor_hp;
 
     // Construct API URL
     const apiUrl = process.env.API1 + process.env.CEKPULSA1;
@@ -73,13 +68,8 @@ const processCekPulsaRequest = async (chatId, uniqueNumbers, bot) => {
       try {
         const result = await checkPulsaSingle(nomor_hp);
         
-        // Format nomor untuk display
-        let displayNumber = nomor_hp;
-        if (displayNumber.startsWith('62')) {
-          displayNumber = '0' + displayNumber.substring(2);
-        } else if (displayNumber.length === 10 && !displayNumber.startsWith('0')) {
-          displayNumber = '0' + displayNumber;
-        }
+        // Nomor sudah dinormalisasi, langsung gunakan untuk display
+        const displayNumber = nomor_hp;
 
         return {
           success: result.status === 'success',
@@ -90,12 +80,8 @@ const processCekPulsaRequest = async (chatId, uniqueNumbers, bot) => {
         };
 
       } catch (error) {
-        let displayNumber = nomor_hp;
-        if (displayNumber.startsWith('62')) {
-          displayNumber = '0' + displayNumber.substring(2);
-        } else if (displayNumber.length === 10 && !displayNumber.startsWith('0')) {
-          displayNumber = '0' + displayNumber;
-        }
+        // Nomor sudah dinormalisasi, langsung gunakan
+        const displayNumber = nomor_hp;
 
         return {
           success: false,
@@ -355,24 +341,13 @@ module.exports = (bot) => {
         return;
       }
 
-      // Parse nomor HP (multiple lines)
-      const lines = text.split(/\n|\r/).map(line => line.trim()).filter(line => line);
-      const validNumbers = [];
-      
-      for (const line of lines) {
-        const cleanNumber = line.replace(/\D/g, '');
-        if (cleanNumber.length >= 10 && cleanNumber.length <= 15) {
-          validNumbers.push(cleanNumber);
-        }
-      }
-      
-      // Hilangkan duplikasi nomor
-      const uniqueNumbers = [...new Set(validNumbers)];
+      // Parse nomor HP menggunakan utility - deteksi absolut dengan normalisasi
+      const uniqueNumbers = extractPhonesFromMultilineText(text);
       
       if (uniqueNumbers.length === 0) {
         await bot.sendMessage(chatId, 
-          '❌ <b>Tidak ada nomor yang valid!</b>\n\n' +
-          'Format: 10-15 digit angka per baris.\n' +
+          '❌ <b>Tidak ada nomor Indonesia yang valid!</b>\n\n' +
+          'Pastikan ada nomor telepon Indonesia (9-16 digit) dalam teks.\n' +
           'Coba lagi atau ketik "exit" untuk batal.',
           { parse_mode: 'HTML' }
         );
