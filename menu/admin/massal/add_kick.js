@@ -170,23 +170,23 @@ class ModernSlotManager {
       const msisdn = (slot.msisdn || '').trim();
       const addChances = parseInt(slot.add_chances) || 0;
       
-      // CORRECTED LOGIC: Match test_smart_add.js filtering logic exactly
-      // Only check alias, msisdn, and add_chances - don't check family_member_id
+      // STRICT LOGIC: HANYA add_chances === 2 yang diperbolehkan
+      // TIDAK MENGIZINKAN add_chances 0, 1, atau 3
       const isEmptyAlias = !alias || alias === '-';
       const isEmptyMsisdn = !msisdn || msisdn === '-';
-      const hasValidAddChances = addChances > 0; // Allow any add_chances > 0
+      const hasValidAddChances = addChances === 2; // STRICT: Hanya add_chances === 2
       
       // Valid slot criteria
       const isValidSlot = slotId && slotId !== '0' && slotId !== 0;
       
-      // Final validation: slot must have empty alias/msisdn and valid add_chances
+      // Final validation: slot must have empty alias/msisdn and add_chances === 2
       const isAvailableSlot = isEmptyAlias && isEmptyMsisdn && hasValidAddChances;
       
       // Debug logging for all slots
       if (isAvailableSlot && isValidSlot) {
-        // console.log(`✅ VALID SLOT - Slot ${slotId}: alias='${alias}', msisdn='${msisdn}', add_chances=${addChances}`);
+        // console.log(`✅ VALID SLOT - Slot ${slotId}: alias='${alias}', msisdn='${msisdn}', add_chances=${addChances} (STRICT: === 2)`);
       } else {
-        // console.log(`🔍 SLOT FILTERED OUT - Slot ${slotId}: alias='${alias}', msisdn='${msisdn}', add_chances=${addChances}, valid_slot=${isValidSlot}, available=${isAvailableSlot}`);
+        // console.log(`🔍 SLOT FILTERED OUT - Slot ${slotId}: alias='${alias}', msisdn='${msisdn}', add_chances=${addChances}, valid_slot=${isValidSlot}, available=${isAvailableSlot}, reason=${!hasValidAddChances ? 'add_chances !== 2' : 'other'}`);
       }
       
       return isValidSlot && isAvailableSlot;
