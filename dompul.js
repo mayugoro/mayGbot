@@ -2,6 +2,7 @@ const axios = require('axios');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const { normalizePhoneNumber, isValidIndonesianPhone, extractPhonesFromMultilineText } = require('./utils/normalize');
+const { getJakartaTime, createJakartaDate, calculateDaysDiff, formatDaysDiff, formatPackageExpiry, parseToJakartaDate, formatToDDMMYYYY, getDompulTimestamp } = require('./utils/date');
 
 // Storage untuk dompul states
 const dompulStates = new Map(); // key: chatId, value: { step, inputMessageId }
@@ -352,28 +353,12 @@ module.exports = (bot) => {
               formattedResult += `📶 <b>Jaringan       :</b> ${status4gMatch[1]}\n`;
             }
 
-            // Calculate tenggang (masa berakhir - sekarang) with accurate calculation
+            // Calculate tenggang (masa berakhir - sekarang) with accurate Jakarta timezone
             const masaBerakhirMatch = rawData.match(/Masa Berakhir Tenggang:\s*([^\n]+)/);
             if (masaBerakhirMatch) {
               try {
-                const [year, month, day] = masaBerakhirMatch[1].split('-');
-                const tenggangDate = new Date(year, month - 1, day);
-                const now = new Date();
-                
-                // Set time for accurate comparison
-                now.setHours(0, 0, 0, 0); // Start of current day
-                tenggangDate.setHours(23, 59, 59, 999); // End of tenggang day
-                
-                const diffTime = tenggangDate - now;
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                
-                if (diffDays > 0) {
-                  formattedResult += `⚡ <b>Tenggang     :</b> ${diffDays} Hari lagi\n\n`;
-                } else if (diffDays === 0) {
-                  formattedResult += `⚡ <b>Tenggang     :</b> Hari ini\n\n`;
-                } else {
-                  formattedResult += `⚡ <b>Tenggang     :</b> Sudah habis\n\n`;
-                }
+                const diffDays = calculateDaysDiff(masaBerakhirMatch[1]);
+                formattedResult += `⚡ <b>Tenggang     :</b> ${formatDaysDiff(diffDays)}\n\n`;
               } catch (e) {
                 formattedResult += `⚡ <b>Tenggang     :</b> ${masaBerakhirMatch[1]}\n\n`;
               }
@@ -443,30 +428,11 @@ module.exports = (bot) => {
               let remainingDays = '';
               
               if (expiry.match(/\d{4}-\d{2}-\d{2}/)) {
-                const [year, month, day] = expiry.split(' ')[0].split('-');
+                const diffDays = calculateDaysDiff(expiry.split(' ')[0]);
+                remainingDays = formatPackageExpiry(diffDays);
                 
-                // Calculate remaining days
-                try {
-                  const expiryDate = new Date(year, month - 1, day);
-                  const now = new Date();
-                  now.setHours(0, 0, 0, 0); // Set to start of day for accurate comparison
-                  expiryDate.setHours(23, 59, 59, 999); // Set to end of expiry day
-                  
-                  const diffTime = expiryDate - now;
-                  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                  
-                  if (diffDays > 0) {
-                    remainingDays = `(⚡${diffDays} HARI)`;
-                  } else if (diffDays === 0) {
-                    remainingDays = `(⚡HARI INI)`;
-                  } else {
-                    remainingDays = `(⚡EXPIRED)`;
-                  }
-                } catch (e) {
-                  remainingDays = `(⚡30 HARI)`;
-                }
-                
-                expiry = `${day}/${month}/${year}`;
+                const jakartaDate = parseToJakartaDate(expiry.split(' ')[0]);
+                expiry = jakartaDate ? formatToDDMMYYYY(jakartaDate) : expiry;
               } else {
                 remainingDays = `(⚡30 HARI)`;
               }
@@ -587,30 +553,11 @@ module.exports = (bot) => {
               let remainingDays = '';
               
               if (expiry.match(/\d{4}-\d{2}-\d{2}/)) {
-                const [year, month, day] = expiry.split(' ')[0].split('-');
+                const diffDays = calculateDaysDiff(expiry.split(' ')[0]);
+                remainingDays = formatPackageExpiry(diffDays);
                 
-                // Calculate remaining days
-                try {
-                  const expiryDate = new Date(year, month - 1, day);
-                  const now = new Date();
-                  now.setHours(0, 0, 0, 0); // Set to start of day for accurate comparison
-                  expiryDate.setHours(23, 59, 59, 999); // Set to end of expiry day
-                  
-                  const diffTime = expiryDate - now;
-                  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                  
-                  if (diffDays > 0) {
-                    remainingDays = `(⚡${diffDays} HARI)`;
-                  } else if (diffDays === 0) {
-                    remainingDays = `(⚡HARI INI)`;
-                  } else {
-                    remainingDays = `(⚡EXPIRED)`;
-                  }
-                } catch (e) {
-                  remainingDays = `(⚡30 HARI)`;
-                }
-                
-                expiry = `${day}/${month}/${year}`;
+                const jakartaDate = parseToJakartaDate(expiry.split(' ')[0]);
+                expiry = jakartaDate ? formatToDDMMYYYY(jakartaDate) : expiry;
               } else {
                 remainingDays = `(⚡30 HARI)`;
               }
@@ -690,7 +637,7 @@ module.exports = (bot) => {
             
             // Add footer
             formattedResult += `├──────────────────────────┤\n\n`;
-            formattedResult += `⌚️ <b>Last Update:</b> ${new Date().toLocaleString('sv-SE').replace('T', ' ')}\n`;
+            formattedResult += `⌚️ <b>Last Update:</b> ${getDompulTimestamp()}\n`;
             
             await bot.sendMessage(chatId, formattedResult, { parse_mode: 'HTML' });
             totalSuccess++;

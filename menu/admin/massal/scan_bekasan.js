@@ -1,5 +1,6 @@
 const axios = require('axios');
 require('dotenv').config({ quiet: true });
+const { calculateDaysDiff, formatDaysDiff, parseToJakartaDate } = require('../../../utils/date');
 
 // API Configuration dari .env
 const API_PRIMARY_BASE = process.env.API1;
@@ -50,12 +51,12 @@ function parseExpiredDate(dateString) {
   } else if (dateString.includes('-')) {
     const parts = dateString.split('-');
     if (parts[0].length === 4) {
-      // Format YYYY-MM-DD
-      return new Date(dateString);
+      // Format YYYY-MM-DD - gunakan parseToJakartaDate dari utils
+      return parseToJakartaDate(dateString) || new Date('9999-12-31');
     } else {
       // Format DD-MM-YYYY (seperti dari API scan bekasan)
       const isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-      return new Date(isoDate);
+      return parseToJakartaDate(isoDate) || new Date('9999-12-31');
     }
   } else {
     return new Date(dateString);
@@ -185,29 +186,17 @@ function isAuthorized(id) {
   return id.toString() === process.env.ADMIN_ID;
 }
 
-// Helper function untuk menghitung selisih hari dengan WIB timezone
-function calculateDaysDiff(expiredString) {
+// Helper function untuk menghitung selisih hari dengan timezone Jakarta (+1 adjustment untuk scan_bekasan)
+function calculateDaysDiffScanBekasan(expiredString) {
   if (expiredString === 'Tidak tersedia') {
     return null;
   }
   
-  const expDate = parseExpiredDate(expiredString);
+  // Gunakan utility dari utils/date.js untuk konsistensi timezone
+  const standardDiff = calculateDaysDiff(expiredString);
   
-  // Gunakan waktu WIB (UTC+7) untuk konsistensi
-  const currentDate = new Date();
-  const wibOffset = 7 * 60; // WIB = UTC+7 dalam menit
-  const localOffset = currentDate.getTimezoneOffset(); // offset sistem dalam menit
-  const wibTime = new Date(currentDate.getTime() + (wibOffset + localOffset) * 60000);
-  
-  // Set waktu ke 00:00:00 untuk perhitungan hari yang akurat
-  wibTime.setHours(0, 0, 0, 0);
-  expDate.setHours(0, 0, 0, 0);
-  
-  const diffTime = expDate - wibTime;
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  
-  // Tambahkan +1 hari pada hasil perhitungan
-  return diffDays + 1;
+  // Tambahkan +1 hari sesuai business logic scan_bekasan
+  return standardDiff + 1;
 }
 
 // Helper function untuk format header berdasarkan selisih hari
@@ -216,7 +205,7 @@ function formatDaysHeader(expiredString) {
     return `<b>Expired: Tidak tersedia</b>\n`;
   }
   
-  const diffDays = calculateDaysDiff(expiredString);
+  const diffDays = calculateDaysDiffScanBekasan(expiredString);
   
   if (diffDays > 1) {
     return `<b>⚡️BEKASAN ${diffDays} HARI</b>\n`;
