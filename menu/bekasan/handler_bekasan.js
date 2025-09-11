@@ -162,10 +162,21 @@ const findAvailablePengelola = async (excludeNumbers = [], kategori) => {
     const { getAllPengelolaNumbers } = require('../../db');
     const allPengelola = await getAllPengelolaNumbers(kategori);
     
+    // DEBUG: Log pencarian pengelola alternatif
+    // console.log('=== DEBUG CARI PENGELOLA ALTERNATIF ===');
+    // console.log('Kategori:', kategori);
+    // console.log('Semua pengelola dari DB:', allPengelola);
+    // console.log('Exclude numbers:', excludeNumbers);
+    // console.log('Active sessions:', Array.from(activePengelolaSessions.keys()));
+    
     // Filter nomor yang tidak sedang digunakan dan tidak dalam exclude list
     const availablePengelola = allPengelola.filter(nomor => 
       !activePengelolaSessions.has(nomor) && !excludeNumbers.includes(nomor)
     );
+    
+    // console.log('Pengelola tersedia setelah filter:', availablePengelola);
+    // console.log('Pengelola terpilih:', availablePengelola.length > 0 ? availablePengelola[0] : 'TIDAK ADA');
+    // console.log('=== END DEBUG ALTERNATIF ===');
     
     return availablePengelola.length > 0 ? availablePengelola[0] : null;
   } catch (err) {
@@ -454,31 +465,66 @@ const checkSlotKosong = async (chatId) => {
     const additionalMembers = data?.member_info?.additional_members || [];
     const allSlots = [...slotList, ...additionalMembers];
     
-    // Pastikan sisa-add bertipe number (sama seperti handler_bekasan_old.js)
+    // MAPPING dan NORMALISASI field sisa-add (sama seperti cekslot1.js)
     allSlots.forEach(s => { 
-      if (typeof s["sisa-add"] === 'string') s["sisa-add"] = parseInt(s["sisa-add"]);
+      // Mapping berbagai nama field untuk sisa-add/add_chances
+      if (!s["sisa-add"] && (s.add_chances !== undefined || s.sisa_add !== undefined)) {
+        s["sisa-add"] = s.add_chances || s.sisa_add || 0;
+      }
+      
+      // Pastikan sisa-add bertipe number
+      if (typeof s["sisa-add"] === 'string') {
+        s["sisa-add"] = parseInt(s["sisa-add"]);
+      } else if (s["sisa-add"] === undefined || s["sisa-add"] === null) {
+        s["sisa-add"] = 0; // Default ke 0 jika undefined
+      }
     });
     
     // Filter slot kosong
     const kosongAll = allSlots.filter(s => !s.msisdn || s.msisdn === "");
     
-    // Prioritaskan slot kosong dengan sisa-add === 1 (sama seperti handler_bekasan_old.js)
+    // DEBUG: Log kondisi slot untuk troubleshooting
+    // console.log('=== DEBUG SLOT CONDITION ===');
+    // console.log('Total slots:', allSlots.length);
+    // console.log('Slot kosong:', kosongAll.length);
+    
+    // DEBUG: Log RAW API response untuk melihat field yang tersedia
+    // console.log('=== RAW API RESPONSE DEBUG ===');
+    // console.log('Raw data from API:', JSON.stringify(data, null, 2));
+    // console.log('Member info:', JSON.stringify(data?.member_info, null, 2));
+    // if (slotList.length > 0) {
+    //   console.log('Sample slot object keys:', Object.keys(slotList[0]));
+    //   console.log('Sample slot raw:', JSON.stringify(slotList[0], null, 2));
+    // }
+    // if (additionalMembers.length > 0) {
+    //   console.log('Sample additional member keys:', Object.keys(additionalMembers[0]));
+    //   console.log('Sample additional member raw:', JSON.stringify(additionalMembers[0], null, 2));
+    // }
+    // console.log('=== END RAW DEBUG ===');
+    
+    // console.log('Detail slot kosong:', kosongAll.map(s => ({ 
+    //   slot_id: s.slot_id, 
+    //   msisdn: s.msisdn, 
+    //   'sisa-add': s["sisa-add"], 
+    //   type: typeof s["sisa-add"],
+    //   // Log semua keys untuk melihat field yang tersedia
+    //   available_keys: Object.keys(s)
+    // })));
+    
+    // HANYA pilih slot dengan sisa-add === 1 (add_chances: 1)
+    // TIDAK ADA fallback - jika tidak ada yang sisa-add 1, langsung gagal
     const kosongSisa1 = kosongAll.filter(s => s["sisa-add"] === 1);
-    // Slot kosong lain (sisa-add bukan 1)
-    const kosongLain = kosongAll.filter(s => s["sisa-add"] !== 1);
-    // Gabungkan, yang sisa-add 1 di depan
-    const kosong = [...kosongSisa1, ...kosongLain];
+    
+    // console.log('Slot dengan sisa-add === 1:', kosongSisa1.length);
+    // console.log('=== END DEBUG ===');
 
-    // Debug urutan slot yang dipilih (sama seperti handler_bekasan_old.js)
-    // console.log('Urutan slot kosong:', kosong.map(s => ({ slot: s.slot_id, sisa: s["sisa-add"] })));
-
-    if (!kosong.length) {
-      // RELEASE LOCK karena tidak ada slot kosong
-      releasePengelolaLock(nomor_hp, userId, 'no_slots_available');
+    if (!kosongSisa1.length) {
+      // RELEASE LOCK karena tidak ada slot dengan sisa-add 1
+      releasePengelolaLock(nomor_hp, userId, 'no_slots_with_add_chances_1');
       stateBekasan.delete(chatId);
       
-      // Tambahkan info jika masih tidak ada data setelah retry
-      let teksKosong = '❌ <b>Tidak ada slot kosong</b>\n\nSilakan coba lagi nanti atau pilih paket lain.';
+      // Pesan khusus untuk tidak ada slot dengan add_chances 1
+      let teksKosong = '❌ <b>Tidak ada slot dengan add_chances: 1</b>\n\nSemua slot kosong yang tersedia memiliki add_chances selain 1.\nSilakan coba lagi nanti.';
       if ((!slotList || slotList.length === 0)) {
         teksKosong += '\n\n⚠️ <i>Data tidak tersedia setelah 2x hit API</i>';
       }
@@ -499,9 +545,9 @@ const checkSlotKosong = async (chatId) => {
       return;
     }
 
-    // AUTO SELECT SLOT KOSONG PRIORITAS SISA-ADD 1 (sama seperti handler_bekasan_old.js)
-    const selectedSlot = kosong[0].slot_id;
-    const selectedSlotData = kosong[0]; // SIMPAN DATA LENGKAP SLOT untuk SET_KUBER nanti
+    // AUTO SELECT SLOT KOSONG DENGAN SISA-ADD 1 (STRICT MODE)
+    const selectedSlot = kosongSisa1[0].slot_id;
+    const selectedSlotData = kosongSisa1[0]; // SIMPAN DATA LENGKAP SLOT untuk SET_KUBER nanti
     
     // Update state dengan slot yang dipilih otomatis + SIMPAN SLOT DATA LENGKAP
     state.step = 'input_nomor';

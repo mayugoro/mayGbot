@@ -215,7 +215,20 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
             });
           }
 
-          const nomor_hp = list[Math.floor(Math.random() * list.length)];
+          // DEBUG: Log pemilihan nomor pengelola acak
+          // console.log('=== DEBUG PEMILIHAN PENGELOLA ===');
+          // console.log('Kategori:', kategori);
+          // console.log('User ID:', from.id);
+          // console.log('Username:', from.username);
+          // console.log('Daftar pengelola tersedia:', list);
+          // console.log('Total pengelola:', list.length);
+          
+          const randomIndex = Math.floor(Math.random() * list.length);
+          const nomor_hp = list[randomIndex];
+          
+          // console.log('Random index dipilih:', randomIndex);
+          // console.log('Nomor pengelola terpilih:', nomor_hp);
+          // console.log('=== END DEBUG PEMILIHAN ===');
           
           // Kirim loading message dan simpan message ID
           const loadingMsg = await bot.sendMessage(chatId, '📧 <b>Mengecek slot kosong...</b> 📧', { parse_mode: 'HTML' });
