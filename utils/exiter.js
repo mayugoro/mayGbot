@@ -147,7 +147,45 @@ const handleFlowWithExit = async (bot, msg, stateMap, flowMode, exitKeywords = [
  * @returns {string} - Exit instruction text
  */
 const generateExitInstruction = (exitKeyword = 'exit') => {
-  return `💡 Ketik <b>"${exitKeyword}"</b> untuk keluar dari tampilan ini`;
+  return `<i>💡 Ketik "${exitKeyword}" untuk keluar dari tampilan ini</i>`;
+};
+
+/**
+ * Generate styled input message dengan italic dan exit instruction (seperti pattern cekpulsa.js)
+ * @param {string} mainText - Text utama untuk input (misal: "📱 Masukkan nomor untuk cek pulsa . . .")
+ * @param {string} subtitle - Subtitle atau instruction tambahan (misal: "Bisa massal, pisahkan dengan Enter.")
+ * @param {string} exitText - Custom exit text (default: "membatalkan")
+ * @returns {string} - Styled input message dengan format italic lengkap
+ */
+const generateStyledInputMessage = (mainText, subtitle = '', exitText = 'membatalkan') => {
+  let message = `<i>${mainText}`;
+  
+  if (subtitle) {
+    message += `\n${subtitle}`;
+  }
+  
+  message += `\n\n💡 Ketik "exit" untuk ${exitText}</i>`;
+  
+  return message;
+};
+
+/**
+ * Kirim styled input message dengan tracking dan exiter support
+ * @param {Object} bot - Bot instance
+ * @param {string} chatId - Chat ID
+ * @param {string} mainText - Text utama untuk input
+ * @param {string} subtitle - Subtitle atau instruction tambahan
+ * @param {string} exitText - Custom exit text (default: "membatalkan")
+ * @param {Object} options - Additional send message options
+ * @returns {Object} - Sent message object
+ */
+const sendStyledInputMessage = async (bot, chatId, mainText, subtitle = '', exitText = 'membatalkan', options = {}) => {
+  const styledMessage = generateStyledInputMessage(mainText, subtitle, exitText);
+  
+  const defaultOptions = { parse_mode: 'HTML' };
+  const finalOptions = { ...defaultOptions, ...options };
+  
+  return await sendMessageWithTracking(bot, chatId, styledMessage, finalOptions);
 };
 
 /**
@@ -171,6 +209,8 @@ module.exports = {
   sendMessageWithTracking,
   handleFlowWithExit,
   generateExitInstruction,
+  generateStyledInputMessage,
+  sendStyledInputMessage,
   initializeFlowState
 };
 

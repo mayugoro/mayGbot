@@ -2,6 +2,15 @@ require('dotenv').config({ quiet: true });
 const axios = require('axios');
 const { extractPhonesFromMultilineText } = require('../../../utils/normalize');
 
+// Import utils EXITER untuk flow management (sama seperti kickmassal.js)
+const { 
+  sendMessageWithTracking, 
+  generateExitInstruction,
+  sendStyledInputMessage,
+  autoDeleteMessage,
+  EXIT_KEYWORDS
+} = require('../../../utils/exiter');
+
 // Storage untuk cek pulsa states
 const cekPulsaStates = new Map();
 
@@ -53,8 +62,7 @@ const checkPulsaSingle = async (nomor_hp) => {
 const processCekPulsaRequest = async (chatId, uniqueNumbers, bot) => {
   try {
     // Kirim pesan penunggu dulu
-    const waitingMessage = await bot.sendMessage(chatId, '<i>Sedang diproses, mohon tunggu...</i>', { parse_mode: 'HTML' });
-    let waitingMessageDeleted = false;
+    const waitingMessage = await sendMessageWithTracking(bot, chatId, '<i>Sedang diproses, mohon tunggu...</i>', { parse_mode: 'HTML' });
     
     let totalSuccess = 0;
     let totalFailed = 0;
@@ -96,13 +104,7 @@ const processCekPulsaRequest = async (chatId, uniqueNumbers, bot) => {
     const processAndSendResult = async (result) => {
       completedCount++;
       
-      // Hapus pesan penunggu saat hasil pertama datang
-      if (!waitingMessageDeleted) {
-        try {
-          await bot.deleteMessage(chatId, waitingMessage.message_id);
-          waitingMessageDeleted = true;
-        } catch (e) {}
-      }
+      // Auto cleanup handled by sendMessageWithTracking
       
       try {
         if (result.success && result.data) {
@@ -298,11 +300,10 @@ module.exports = (bot) => {
       // Set state untuk input nomor
       cekPulsaStates.set(chatId, { step: 'input_nomor' });
       
-      const inputMsg = await bot.sendMessage(chatId,
-        '📱 <i>Masukkan nomor untuk cek pulsa . . .\n' +
-        'Bisa massal, pisahkan dengan Enter.\n\n' +
-        '💡 Ketik "exit" untuk membatalkan</i>',
-        { parse_mode: 'HTML' }
+      const inputMsg = await sendStyledInputMessage(bot, chatId,
+        '📱 Masukkan nomor untuk cek pulsa . . .',
+        'Bisa massal, pisahkan dengan Enter.',
+        'membatalkan'
       );
       
       // Simpan message ID
@@ -328,16 +329,17 @@ module.exports = (bot) => {
     if (text.startsWith("/")) return;
     
     try {
-      // Cek cancel/exit
-      if (['exit', 'EXIT', 'Exit'].includes(text)) {
+      // ✅ MENGGUNAKAN EXITER untuk handle exit flow (sama seperti kickmassal.js)
+      if (text && EXIT_KEYWORDS.COMBINED.includes(text)) {
+        // Hapus input form jika ada
         if (state.inputMessageId) {
-          try {
-            await bot.deleteMessage(chatId, state.inputMessageId);
-          } catch (e) {}
+          await autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
         }
         
+        // Hapus user message
+        await autoDeleteMessage(bot, chatId, msg.message_id, 100);
+        
         cekPulsaStates.delete(chatId);
-        await bot.deleteMessage(chatId, msg.message_id);
         return;
       }
 
@@ -348,7 +350,7 @@ module.exports = (bot) => {
         await bot.sendMessage(chatId, 
           '❌ <b>Tidak ada nomor Indonesia yang valid!</b>\n\n' +
           'Pastikan ada nomor telepon Indonesia (9-16 digit) dalam teks.\n' +
-          'Coba lagi atau ketik "exit" untuk batal.',
+          'Coba lagi atau ' + generateExitInstruction().replace('💡 ', '').toLowerCase(),
           { parse_mode: 'HTML' }
         );
         await bot.deleteMessage(chatId, msg.message_id);
