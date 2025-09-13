@@ -1,4 +1,6 @@
 const { getDeskripsiPaket, setKonfigurasi } = require('../../../../db');
+// Import Input Exiter utilities untuk modern pattern
+const { sendStyledInputMessage, autoDeleteMessage, EXIT_KEYWORDS } = require('../../../../utils/exiter');
 
 // === PRELOAD KEYBOARDS ===
 const DESKRIPSI_BULANAN_KEYBOARD = [
@@ -18,12 +20,10 @@ const DESKRIPSI_BULANAN_CONTENT = '📝 <b>ATUR DESKRIPSI BULANAN</b>\n\nPilih p
 
 // === TEMPLATE GENERATOR ===
 const generateEditDeskripsiForm = (paket, deskSekarang) => {
-  return `📝 <b>EDIT DESKRIPSI BULANAN ${paket.toUpperCase()}</b>\n\n` +
-    `🌙 <b>Paket:</b> BULANAN ${paket.toUpperCase()}\n` +
-    `📋 <b>Deskripsi saat ini:</b>\n<code>${deskSekarang}</code>\n\n` +
-    `✏️ <b>Masukkan deskripsi baru:</b>\n\n` +
-    `💡 Gunakan \\n untuk baris baru\n` +
-    `💡 Ketik "exit" untuk membatalkan`;
+  const mainText = `📝 EDIT DESKRIPSI BULANAN ${paket.toUpperCase()}\n\nDeskripsi saat ini:\n${deskSekarang}`;
+  const subtitle = `Masukkan deskripsi baru:\n💡 Gunakan \\n untuk baris baru`;
+  
+  return { mainText, subtitle };
 };
 
 const adminState = new Map();
@@ -87,10 +87,8 @@ module.exports = (bot) => {
           jenis: 'BULANAN'
         });
         
-        const inputMsg = await bot.sendMessage(chatId, 
-          generateEditDeskripsiForm(paket, deskSekarang), 
-          { parse_mode: 'HTML' }
-        );
+        const { mainText, subtitle } = generateEditDeskripsiForm(paket, deskSekarang);
+        const inputMsg = await sendStyledInputMessage(bot, chatId, mainText, subtitle, 'membatalkan');
         
         const currentState = adminState.get(chatId);
         currentState.inputMessageId = inputMsg.message_id;
@@ -114,20 +112,14 @@ module.exports = (bot) => {
     const state = adminState.get(chatId);
     if (!state || state.mode !== 'edit_deskripsi_bulanan') return;
 
-    // === CEK CANCEL/EXIT ===
-    if (['exit', 'EXIT', 'Exit'].includes(msg.text.trim())) {
+    // === CEK CANCEL/EXIT dengan modern EXIT_KEYWORDS ===
+    if (EXIT_KEYWORDS.COMBINED.includes(msg.text.trim())) {
       if (state.inputMessageId) {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {
-          // Ignore delete error
-        }
+        autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
       }
       
       adminState.delete(chatId);
-      try {
-        await bot.deleteMessage(chatId, msg.message_id);
-      } catch (e) {}
+      autoDeleteMessage(bot, chatId, msg.message_id, 100);
       return;
     }
 
@@ -140,9 +132,7 @@ module.exports = (bot) => {
         await bot.sendMessage(chatId, '❌ <b>Deskripsi tidak boleh kosong!</b>\n\n🌙 Silakan masukkan deskripsi yang valid.', {
           parse_mode: 'HTML'
         });
-        try {
-          await bot.deleteMessage(chatId, msg.message_id);
-        } catch (e) {}
+        autoDeleteMessage(bot, chatId, msg.message_id, 100);
         return;
       }
       
@@ -170,18 +160,10 @@ module.exports = (bot) => {
       }
       
       adminState.delete(chatId);
-      try {
-        await bot.deleteMessage(chatId, msg.message_id);
-      } catch (e) {}
+      autoDeleteMessage(bot, chatId, msg.message_id, 100);
       
-      // Auto delete notifikasi hasil setelah 5 detik
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {
-          // Ignore delete error
-        }
-      }, 5000);
+      // Auto delete dengan exiter autoDeleteMessage (5 detik)
+      autoDeleteMessage(bot, chatId, state.inputMessageId, 5000);
       
     } catch (e) {
       console.error('Error saving bulanan description:', e);
@@ -205,9 +187,7 @@ module.exports = (bot) => {
       }
       
       adminState.delete(chatId);
-      try {
-        await bot.deleteMessage(chatId, msg.message_id);
-      } catch (e) {}
+      autoDeleteMessage(bot, chatId, msg.message_id, 100);
     }
   });
 };

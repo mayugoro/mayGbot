@@ -1,4 +1,6 @@
 const { getDeskripsiPaket, setKonfigurasi } = require('../../../db');
+// Import exiter utilities untuk consistency dengan sub-modules
+const { autoDeleteMessage, EXIT_KEYWORDS } = require('../../../utils/exiter');
 
 // === PRELOAD KEYBOARDS ===
 const ATUR_DESKRIPSI_KEYBOARD = [
