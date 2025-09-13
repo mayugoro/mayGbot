@@ -1,6 +1,8 @@
 const { getHargaPaket, getHargaPaketDynamic, getAllProdukDinamis, updateHargaMarkup, setKonfigurasi, getKonfigurasi } = require('../../../db');
 // Import hardcode paket data untuk atur harga global (menghindari rate limit)
 const { getAllPaket, getPaketByDisplay, getPaketBekasanGlobal, getPaketBekasanByKode } = require('../../daftar-paket');
+// Import Input Exiter utilities untuk modernisasi exit handling
+const { sendStyledInputMessage, autoDeleteMessage, EXIT_KEYWORDS } = require('../../../utils/exiter');
 
 const adminState = new Map();
 
@@ -228,19 +230,20 @@ const HARGA_GLOBAL_BEKASAN_L_CONTENT = '🌍 <b>ATUR HARGA BEKASAN GLOBAL L</b>\
 const HARGA_GLOBAL_BEKASAN_XL_CONTENT = '🌍 <b>ATUR HARGA BEKASAN GLOBAL XL</b>\n\nPilih durasi paket XL yang ingin diubah harganya:';
 const HARGA_GLOBAL_BEKASAN_XXL_CONTENT = '🌍 <b>ATUR HARGA BEKASAN GLOBAL XXL</b>\n\nPilih durasi paket XXL yang ingin diubah harganya:';
 
-// Template input form untuk edit harga
-const generateEditHargaForm = (jenis, kategori, hargaSekarang) => {
+// Function untuk generate input harga menggunakan modern Input Exiter pattern
+// Mempertahankan logic complex untuk berbagai jenis produk
+const generateHargaInputMessage = (jenis, kategori, hargaSekarang) => {
   const jenisText = jenis === 'bekasan' ? 'BEKASAN' : 
                    jenis === 'bulanan' ? 'BULANAN' :
                    jenis === 'global_bulanan' ? 'GLOBAL BULANAN' :
-                   jenis === 'global_bekasan' ? 'GLOBAL BEKASAN' : 'PAKET';
+                   jenis === 'global_bekasan' ? 'GLOBAL BEKASAN' : 
+                   jenis === 'bekasan_global' ? 'BEKASAN GLOBAL' : 'PAKET';
   const contohHarga = jenis.includes('bekasan') ? '15000' : '50000';
   
-  return `💰 <b>EDIT HARGA ${jenisText} ${kategori.toUpperCase()}</b>\n\n` +
-    `Harga saat ini: <code>Rp. ${hargaSekarang.toLocaleString('id-ID')}</code>\n\n` +
-    `Masukkan harga baru (tanpa tanda titik atau koma):\n\n` +
-    `💡 Contoh: ${contohHarga}\n` +
-    `💡 Ketik "exit" untuk membatalkan.`;
+  const mainText = `💰 Edit Harga ${jenisText} ${kategori.toUpperCase()}\n\nHarga saat ini: Rp. ${hargaSekarang.toLocaleString('id-ID')}`;
+  const subtitle = `Masukkan harga baru (tanpa tanda titik atau koma):\n💡 Contoh: ${contohHarga}`;
+  
+  return { mainText, subtitle };
 };
 
 module.exports = (bot) => {
@@ -683,10 +686,9 @@ module.exports = (bot) => {
           keyPattern
         });
         
-        const inputMsg = await bot.sendMessage(chatId, 
-          generateEditHargaForm('bekasan_global', paketBekasan.nama_display, hargaSekarang), {
-          parse_mode: 'HTML'
-        });
+        // Generate styled input menggunakan modern Input Exiter
+        const { mainText, subtitle } = generateHargaInputMessage('bekasan_global', paketBekasan.nama_display, hargaSekarang);
+        const inputMsg = await sendStyledInputMessage(bot, chatId, mainText, subtitle, 'membatalkan');
         
         const currentState = adminState.get(chatId);
         currentState.inputMessageId = inputMsg.message_id;
@@ -712,9 +714,9 @@ module.exports = (bot) => {
         
         adminState.set(chatId, { mode: 'edit_harga', kategori });
         
-        const inputMsg = await bot.sendMessage(chatId, generateEditHargaForm('bekasan', kategori, hargaSekarang), {
-          parse_mode: 'HTML'
-        });
+        // Generate styled input menggunakan modern Input Exiter
+        const { mainText, subtitle } = generateHargaInputMessage('bekasan', kategori, hargaSekarang);
+        const inputMsg = await sendStyledInputMessage(bot, chatId, mainText, subtitle, 'membatalkan');
         
         const currentState = adminState.get(chatId);
         currentState.inputMessageId = inputMsg.message_id;
@@ -739,9 +741,9 @@ module.exports = (bot) => {
         
         adminState.set(chatId, { mode: 'edit_harga', kategori: paket });
         
-        const inputMsg = await bot.sendMessage(chatId, generateEditHargaForm('bulanan', paket, hargaSekarang), {
-          parse_mode: 'HTML'
-        });
+        // Generate styled input menggunakan modern Input Exiter
+        const { mainText, subtitle } = generateHargaInputMessage('bulanan', paket, hargaSekarang);
+        const inputMsg = await sendStyledInputMessage(bot, chatId, mainText, subtitle, 'membatalkan');
         
         const currentState = adminState.get(chatId);
         currentState.inputMessageId = inputMsg.message_id;
@@ -796,15 +798,10 @@ module.exports = (bot) => {
           namaProduK: produkData.nama_display
         });
         
-        const inputMsg = await bot.sendMessage(chatId, 
-          `💰 <b>EDIT HARGA GLOBAL BULANAN ${produkData.nama_display.toUpperCase()}</b>\n\n` +
-          `📦 <b>Kode Produk:</b> ${kodeProduK}\n\n` +
-          `💰 <b>Harga saat ini:</b> Rp. ${hargaSekarang.toLocaleString('id-ID')}\n\n` +
-          `Masukkan harga baru (tanpa tanda titik atau koma):\n\n` +
-          `💡 Contoh: 50000\n` +
-          `💡 Ketik "exit" untuk membatalkan.`, {
-          parse_mode: 'HTML'
-        });
+        // Generate styled input untuk static global bulanan
+        const mainText = `💰 Edit Harga Global Bulanan ${produkData.nama_display.toUpperCase()}\n\n📦 Kode Produk: ${kodeProduK}\n💰 Harga saat ini: Rp. ${hargaSekarang.toLocaleString('id-ID')}`;
+        const subtitle = `Masukkan harga baru (tanpa tanda titik atau koma):\n💡 Contoh: 50000`;
+        const inputMsg = await sendStyledInputMessage(bot, chatId, mainText, subtitle, 'membatalkan');
         
         const currentState = adminState.get(chatId);
         currentState.inputMessageId = inputMsg.message_id;
@@ -842,9 +839,8 @@ module.exports = (bot) => {
           namaProduK: productData.nama
         });
         
-        const inputMsg = await bot.sendMessage(chatId, generateEditHargaForm('global_bulanan', productData.nama, hargaSekarang), {
-          parse_mode: 'HTML'
-        });
+        const { mainText, subtitle } = generateHargaInputMessage('global_bulanan', productData.nama, hargaSekarang);
+        const inputMsg = await sendStyledInputMessage(bot, chatId, mainText, subtitle, 'membatalkan');
         
         const currentState = adminState.get(chatId);
         currentState.inputMessageId = inputMsg.message_id;
@@ -872,9 +868,9 @@ module.exports = (bot) => {
         
         adminState.set(chatId, { mode: 'edit_harga', kategori: `global_${paket}` });
         
-        const inputMsg = await bot.sendMessage(chatId, generateEditHargaForm('global_bulanan', paket, hargaSekarang), {
-          parse_mode: 'HTML'
-        });
+        // Generate styled input menggunakan modern Input Exiter
+        const { mainText, subtitle } = generateHargaInputMessage('global_bulanan', paket, hargaSekarang);
+        const inputMsg = await sendStyledInputMessage(bot, chatId, mainText, subtitle, 'membatalkan');
         
         const currentState = adminState.get(chatId);
         currentState.inputMessageId = inputMsg.message_id;
@@ -905,9 +901,9 @@ module.exports = (bot) => {
         
         adminState.set(chatId, { mode: 'edit_harga', kategori: kategori });
         
-        const inputMsg = await bot.sendMessage(chatId, generateEditHargaForm('global_bekasan', `${tipe.toUpperCase()} ${hari}H`, hargaSekarang), {
-          parse_mode: 'HTML'
-        });
+        // Generate styled input menggunakan modern Input Exiter
+        const { mainText, subtitle } = generateHargaInputMessage('global_bekasan', `${tipe.toUpperCase()} ${hari}H`, hargaSekarang);
+        const inputMsg = await sendStyledInputMessage(bot, chatId, mainText, subtitle, 'membatalkan');
         
         const currentState = adminState.get(chatId);
         currentState.inputMessageId = inputMsg.message_id;
@@ -953,17 +949,11 @@ module.exports = (bot) => {
             await bot.sendMessage(chatId, teksHasil, { parse_mode: 'HTML' });
           }
           
-          // Auto delete after 3 seconds
-          setTimeout(async () => {
-            try {
-              await bot.deleteMessage(chatId, state.inputMessageId);
-            } catch (e) {
-              // Ignore delete error
-            }
-          }, 3000);
+          // Auto delete dengan exiter autoDeleteMessage (3 detik)
+          autoDeleteMessage(bot, chatId, state.inputMessageId, 3000);
           
           adminState.delete(chatId);
-          await bot.deleteMessage(chatId, msg.message_id);
+          autoDeleteMessage(bot, chatId, msg.message_id, 100);
           return;
         } catch (e) {
           await bot.sendMessage(chatId, `❌ Gagal reset harga: ${e.message}`);
@@ -971,17 +961,13 @@ module.exports = (bot) => {
       }
       return;
     }
-    if (['exit', 'EXIT', 'Exit'].includes(msg.text.trim())) {
+    if (EXIT_KEYWORDS.COMBINED.includes(msg.text.trim())) {
       if (state.inputMessageId) {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {
-          // Ignore delete error
-        }
+        autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
       }
       
       adminState.delete(chatId);
-      await bot.deleteMessage(chatId, msg.message_id);
+      autoDeleteMessage(bot, chatId, msg.message_id, 100);
       return;
     }
 
@@ -990,7 +976,7 @@ module.exports = (bot) => {
       
       if (isNaN(hargaBaru) || hargaBaru <= 0) {
         await bot.sendMessage(chatId, '❌ Format harga salah! Masukkan angka yang valid.');
-        await bot.deleteMessage(chatId, msg.message_id);
+        autoDeleteMessage(bot, chatId, msg.message_id, 100);
         return;
       }
       
@@ -1029,22 +1015,16 @@ module.exports = (bot) => {
             await bot.sendMessage(chatId, teksHasil, { parse_mode: 'HTML' });
           }
           
-          // Auto delete after 3 seconds
-          setTimeout(async () => {
-            try {
-              await bot.deleteMessage(chatId, state.inputMessageId);
-            } catch (e) {
-              // Ignore delete error
-            }
-          }, 3000);
+          // Auto delete dengan exiter autoDeleteMessage (3 detik)
+          autoDeleteMessage(bot, chatId, state.inputMessageId, 3000);
           
           adminState.delete(chatId);
-          await bot.deleteMessage(chatId, msg.message_id);
+          autoDeleteMessage(bot, chatId, msg.message_id, 100);
           return;
         } catch (e) {
           await bot.sendMessage(chatId, `❌ Gagal menyimpan harga statis: ${e.message}`);
           adminState.delete(chatId);
-          await bot.deleteMessage(chatId, msg.message_id);
+          autoDeleteMessage(bot, chatId, msg.message_id, 100);
           return;
         }
       } else if (state.kategori.startsWith('static_bekasan_')) {
@@ -1081,22 +1061,16 @@ module.exports = (bot) => {
             await bot.sendMessage(chatId, teksHasil, { parse_mode: 'HTML' });
           }
           
-          // Auto delete after 3 seconds
-          setTimeout(async () => {
-            try {
-              await bot.deleteMessage(chatId, state.inputMessageId);
-            } catch (e) {
-              // Ignore delete error
-            }
-          }, 3000);
+          // Auto delete dengan exiter autoDeleteMessage (3 detik)
+          autoDeleteMessage(bot, chatId, state.inputMessageId, 3000);
           
           adminState.delete(chatId);
-          await bot.deleteMessage(chatId, msg.message_id);
+          autoDeleteMessage(bot, chatId, msg.message_id, 100);
           return;
         } catch (e) {
           await bot.sendMessage(chatId, `❌ Gagal menyimpan harga bekasan statis: ${e.message}`);
           adminState.delete(chatId);
-          await bot.deleteMessage(chatId, msg.message_id);
+          autoDeleteMessage(bot, chatId, msg.message_id, 100);
           return;
         }
       } else if (state.kategori.startsWith('dynamic_')) {
@@ -1127,22 +1101,16 @@ module.exports = (bot) => {
             await bot.sendMessage(chatId, teksHasil, { parse_mode: 'HTML' });
           }
           
-          // Auto delete after 3 seconds
-          setTimeout(async () => {
-            try {
-              await bot.deleteMessage(chatId, state.inputMessageId);
-            } catch (e) {
-              // Ignore delete error
-            }
-          }, 3000);
+          // Auto delete dengan exiter autoDeleteMessage (3 detik)
+          autoDeleteMessage(bot, chatId, state.inputMessageId, 3000);
           
           adminState.delete(chatId);
-          await bot.deleteMessage(chatId, msg.message_id);
+          autoDeleteMessage(bot, chatId, msg.message_id, 100);
           return;
         } catch (e) {
           await bot.sendMessage(chatId, `❌ Gagal menyimpan harga markup: ${e.message}`);
           adminState.delete(chatId);
-          await bot.deleteMessage(chatId, msg.message_id);
+          autoDeleteMessage(bot, chatId, msg.message_id, 100);
           return;
         }
       } else if (state.kategori.startsWith('global_')) {
@@ -1197,17 +1165,11 @@ module.exports = (bot) => {
         await bot.sendMessage(chatId, teksHasil, { parse_mode: 'HTML' });
       }
       
-      // Auto delete notifikasi hasil setelah 3 detik
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {
-          // Ignore delete error
-        }
-      }, 3000);
+      // Auto delete dengan exiter autoDeleteMessage (3 detik)
+      autoDeleteMessage(bot, chatId, state.inputMessageId, 3000);
       
       adminState.delete(chatId);
-      await bot.deleteMessage(chatId, msg.message_id);
+      autoDeleteMessage(bot, chatId, msg.message_id, 100);
       
     } catch (e) {
       const teksError = `❌ Gagal menyimpan harga: ${e.message}`;
@@ -1226,7 +1188,7 @@ module.exports = (bot) => {
       }
       
       adminState.delete(chatId);
-      await bot.deleteMessage(chatId, msg.message_id);
+      autoDeleteMessage(bot, chatId, msg.message_id, 100);
     }
   });
 };
