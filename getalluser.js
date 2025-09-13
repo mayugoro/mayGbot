@@ -1,9 +1,19 @@
 const { getAllUsers, getTotalUsers, db, getUsersWithHistoryCount } = require('./db');
 
+// Import utils template untuk flow management
+const { 
+  handleFlowWithExit, 
+  sendMessageWithTracking, 
+  initializeFlowState,
+  generateExitInstruction,
+  autoDeleteMessage,
+  EXIT_KEYWORDS
+} = require('./utils/flow_sendMessage');
+
 const adminState = new Map();
 
 module.exports = (bot) => {
-  // === Getalluser dengan teks biasa ===
+  // === Getalluser dengan teks biasa - MENGGUNAKAN UTILS TEMPLATE ===
   bot.on('message', async (msg) => {
     // Cek apakah user adalah admin
     if (msg.from.id.toString() !== process.env.ADMIN_ID) return;
@@ -17,40 +27,18 @@ module.exports = (bot) => {
       return; // Skip processing, biarkan broadcast handler yang menangani
     }
     
-    const chatId = msg.chat.id;
-    const state = adminState.get(chatId);
+    // ✅ MENGGUNAKAN UTILS TEMPLATE untuk handle flow dengan exit
+    const flowControl = await handleFlowWithExit(bot, msg, adminState, 'view_users', EXIT_KEYWORDS.COMBINED);
     
-    // === CEK EXIT untuk view_users ===
-    if (state && state.mode === 'view_users') {
-      const text = msg.text.trim();
-      
-      if (['exit', 'EXIT', 'Exit'].includes(text)) {
-        // Hapus result message dan user message
-        if (state.resultMessageId) {
-          try {
-            await bot.deleteMessage(chatId, state.resultMessageId);
-          } catch (e) {
-            // Ignore delete error
-          }
-        }
-        try {
-          await bot.deleteMessage(chatId, msg.message_id);
-        } catch (e) {
-          // Ignore delete error
-        }
-        
-        adminState.delete(chatId);
-        return;
-      }
-
-      // Untuk input lainnya, hapus message user (biarkan result tetap tampil)
-      try {
-        await bot.deleteMessage(chatId, msg.message_id);
-      } catch (e) {
-        // Ignore delete error
-      }
-      return;
+    if (flowControl.isExit) {
+      return; // Exit berhasil diproses oleh utils
     }
+    
+    if (!flowControl.shouldContinue) {
+      return; // Flow sedang aktif, stop processing
+    }
+    
+    const chatId = msg.chat.id;
     
     // Keywords untuk trigger getalluser
     const getalluserKeywords = [
@@ -72,12 +60,8 @@ module.exports = (bot) => {
       
       if (totalUsers === 0) {
         await bot.sendMessage(msg.chat.id, '❌ Tidak ada user dalam database.');
-        // Auto-delete command message
-        setTimeout(async () => {
-          try {
-            await bot.deleteMessage(msg.chat.id, msg.message_id);
-          } catch (e) {}
-        }, 1000);
+        // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto-delete
+        await autoDeleteMessage(bot, msg.chat.id, msg.message_id);
         return;
       }
 
@@ -86,12 +70,8 @@ module.exports = (bot) => {
       
       if (users.length === 0) {
         await bot.sendMessage(msg.chat.id, '❌ Gagal mengambil data user.');
-        // Auto-delete command message
-        setTimeout(async () => {
-          try {
-            await bot.deleteMessage(msg.chat.id, msg.message_id);
-          } catch (e) {}
-        }, 1000);
+        // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto-delete
+        await autoDeleteMessage(bot, msg.chat.id, msg.message_id);
         return;
       }
 
@@ -121,43 +101,38 @@ module.exports = (bot) => {
       });
       
       output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      output += `\n💡 Ketik <b>"exit"</b> untuk keluar dari tampilan ini`;
+      output += `\n` + generateExitInstruction();
 
-      // Kirim pesan
-      const sentMessage = await bot.sendMessage(msg.chat.id, output, {
-        parse_mode: 'HTML'
-      });
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk inisialisasi flow state
+      initializeFlowState(adminState, chatId, 'view_users');
 
-      // Auto-delete command message setelah respons dikirim
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(msg.chat.id, msg.message_id);
-        } catch (e) {}
-      }, 1000);
-
-      // Simpan state untuk tracking
-      adminState.set(msg.chat.id, {
-        mode: 'view_users',
-        resultMessageId: sentMessage.message_id
-      });
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk send message dengan tracking
+      await sendMessageWithTracking(
+        bot, 
+        chatId, 
+        output, 
+        { parse_mode: 'HTML' },
+        adminState,
+        adminState.get(chatId),
+        msg
+      );
 
     } catch (error) {
       console.error('Error in getalluser:', error);
-      await bot.sendMessage(msg.chat.id, `❌ Gagal mengambil data user: ${error.message}`);
+      await bot.sendMessage(chatId, `❌ Gagal mengambil data user: ${error.message}`);
       
-      // Auto-delete command message
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(msg.chat.id, msg.message_id);
-        } catch (e) {}
-      }, 1000);
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto-delete
+      await autoDeleteMessage(bot, chatId, msg.message_id);
     }
   });
 
-  // === /getalluser command (backward compatibility) ===
+  // === /getalluser command (backward compatibility) - MENGGUNAKAN UTILS TEMPLATE ===
   bot.onText(/\/getalluser/, async (msg) => {
     if (msg.from.id.toString() !== process.env.ADMIN_ID) {
-      return bot.sendMessage(msg.chat.id, 'ente siapa njir🗿');
+      await bot.sendMessage(msg.chat.id, 'ente siapa njir🗿');
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto-delete
+      await autoDeleteMessage(bot, msg.chat.id, msg.message_id);
+      return;
     }
     
     try {
@@ -166,12 +141,8 @@ module.exports = (bot) => {
       
       if (totalUsers === 0) {
         await bot.sendMessage(msg.chat.id, '❌ Tidak ada user dalam database.');
-        // Auto-delete command message
-        setTimeout(async () => {
-          try {
-            await bot.deleteMessage(msg.chat.id, msg.message_id);
-          } catch (e) {}
-        }, 1000);
+        // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto-delete
+        await autoDeleteMessage(bot, msg.chat.id, msg.message_id);
         return;
       }
 
@@ -180,12 +151,8 @@ module.exports = (bot) => {
       
       if (users.length === 0) {
         await bot.sendMessage(msg.chat.id, '❌ Gagal mengambil data user.');
-        // Auto-delete command message
-        setTimeout(async () => {
-          try {
-            await bot.deleteMessage(msg.chat.id, msg.message_id);
-          } catch (e) {}
-        }, 1000);
+        // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto-delete
+        await autoDeleteMessage(bot, msg.chat.id, msg.message_id);
         return;
       }
 
@@ -215,36 +182,28 @@ module.exports = (bot) => {
       });
       
       output += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      output += `\n💡 Ketik <b>"exit"</b> untuk keluar dari tampilan ini`;
+      output += `\n` + generateExitInstruction();
 
-      // Kirim pesan
-      const sentMessage = await bot.sendMessage(msg.chat.id, output, {
-        parse_mode: 'HTML'
-      });
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk inisialisasi flow state
+      initializeFlowState(adminState, msg.chat.id, 'view_users');
 
-      // Auto-delete command message setelah respons dikirim
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(msg.chat.id, msg.message_id);
-        } catch (e) {}
-      }, 1000);
-
-      // Simpan state untuk tracking
-      adminState.set(msg.chat.id, {
-        mode: 'view_users',
-        resultMessageId: sentMessage.message_id
-      });
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk send message dengan tracking
+      await sendMessageWithTracking(
+        bot, 
+        msg.chat.id, 
+        output, 
+        { parse_mode: 'HTML' },
+        adminState,
+        adminState.get(msg.chat.id),
+        msg
+      );
 
     } catch (error) {
       console.error('Error in getalluser:', error);
       await bot.sendMessage(msg.chat.id, `❌ Gagal mengambil data user: ${error.message}`);
       
-      // Auto-delete command message
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(msg.chat.id, msg.message_id);
-        } catch (e) {}
-      }, 1000);
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto-delete
+      await autoDeleteMessage(bot, msg.chat.id, msg.message_id);
     }
   });
 };
