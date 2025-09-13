@@ -127,8 +127,8 @@ async function fetchStokBekasan() {
   }
 }
 
-// Function untuk generate detail paket bekasan
-const generateDetailPaketBekasan = (tipe, hari, deskripsi, hargaValue, stokCount = 0) => {
+// Function untuk generate detail paket bekasan (tanpa status stok untuk performa)
+const generateDetailPaketBekasan = (tipe, hari, deskripsi, hargaValue) => {
   const tipeNames = {
     'l': 'BEKASAN L',
     'xl': 'BEKASAN XL',
@@ -136,14 +136,12 @@ const generateDetailPaketBekasan = (tipe, hari, deskripsi, hargaValue, stokCount
   };
   
   const tipeName = tipeNames[tipe] || tipe.toUpperCase();
-  const statusStok = stokCount > 0 ? `✅ Tersedia (${stokCount})` : '❌ Habis';
   
   return `🌍 Detail BEKASAN GLOBAL\n\n` +
     `📦 <b>Paket:</b> ${tipeName} ${hari} HARI\n` +
     `📝 <b>Deskripsi:</b>\n${deskripsi || 'Paket bekasan akrab global'}\n\n` +
     `💰 <b>Detail Harga:</b>\n` +
     `💸 Rp. ${hargaValue.toLocaleString('id-ID')}\n\n` +
-    `📊 <b>Status Stok:</b> ${statusStok}\n\n` +
     `📝 <b>Catatan:</b>\n` +
     `• ✅ Paket bekasan akrab global\n` +
     `• ✅ Aktif segera setelah pembelian\n` +
@@ -267,16 +265,8 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
           
           const { tipe, durasi } = paketStatis;
           
-          // Coba fetch stok real-time untuk validasi (optional)
-          let stokCount = 0;
-          try {
-            const stokBekasan = await fetchStokBekasan();
-            stokCount = stokBekasan[kodeProduk]?.jumlah || 0;
-          } catch (error) {
-            console.log('Info: Menggunakan data statis, stok akan divalidasi saat pembelian');
-            // Set default stok untuk testing (akan divalidasi saat proses pembelian)
-            stokCount = 1;
-          }
+          // TIDAK FETCH STOK UNTUK TAMPILAN DETAIL - HANYA SAAT PEMBELIAN
+          // Stok akan divalidasi real-time hanya saat user klik "LANJUT BELI"
           
           // Ambil harga dan deskripsi dari database
           const { getKonfigurasi } = require('../../../db');
@@ -288,8 +278,8 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
           
           const hargaValue = harga ? parseInt(harga) : 0;
           
-          // Generate detail paket menggunakan data statis
-          const detailPaket = generateDetailPaketBekasan(tipe, durasi, deskripsi, hargaValue, stokCount);
+          // Generate detail paket tanpa status stok (untuk performa)
+          const detailPaket = generateDetailPaketBekasan(tipe, durasi, deskripsi, hargaValue);
           const keyboard = [
             [
               { text: 'KEMBALI', callback_data: `bekasan_global_anggota_${tipe}` },
@@ -398,16 +388,8 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
             return;
           }
           
-          // Coba fetch stok real-time untuk validasi (optional)
-          let stokCount = 0;
-          try {
-            const stokBekasan = await fetchStokBekasan();
-            stokCount = stokBekasan[kodePaket]?.jumlah || 0;
-          } catch (error) {
-            console.log('Info: Menggunakan data statis, stok akan divalidasi saat pembelian');
-            // Set default stok untuk testing (akan divalidasi saat proses pembelian)
-            stokCount = 1;
-          }
+          // TIDAK FETCH STOK UNTUK TAMPILAN DETAIL - HANYA SAAT PEMBELIAN
+          // Stok akan divalidasi real-time hanya saat user klik "LANJUT BELI"
           
           // Ambil harga dan deskripsi dari database
           const { getKonfigurasi } = require('../../../db');
@@ -419,8 +401,8 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
           
           const hargaValue = harga ? parseInt(harga) : 0;
           
-          // Generate detail paket menggunakan data statis
-          const detailPaket = generateDetailPaketBekasan(tipe, hari, deskripsi, hargaValue, stokCount);
+          // Generate detail paket tanpa status stok (untuk performa)
+          const detailPaket = generateDetailPaketBekasan(tipe, hari, deskripsi, hargaValue);
           const keyboard = [
             [
               { text: 'KEMBALI', callback_data: `bekasan_global_anggota_${tipe}` },

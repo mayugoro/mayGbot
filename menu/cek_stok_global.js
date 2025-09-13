@@ -5,7 +5,7 @@
 
 const axios = require('axios');
 // Import hardcode paket data untuk konsistensi nama produk
-const { getPaketBulananGlobal, getDisplayByKode } = require('./daftar-paket');
+const { getPaketBulananGlobal, getDisplayByKode, getPaketBekasanByTipe } = require('./daftar-paket');
 
 // Konfigurasi API Global (KHFY-STORE AKRAB - Real Stock)
 const KHFY_API_URL = 'https://panel.khfy-store.com/api/api-xl-v7/cek_stock_akrab';
@@ -327,12 +327,70 @@ module.exports = (bot) => {
       }
     }
 
+    // === FUNGSI CEK STOK PER TIPE BEKASAN ===
+    async function cekStokPerTipeBekasan() {
+      try {
+        // Fetch stok global dari API
+        const rawStokData = await fetchRawStokData();
+        
+        // Cek ketersediaan stok untuk setiap tipe bekasan
+        const tipeStatus = {};
+        
+        ['l', 'xl', 'xxl'].forEach(tipe => {
+          const paketTipe = getPaketBekasanByTipe(tipe);
+          let adaStok = false;
+          
+          // Cek setiap paket dalam tipe ini
+          for (const paket of paketTipe) {
+            const kodeProduk = paket.kode_produk;
+            if (rawStokData[kodeProduk] && rawStokData[kodeProduk] > 0) {
+              adaStok = true;
+              break; // Jika ada satu saja yang stok, langsung break
+            }
+          }
+          
+          tipeStatus[tipe] = adaStok;
+        });
+        
+        return tipeStatus;
+      } catch (error) {
+        console.error('Error cek stok per tipe bekasan:', error);
+        // Return default jika error
+        return { l: false, xl: false, xxl: false };
+      }
+    }
+
     // === REDIRECT MESSAGE (BACKUP) ===
     if (data === 'cek_stok_bekasan_global_redirect') {
-      await bot.answerCallbackQuery(id, {
-        text: '🌍 BEKASAN GLOBAL\n\nMasuk submenu bekasan untuk melihat stok per tipe (L/XL/XXL).\n\n✅ OK',
-        show_alert: true
-      });
+      try {
+        // Cek stok per tipe bekasan
+        const tipeStatus = await cekStokPerTipeBekasan();
+        
+        // Buat status message dengan indikator ✅/❌
+        const statusL = tipeStatus.l ? '✅' : '❌';
+        const statusXL = tipeStatus.xl ? '✅' : '❌';
+        const statusXXL = tipeStatus.xxl ? '✅' : '❌';
+        
+        const statusMessage = `🌍 STATUS BEKASAN GLOBAL:\n\n` +
+          `BEKASAN L = ${statusL}\n` +
+          `BEKASAN XL = ${statusXL}\n` +
+          `BEKASAN XXL = ${statusXXL}\n\n` +
+          `✅ = Stok Tersedia\n` +
+          `❌ = Stok Habis\n\n` +
+          `Pilih submenu yang memiliki stok tersedia.`;
+        
+        await bot.answerCallbackQuery(id, {
+          text: statusMessage,
+          show_alert: true
+        });
+      } catch (error) {
+        console.error('Error saat cek status bekasan:', error);
+        // Fallback ke message lama jika error
+        await bot.answerCallbackQuery(id, {
+          text: '🌍 BEKASAN GLOBAL\n\nMasuk submenu bekasan untuk melihat stok per tipe (L/XL/XXL).\n\n✅ OK',
+          show_alert: true
+        });
+      }
     }
   });
 };

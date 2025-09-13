@@ -100,10 +100,8 @@ const generateDetailPaketGlobalKeyboard = (kodeProduK) => [
   ]
 ];
 
-// Preload template pesan untuk detail paket global (static) dengan detail berdasarkan kode
-const generateDetailPaketGlobal = async (productData, stokCount = 999) => {
-  const statusStok = stokCount > 0 ? `✅ Tersedia` : '❌ Habis';
-  
+// Preload template pesan untuk detail paket global (optimized - tanpa status stok)
+const generateDetailPaketGlobal = async (productData) => {
   // Priority untuk harga: database berdasarkan kode produk -> fallback 'Hubungi admin'
   let hargaDisplay = 'Hubungi admin';
   let finalHarga = 0;
@@ -128,8 +126,7 @@ const generateDetailPaketGlobal = async (productData, stokCount = 999) => {
       `${deskripsiPaket}\n\n` +
       `💰 <b>Detail Harga:</b>\n` +
       `💸 Rp. ${hargaDisplay}\n\n` +
-      `📊 <b>Status Stok:</b> ${statusStok}\n\n` +
-      `📝 <b>Catatan:</b>\n` +
+      ` <b>Catatan:</b>\n` +
       `✅ Official, resmi, bergaransi\n` +
       `✅ Berlaku untuk XL, Axis, Live-on✨`,
     finalHarga: finalHarga
@@ -209,11 +206,11 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
             });
           }
           
-          // Gunakan stok default (tidak fetch API untuk menghindari rate limit)
-          const stokCount = 999; // Default stok tinggi
+          // TIDAK PERLU FETCH STOK UNTUK TAMPILAN DETAIL - OPTIMIZED
+          // Stok akan divalidasi real-time hanya saat klik "LANJUT BELI"
           
-          // Generate detail paket secara statis
-          const detailResult = await generateDetailPaketGlobal(productData, stokCount);
+          // Generate detail paket tanpa status stok (untuk performa)
+          const detailResult = await generateDetailPaketGlobal(productData);
           const keyboard = generateDetailPaketGlobalKeyboard(kodeProduK);
 
           // Edit message dengan detail paket
