@@ -1,4 +1,6 @@
 const { getHargaPaket, getHargaPaketDynamic, getAllProdukDinamis, updateHargaMarkup, setKonfigurasi, getKonfigurasi } = require('../../../db');
+// Import hardcode paket data untuk atur harga global (menghindari rate limit)
+const { getAllPaket, getPaketByDisplay, getPaketBekasanGlobal, getPaketBekasanByKode } = require('../../daftar-paket');
 
 const adminState = new Map();
 
@@ -55,52 +57,116 @@ const HARGA_GLOBAL_BULANAN_KEYBOARD = [
   [{ text: '🔙 KEMBALI', callback_data: 'atur_harga' }]
 ];
 
-// === DYNAMIC KEYBOARD GENERATOR UNTUK HARGA GLOBAL BULANAN (VERSI BARU) ===
-// Generate keyboard berdasarkan data dari tabel produk_dinamis
-async function generateDynamicHargaGlobalBulananKeyboard() {
+// === STATIC KEYBOARD GENERATOR UNTUK HARGA GLOBAL BULANAN (VERSI BARU) ===
+// Generate keyboard berdasarkan data hardcode dari daftar-paket.js (menghindari rate limit)
+async function generateStaticHargaGlobalBulananKeyboard() {
   try {
-    // Get produk dinamis dari database (kategori bulanan saja)
-    const produkBulanan = await getAllProdukDinamis('bulanan');
+    // Get data dari daftar-paket.js (tidak ada API call)
+    const allPaket = getAllPaket();
     
-    if (!produkBulanan || produkBulanan.length === 0) {
-      // console.log('⚠️  No dynamic products found, trying fallback...');
-      // Fallback ke sistem lama jika belum ada data
-      const { getDynamicProductMapping } = require('../../global/bulanan/list_bulanan_global');
-      const productMapping = await getDynamicProductMapping();
-      
-      const keyboard = [];
-      Object.keys(productMapping).forEach(kodeProduK => {
-        const productData = productMapping[kodeProduK];
-        keyboard.push([{
-          text: `${productData.nama.toUpperCase()} (${productData.kode})`,
-          callback_data: `edit_harga_global_dynamic_${kodeProduK.toLowerCase()}`
-        }]);
-      });
-      
-      keyboard.push([{ text: '🔙 KEMBALI', callback_data: 'atur_harga' }]);
-      return keyboard;
+    if (!allPaket || allPaket.length === 0) {
+      // Fallback ke keyboard static jika tidak ada data
+      return HARGA_GLOBAL_BULANAN_KEYBOARD;
     }
     
     const keyboard = [];
     
-    // Generate keyboard buttons berdasarkan produk dinamis dari database
-    produkBulanan.forEach(produk => {
+    // Generate keyboard buttons berdasarkan paket hardcode
+    allPaket.forEach(paket => {
       keyboard.push([{
-        text: `${produk.nama_produk.toUpperCase()} (${produk.kode_produk})`,
-        callback_data: `edit_harga_dynamic_${produk.kode_produk.toLowerCase()}`
+        text: `${paket.nama_display.toUpperCase()} (${paket.kode_produk})`,
+        callback_data: `edit_harga_static_${paket.kode_produk.toLowerCase()}`
       }]);
     });
     
-    // Tambahkan tombol kembali dan sync
-    keyboard.push([{ text: '🔄 SYNC API', callback_data: 'sync_produk_api' }]);
+    // Tambahkan tombol kembali
     keyboard.push([{ text: '🔙 KEMBALI', callback_data: 'atur_harga' }]);
     
     return keyboard;
   } catch (error) {
-    console.error('Error generating dynamic harga keyboard:', error);
+    console.error('Error generating static harga keyboard:', error);
     
     // Fallback ke keyboard static jika gagal
     return HARGA_GLOBAL_BULANAN_KEYBOARD;
+  }
+}
+
+// === STATIC KEYBOARD GENERATOR UNTUK HARGA GLOBAL BEKASAN (VERSI BARU) ===
+// Generate keyboard berdasarkan data hardcode dari daftar-paket.js (menghindari rate limit)
+async function generateStaticHargaGlobalBekasanKeyboard() {
+  try {
+    // Get data bekasan dari daftar-paket.js (tidak ada API call)
+    const allBekasan = getPaketBekasanGlobal();
+    
+    if (!allBekasan || allBekasan.length === 0) {
+      // Fallback ke keyboard static jika tidak ada data
+      return HARGA_GLOBAL_BEKASAN_KEYBOARD;
+    }
+    
+    const keyboard = [];
+    
+    // Group bekasan by tipe
+    const bekasanByTipe = {
+      l: allBekasan.filter(p => p.tipe === 'l'),
+      xl: allBekasan.filter(p => p.tipe === 'xl'),
+      xxl: allBekasan.filter(p => p.tipe === 'xxl')
+    };
+    
+    // Add tipe buttons
+    if (bekasanByTipe.l.length > 0) {
+      keyboard.push([{ text: 'BEKASAN GLOBAL L', callback_data: 'harga_static_bekasan_global_l' }]);
+    }
+    if (bekasanByTipe.xl.length > 0) {
+      keyboard.push([{ text: 'BEKASAN GLOBAL XL', callback_data: 'harga_static_bekasan_global_xl' }]);
+    }
+    if (bekasanByTipe.xxl.length > 0) {
+      keyboard.push([{ text: 'BEKASAN GLOBAL XXL', callback_data: 'harga_static_bekasan_global_xxl' }]);
+    }
+    
+    // Tambahkan tombol kembali
+    keyboard.push([{ text: '🔙 KEMBALI', callback_data: 'atur_harga' }]);
+    
+    return keyboard;
+  } catch (error) {
+    console.error('Error generating static bekasan keyboard:', error);
+    
+    // Fallback ke keyboard static jika gagal
+    return HARGA_GLOBAL_BEKASAN_KEYBOARD;
+  }
+}
+
+// === STATIC KEYBOARD GENERATOR UNTUK HARGA BEKASAN TIPE SPESIFIK ===
+async function generateStaticHargaBekasanTipeKeyboard(tipe) {
+  try {
+    const allBekasan = getPaketBekasanGlobal();
+    const bekasanTipe = allBekasan.filter(p => p.tipe === tipe.toLowerCase());
+    
+    if (!bekasanTipe || bekasanTipe.length === 0) {
+      return [[{ text: 'Tidak ada data', callback_data: 'no_data' }], 
+              [{ text: '🔙 KEMBALI', callback_data: 'harga_global_bekasan' }]];
+    }
+    
+    const keyboard = [];
+    
+    // Sort by durasi
+    bekasanTipe.sort((a, b) => parseInt(a.durasi) - parseInt(b.durasi));
+    
+    // Generate buttons
+    bekasanTipe.forEach(paket => {
+      keyboard.push([{
+        text: `${paket.nama_display.toUpperCase()}`,
+        callback_data: `edit_harga_static_bekasan_${paket.kode_produk.toLowerCase()}`
+      }]);
+    });
+    
+    // Tambahkan tombol kembali
+    keyboard.push([{ text: '🔙 KEMBALI', callback_data: 'harga_global_bekasan' }]);
+    
+    return keyboard;
+  } catch (error) {
+    console.error('Error generating static bekasan tipe keyboard:', error);
+    return [[{ text: '❌ Error', callback_data: 'error' }], 
+            [{ text: '🔙 KEMBALI', callback_data: 'harga_global_bekasan' }]];
   }
 }
 
@@ -378,8 +444,8 @@ module.exports = (bot) => {
         return bot.answerCallbackQuery(id, { text: 'ente mau ngapain wak🗿', show_alert: true });
       }
       
-      // Generate keyboard dinamis berdasarkan data API
-      const keyboard = await generateDynamicHargaGlobalBulananKeyboard();
+      // Generate keyboard statis berdasarkan daftar-paket.js (menghindari rate limit)
+      const keyboard = await generateStaticHargaGlobalBulananKeyboard();
       const content = HARGA_GLOBAL_BULANAN_CONTENT;
 
       try {
@@ -418,7 +484,8 @@ module.exports = (bot) => {
         return bot.answerCallbackQuery(id, { text: 'ente mau ngapain wak🗿', show_alert: true });
       }
       
-      const keyboard = HARGA_GLOBAL_BEKASAN_KEYBOARD;
+      // Generate keyboard statis berdasarkan daftar-paket.js (menghindari rate limit)
+      const keyboard = await generateStaticHargaGlobalBekasanKeyboard();
       const content = HARGA_GLOBAL_BEKASAN_CONTENT;
 
       try {
@@ -548,6 +615,90 @@ module.exports = (bot) => {
       return;
     }
 
+    // === HARGA STATIC BEKASAN GLOBAL TIPE SPESIFIK ===
+    if (/^harga_static_bekasan_global_(l|xl|xxl)$/i.test(data)) {
+      if (from.id.toString() !== process.env.ADMIN_ID) {
+        return bot.answerCallbackQuery(id, { text: 'ente mau ngapain wak🗿', show_alert: true });
+      }
+      
+      const tipe = data.split('_')[4]; // l, xl, atau xxl
+      
+      try {
+        // Generate keyboard berdasarkan data statis
+        const keyboard = await generateStaticHargaBekasanTipeKeyboard(tipe);
+        const content = `🌍 <b>ATUR HARGA BEKASAN GLOBAL ${tipe.toUpperCase()}</b>\n\nPilih durasi paket ${tipe.toUpperCase()} yang ingin diubah harganya:`;
+
+        if (message.caption) {
+          await bot.editMessageCaption(content, {
+            chat_id: chatId,
+            message_id: msgId,
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: keyboard }
+          });
+        } else {
+          await bot.editMessageText(content, {
+            chat_id: chatId,
+            message_id: msgId,
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: keyboard }
+          });
+        }
+      } catch (error) {
+        console.error(`Error editing harga_static_bekasan_global_${tipe}:`, error.message);
+      }
+
+      await bot.answerCallbackQuery(id);
+      return;
+    }
+
+    // === EDIT HARGA SPESIFIK (BEKASAN STATIC) ===
+    if (/^edit_harga_static_bekasan_[a-zA-Z0-9]+$/i.test(data)) {
+      if (from.id.toString() !== process.env.ADMIN_ID) {
+        return bot.answerCallbackQuery(id, { text: 'ente mau ngapain wak🗿', show_alert: true });
+      }
+      
+      const kodeProduK = data.replace('edit_harga_static_bekasan_', '').toUpperCase();
+      
+      try {
+        // Validasi paket bekasan dari data hardcode
+        const paketBekasan = getPaketBekasanByKode(kodeProduK);
+        
+        if (!paketBekasan) {
+          return bot.answerCallbackQuery(id, { 
+            text: `❌ Paket bekasan ${kodeProduK} tidak ditemukan dalam sistem.`, 
+            show_alert: true 
+          });
+        }
+        
+        // Ambil harga dari database berdasarkan pattern key
+        const keyPattern = `harga_bekasan_global_${paketBekasan.tipe}_${paketBekasan.durasi}h`;
+        const harga = await getKonfigurasi(keyPattern);
+        const hargaSekarang = harga ? parseInt(harga) : 0;
+        
+        // Set state untuk input harga baru
+        adminState.set(chatId, { 
+          mode: 'edit_harga', 
+          kategori: `static_bekasan_${kodeProduK.toLowerCase()}`,
+          paketData: paketBekasan,
+          keyPattern
+        });
+        
+        const inputMsg = await bot.sendMessage(chatId, 
+          generateEditHargaForm('bekasan_global', paketBekasan.nama_display, hargaSekarang), {
+          parse_mode: 'HTML'
+        });
+        
+        const currentState = adminState.get(chatId);
+        currentState.inputMessageId = inputMsg.message_id;
+        adminState.set(chatId, currentState);
+        
+      } catch (e) {
+        console.error('Error edit_harga_static_bekasan:', e);
+        await bot.answerCallbackQuery(id, { text: '❌ Gagal memuat data bekasan.', show_alert: true });
+      }
+      return;
+    }
+
     // === EDIT HARGA SPESIFIK (BEKASAN) ===
     if (/^edit_harga_\d+h$/i.test(data)) {
       if (from.id.toString() !== process.env.ADMIN_ID) {
@@ -602,121 +753,55 @@ module.exports = (bot) => {
       return;
     }
 
-    // === SYNC PRODUK API ===
+    // === SYNC PRODUK API (DISABLED - MENGGUNAKAN DATA STATIS) ===
+    // Handler ini dinonaktifkan karena sekarang menggunakan data hardcode dari daftar-paket.js
+    /*
     if (data === 'sync_produk_api') {
       if (from.id.toString() !== process.env.ADMIN_ID) {
         return bot.answerCallbackQuery(id, { text: 'ente mau ngapain wak🗿', show_alert: true });
       }
       
-      // Show loading message (non-intrusive)
-      await bot.answerCallbackQuery(id, { text: '🔄 Syncing...', show_alert: false });
-      
-      try {
-        const { autoSyncProdukFromAPI } = require('../../../db');
-        
-        // console.log('🎛️ Admin triggered manual sync');
-        const syncedCount = await autoSyncProdukFromAPI();
-        
-        // Send simple feedback message instead of intrusive alert
-        let feedbackMessage;
-        if (syncedCount > 0) {
-          feedbackMessage = `🔄 <b>Sync Completed</b>\n\n✅ ${syncedCount} products updated\n💾 Markup preserved`;
-        } else {
-          feedbackMessage = `🔄 <b>Sync Completed</b>\n\nℹ️ No new updates\n⚡ API not available or no changes`;
-        }
-        
-        // Send lightweight feedback message
-        const feedbackMsg = await bot.sendMessage(chatId, feedbackMessage, { 
-          parse_mode: 'HTML',
-          disable_notification: true // Silent notification
-        });
-        
-        // Auto-delete feedback message after 5 seconds
-        setTimeout(() => {
-          bot.deleteMessage(chatId, feedbackMsg.message_id).catch(() => {});
-        }, 5000);
-        
-        // Refresh keyboard setelah sync jika ada perubahan
-        if (syncedCount > 0) {
-          try {
-            const keyboard = await generateDynamicHargaGlobalBulananKeyboard();
-            const content = HARGA_GLOBAL_BULANAN_CONTENT;
-
-            if (message.caption) {
-              await bot.editMessageCaption(content, {
-                chat_id: chatId,
-                message_id: msgId,
-                parse_mode: 'HTML',
-                reply_markup: { inline_keyboard: keyboard }
-              });
-            } else {
-              await bot.editMessageText(content, {
-                chat_id: chatId,
-                message_id: msgId,
-                parse_mode: 'HTML',
-                reply_markup: { inline_keyboard: keyboard }
-              });
-            }
-          } catch (editError) {
-            // Abaikan error jika message tidak berubah (normal behavior)
-            if (editError.message && !editError.message.includes('message is not modified')) {
-              // console.log('Could not refresh keyboard:', editError.message);
-            }
-            // Untuk "message is not modified", ini adalah behavior normal dan tidak perlu di-log
-          }
-        }
-        
-      } catch (error) {
-        console.error('Sync error:', error);
-        // Send error message but also lightweight and auto-delete
-        const errorMsg = await bot.sendMessage(chatId, `❌ <b>Sync Failed</b>\n\n${error.message}`, { 
-          parse_mode: 'HTML',
-          disable_notification: true
-        });
-        
-        setTimeout(() => {
-          bot.deleteMessage(chatId, errorMsg.message_id).catch(() => {});
-        }, 8000);
-      }
+      await bot.answerCallbackQuery(id, { 
+        text: 'ℹ️ Sync API tidak diperlukan. Sistem menggunakan data hardcode dari daftar-paket.js', 
+        show_alert: true 
+      });
       return;
     }
+    */
 
-    // === EDIT HARGA SPESIFIK (PRODUK DINAMIS) ===
-    if (/^edit_harga_dynamic_[a-zA-Z0-9]+$/i.test(data)) {
+    // === EDIT HARGA SPESIFIK (PRODUK STATIS DARI DAFTAR-PAKET) ===
+    if (/^edit_harga_static_[a-zA-Z0-9]+$/i.test(data)) {
       if (from.id.toString() !== process.env.ADMIN_ID) {
         return bot.answerCallbackQuery(id, { text: 'ente mau ngapain wak🗿', show_alert: true });
       }
       
-      const kodeProduK = data.replace('edit_harga_dynamic_', '').toUpperCase();
+      const kodeProduK = data.replace('edit_harga_static_', '').toUpperCase();
       
       try {
-        // Get product data dari tabel produk_dinamis
-        const { getProdukDinamis } = require('../../../db');
-        const produkData = await getProdukDinamis(kodeProduK);
+        // Get product data dari daftar-paket.js hardcode
+        const allPaket = getAllPaket();
+        const produkData = allPaket.find(paket => paket.kode_produk.toLowerCase() === kodeProduK.toLowerCase());
         
         if (!produkData) {
-          return bot.answerCallbackQuery(id, { text: `❌ Produk ${kodeProduK} tidak ditemukan di database.`, show_alert: true });
+          return bot.answerCallbackQuery(id, { text: `❌ Produk ${kodeProduK} tidak ditemukan dalam daftar paket.`, show_alert: true });
         }
         
-        // Get harga saat ini (markup jika ada, atau harga API)
-        const hargaSekarang = produkData.harga_markup || produkData.harga_api;
+        // Get harga saat ini dari database
+        const hargaSekarang = await getHargaPaketDynamic(kodeProduK, produkData.nama_display?.toLowerCase()) || 0;
         
         adminState.set(chatId, { 
           mode: 'edit_harga', 
-          kategori: `dynamic_${kodeProduK.toLowerCase()}`,
+          kategori: `static_${kodeProduK.toLowerCase()}`,
           kodeProduK: kodeProduK,
-          namaProduK: produkData.nama_produk,
-          hargaAPI: produkData.harga_api
+          namaProduK: produkData.nama_display
         });
         
         const inputMsg = await bot.sendMessage(chatId, 
-          `💰 <b>EDIT HARGA GLOBAL BULANAN ${produkData.nama_produk.toUpperCase()}</b>\n\n` +
+          `💰 <b>EDIT HARGA GLOBAL BULANAN ${produkData.nama_display.toUpperCase()}</b>\n\n` +
           `📦 <b>Kode Produk:</b> ${kodeProduK}\n\n` +
-          `💰 <b>Harga pada api saat ini:</b> Rp. ${produkData.harga_api.toLocaleString('id-ID')}\n` +
           `💰 <b>Harga saat ini:</b> Rp. ${hargaSekarang.toLocaleString('id-ID')}\n\n` +
           `Masukkan harga baru (tanpa tanda titik atau koma):\n\n` +
           `💡 Contoh: 50000\n` +
-          `💡 Ketik "reset" untuk menggunakan harga API\n` +
           `💡 Ketik "exit" untuk membatalkan.`, {
           parse_mode: 'HTML'
         });
@@ -726,7 +811,7 @@ module.exports = (bot) => {
         adminState.set(chatId, currentState);
         
       } catch (e) {
-        console.error('Error editing dynamic product price:', e);
+        console.error('Error editing static product price:', e);
         await bot.answerCallbackQuery(id, { text: '❌ Gagal memuat data produk.', show_alert: true });
       }
       return;
@@ -914,7 +999,107 @@ module.exports = (bot) => {
       let jenisText = '';
       let displayName = '';
       
-      if (state.kategori.startsWith('dynamic_')) {
+      if (state.kategori.startsWith('static_')) {
+        // Static product: simpan ke tabel konfigurasi dengan kode produk
+        try {
+          const kodeProduK = state.kodeProduK;
+          key = `harga_${kodeProduK.toLowerCase()}`;
+          jenisText = `GLOBAL BULANAN STATIS`;
+          displayName = `${state.namaProduK} (${kodeProduK})`;
+          
+          await setKonfigurasi(key, hargaBaru.toString());
+          
+          const teksHasil = `✅ <b>Harga berhasil disimpan!</b>\n\n` +
+            `📦 Produk: ${displayName}\n` +
+            `💰 Harga Baru: <code>Rp. ${hargaBaru.toLocaleString('id-ID')}</code>\n` +
+            `🔑 Database Key: <code>${key}</code>\n` +
+            `🔧 Sumber: daftar-paket.js (hardcode)`;
+          
+          if (state.inputMessageId) {
+            try {
+              await bot.editMessageText(teksHasil, {
+                chat_id: chatId,
+                message_id: state.inputMessageId,
+                parse_mode: 'HTML'
+              });
+            } catch (e) {
+              await bot.sendMessage(chatId, teksHasil, { parse_mode: 'HTML' });
+            }
+          } else {
+            await bot.sendMessage(chatId, teksHasil, { parse_mode: 'HTML' });
+          }
+          
+          // Auto delete after 3 seconds
+          setTimeout(async () => {
+            try {
+              await bot.deleteMessage(chatId, state.inputMessageId);
+            } catch (e) {
+              // Ignore delete error
+            }
+          }, 3000);
+          
+          adminState.delete(chatId);
+          await bot.deleteMessage(chatId, msg.message_id);
+          return;
+        } catch (e) {
+          await bot.sendMessage(chatId, `❌ Gagal menyimpan harga statis: ${e.message}`);
+          adminState.delete(chatId);
+          await bot.deleteMessage(chatId, msg.message_id);
+          return;
+        }
+      } else if (state.kategori.startsWith('static_bekasan_')) {
+        // Static bekasan product: simpan ke tabel konfigurasi dengan pattern khusus bekasan
+        try {
+          const paketData = state.paketData;
+          const keyPattern = state.keyPattern;
+          
+          key = keyPattern;
+          jenisText = `GLOBAL BEKASAN STATIS`;
+          displayName = `${paketData.nama_display} (${paketData.kode_produk})`;
+          
+          await setKonfigurasi(key, hargaBaru.toString());
+          
+          const teksHasil = `✅ <b>Harga bekasan berhasil disimpan!</b>\n\n` +
+            `📦 Produk: ${displayName}\n` +
+            `🕐 Durasi: ${paketData.durasi} jam\n` +
+            `📶 Tipe: ${paketData.tipe.toUpperCase()}\n` +
+            `💰 Harga Baru: <code>Rp. ${hargaBaru.toLocaleString('id-ID')}</code>\n` +
+            `🔑 Database Key: <code>${key}</code>\n` +
+            `🔧 Sumber: daftar-paket.js (hardcode)`;
+          
+          if (state.inputMessageId) {
+            try {
+              await bot.editMessageText(teksHasil, {
+                chat_id: chatId,
+                message_id: state.inputMessageId,
+                parse_mode: 'HTML'
+              });
+            } catch (e) {
+              await bot.sendMessage(chatId, teksHasil, { parse_mode: 'HTML' });
+            }
+          } else {
+            await bot.sendMessage(chatId, teksHasil, { parse_mode: 'HTML' });
+          }
+          
+          // Auto delete after 3 seconds
+          setTimeout(async () => {
+            try {
+              await bot.deleteMessage(chatId, state.inputMessageId);
+            } catch (e) {
+              // Ignore delete error
+            }
+          }, 3000);
+          
+          adminState.delete(chatId);
+          await bot.deleteMessage(chatId, msg.message_id);
+          return;
+        } catch (e) {
+          await bot.sendMessage(chatId, `❌ Gagal menyimpan harga bekasan statis: ${e.message}`);
+          adminState.delete(chatId);
+          await bot.deleteMessage(chatId, msg.message_id);
+          return;
+        }
+      } else if (state.kategori.startsWith('dynamic_')) {
         // Dynamic product: simpan ke tabel produk_dinamis
         try {
           await updateHargaMarkup(state.kodeProduK, hargaBaru);

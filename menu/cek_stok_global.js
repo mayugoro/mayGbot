@@ -1,8 +1,11 @@
 // Handler untuk cek stok global
 // Berinteraksi dengan API KHFY-STORE untuk mendapatkan stok akrab global
 // Handler untuk stok bulanan (non-BPA) dengan dynamic button generation
+// UPDATE: Menggunakan data hardcode dari daftar-paket.js untuk konsistensi nama produk
 
 const axios = require('axios');
+// Import hardcode paket data untuk konsistensi nama produk
+const { getPaketBulananGlobal, getDisplayByKode } = require('./daftar-paket');
 
 // Konfigurasi API Global (KHFY-STORE AKRAB - Real Stock)
 const KHFY_API_URL = 'https://panel.khfy-store.com/api/api-xl-v7/cek_stock_akrab';
@@ -170,6 +173,7 @@ async function convertAkrabMessageToArray(message) {
 }
 
 // Function untuk parse string stok menjadi object
+// UPDATE: Menggunakan data hardcode dari daftar-paket.js untuk konsistensi nama produk
 function parseStokGlobal(stokString) {
   const stokData = {};
   
@@ -183,11 +187,15 @@ function parseStokGlobal(stokString) {
       const match = line.match(/\(([^)]+)\)\s*([^:]+?):\s*(\d+)/);
       if (match) {
         const kode = match[1].trim();
-        const nama = match[2].trim();
+        const namaAPI = match[2].trim();
         const jumlah = parseInt(match[3]) || 0;
         
+        // Gunakan nama dari daftar-paket.js jika tersedia, fallback ke nama API
+        const namaDisplay = getDisplayByKode(kode) || namaAPI.toUpperCase();
+        
         stokData[kode] = {
-          nama: nama.toUpperCase(),
+          nama: namaDisplay,
+          nama_api: namaAPI.toUpperCase(), // Simpan nama original dari API
           jumlah: jumlah
         };
       }
@@ -212,12 +220,36 @@ module.exports = (bot) => {
         
         let info = '🌍 STOK BULANAN GLOBAL\n\n';
         
-        // Filter hanya paket bulanan (non-BPA)
-        Object.keys(stokData).forEach(kode => {
-          if (!kode.includes('BPA')) {
+        // Ambil daftar paket bulanan dari daftar-paket.js untuk urutan konsisten
+        const paketBulanan = getPaketBulananGlobal();
+        
+        // Tampilkan berdasarkan urutan dari daftar-paket.js (HANYA NAMA DISPLAY)
+        paketBulanan.forEach(paket => {
+          const kode = paket.kode_produk;
+          const namaDisplay = paket.nama_display;
+          
+          if (stokData[kode]) {
             const stok = stokData[kode];
-            const nama = stok.nama.replace(/\s+/g, ' ').trim();
-            info += `${nama.toUpperCase()} = ${stok.jumlah === 0 ? '-' : stok.jumlah}\n`;
+            const jumlahStok = stok.jumlah === 0 ? '-' : stok.jumlah;
+            // HANYA tampilkan nama display tanpa kode produk
+            info += `${namaDisplay} = ${jumlahStok}\n`;
+          } else {
+            // Jika tidak ada di API, tampilkan sebagai tidak tersedia
+            info += `${namaDisplay} = -\n`;
+          }
+        });
+        
+        // Tambahkan produk dari API yang tidak ada di daftar-paket.js (fallback)
+        Object.keys(stokData).forEach(kode => {
+          if (!kode.includes('BPA')) { // Skip bekasan
+            const isInPaketList = paketBulanan.some(p => p.kode_produk === kode);
+            if (!isInPaketList) {
+              const stok = stokData[kode];
+              const namaDisplay = stok.nama || kode;
+              const jumlahStok = stok.jumlah === 0 ? '-' : stok.jumlah;
+              // HANYA tampilkan nama display tanpa kode produk
+              info += `${namaDisplay} = ${jumlahStok}\n`;
+            }
           }
         });
 
@@ -230,6 +262,64 @@ module.exports = (bot) => {
 
       } catch (err) {
         console.error('Error cek stok bulanan global:', err);
+        await bot.answerCallbackQuery(id, {
+          text: '❌ Error: ' + err.message,
+          show_alert: true
+        });
+      }
+    }
+
+    // === CEK STOK BEKASAN GLOBAL (BPA) ===
+    if (data === 'cek_stok_bekasan_global') {
+      try {
+        const stokString = await fetchStokGlobal();
+        const stokData = parseStokGlobal(stokString);
+        
+        let info = '🌍 STOK BEKASAN GLOBAL\n\n';
+        
+        // Ambil daftar paket bekasan dari daftar-paket.js untuk urutan konsisten
+        const { getPaketBekasanGlobal } = require('./daftar-paket');
+        const allPaketBekasan = getPaketBekasanGlobal();
+        
+        // Tampilkan berdasarkan urutan dari daftar-paket.js (HANYA NAMA DISPLAY)
+        allPaketBekasan.forEach(paket => {
+          const kode = paket.kode_produk;
+          const namaDisplay = paket.nama_display;
+          
+          if (stokData[kode]) {
+            const stok = stokData[kode];
+            const jumlahStok = stok.jumlah === 0 ? '-' : stok.jumlah;
+            // HANYA tampilkan nama display tanpa kode produk
+            info += `${namaDisplay} = ${jumlahStok}\n`;
+          } else {
+            // Jika tidak ada di API, tampilkan sebagai tidak tersedia
+            info += `${namaDisplay} = -\n`;
+          }
+        });
+        
+        // Tambahkan produk BPA dari API yang tidak ada di daftar-paket.js (fallback)
+        Object.keys(stokData).forEach(kode => {
+          if (kode.includes('BPA')) {
+            const isInPaketList = allPaketBekasan.some(p => p.kode_produk === kode);
+            if (!isInPaketList) {
+              const stok = stokData[kode];
+              const namaDisplay = stok.nama || kode;
+              const jumlahStok = stok.jumlah === 0 ? '-' : stok.jumlah;
+              // HANYA tampilkan nama display tanpa kode produk
+              info += `${namaDisplay} = ${jumlahStok}\n`;
+            }
+          }
+        });
+
+        info += '\n✅ Tekan OK untuk keluar';
+
+        await bot.answerCallbackQuery(id, {
+          text: info,
+          show_alert: true
+        });
+
+      } catch (err) {
+        console.error('Error cek stok bekasan global:', err);
         await bot.answerCallbackQuery(id, {
           text: '❌ Error: ' + err.message,
           show_alert: true

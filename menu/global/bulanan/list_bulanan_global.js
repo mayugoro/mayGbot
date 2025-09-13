@@ -1,30 +1,39 @@
 const { getUserSaldo, getHargaPaketDynamic, getKonfigurasi } = require('../../../db');
-const { fetchCombinedProductData } = require('../../../utils/combined_product_data');
+// Import hardcode paket data sebagai pengganti API dinamis untuk menghindari rate limit
+const { getPaketBulananGlobal, getPaketByDisplay } = require('../../daftar-paket');
 
-// === DYNAMIC KEYBOARD GENERATOR UNTUK BULANAN GLOBAL ===
-// Generate keyboard berdasarkan response API secara dinamis
-async function generateDynamicBulananGlobalKeyboard() {
+// === STATIC KEYBOARD GENERATOR UNTUK BULANAN GLOBAL ===
+// Generate keyboard berdasarkan data hardcode dari daftar-paket.js (menghindari rate limit)
+// UPDATE: Hanya mengambil data BULANAN GLOBAL saja (tidak termasuk bekasan)
+async function generateStaticBulananGlobalKeyboard() {
   try {
-    const products = await fetchCombinedProductData();
+    // Gunakan data BULANAN GLOBAL saja (tidak semua paket)
+    const paketBulanan = getPaketBulananGlobal();
     
-    // Filter hanya paket yang tersedia dan ada stoknya
-    const availablePackages = products.filter(product => {
-      // Cek stok riil dari API gabungan
-      const stokRiil = product.stok || 0;
-      const kosong = product.stok_kosong || product.kosong;
-      
-      return stokRiil > 0 && !kosong; // Hanya tampilkan jika stok > 0 dan tidak kosong
-    });
-    
-    // Generate keyboard buttons dinamis
+    if (!paketBulanan || paketBulanan.length === 0) {
+      // Fallback manual jika tidak ada data bulanan
+      return [
+        [{ text: 'SUPERMINI', callback_data: 'bulanan_global_xla14' }],
+        [{ text: 'MINI', callback_data: 'bulanan_global_xla32' }],
+        [{ text: 'BIG L', callback_data: 'bulanan_global_xla39' }],
+        [{ text: 'JUMBO', callback_data: 'bulanan_global_xla65' }],
+        [{ text: 'JUMBO V2', callback_data: 'bulanan_global_xla51' }],
+        [{ text: 'MEGABIG', callback_data: 'bulanan_global_xla89' }],
+        [
+          { text: 'KEMBALI', callback_data: 'akrab_global' },
+          { text: 'STOK GLOBAL', callback_data: 'cek_stok_global' }
+        ]
+      ];
+    }
+
     const keyboard = [];
     
-    availablePackages.forEach(product => {
-      // Normalize nama produk untuk callback_data (huruf kecil, tanpa spasi)
-      const callbackData = `bulanan_global_${product.kode_produk.toLowerCase()}`;
+    // Generate keyboard hanya untuk paket bulanan global
+    paketBulanan.forEach(paket => {
+      const callbackData = `bulanan_global_${paket.kode_produk.toLowerCase()}`;
       
       keyboard.push([{
-        text: product.nama_produk.toUpperCase(),
+        text: paket.nama_display,
         callback_data: callbackData
       }]);
     });
@@ -37,11 +46,16 @@ async function generateDynamicBulananGlobalKeyboard() {
     
     return keyboard;
   } catch (error) {
-    console.error('Error generating dynamic keyboard:', error);
+    console.error('Error generating static bulanan keyboard:', error);
     
-    // Fallback ke keyboard static jika API gagal
+    // Fallback manual jika ada error
     return [
-      [{ text: 'API ERROR - MAINTENANCE', callback_data: 'maintenance' }],
+      [{ text: 'SUPERMINI', callback_data: 'bulanan_global_xla14' }],
+      [{ text: 'MINI', callback_data: 'bulanan_global_xla32' }],
+      [{ text: 'BIG L', callback_data: 'bulanan_global_xla39' }],
+      [{ text: 'JUMBO', callback_data: 'bulanan_global_xla65' }],
+      [{ text: 'JUMBO V2', callback_data: 'bulanan_global_xla51' }],
+      [{ text: 'MEGABIG', callback_data: 'bulanan_global_xla89' }],
       [
         { text: 'KEMBALI', callback_data: 'akrab_global' },
         { text: 'STOK GLOBAL', callback_data: 'cek_stok_global' }
@@ -50,29 +64,30 @@ async function generateDynamicBulananGlobalKeyboard() {
   }
 }
 
-// === DYNAMIC PRODUCT MAPPING ===
-// Mapping kode produk ke nama paket berdasarkan API response
-async function getDynamicProductMapping() {
+// === STATIC PRODUCT MAPPING ===
+// Mapping kode produk ke nama paket berdasarkan daftar-paket.js (menghindari rate limit)
+// UPDATE: Hanya mengambil data BULANAN GLOBAL saja (tidak termasuk bekasan)
+async function getStaticProductMapping() {
   try {
-    const products = await fetchCombinedProductData();
+    // Gunakan data hardcode BULANAN GLOBAL saja dari daftar-paket.js
+    const paketBulanan = getPaketBulananGlobal();
     
     const mapping = {};
-    products.forEach(product => {
-      // Map kode produk ke data lengkap dari API gabungan
-      mapping[product.kode_produk.toLowerCase()] = {
-        kode: product.kode_produk,
-        nama: product.nama_produk,
-        stok: product.stok || 0, // Stok riil dari API cek_stock
-        deskripsi: product.deskripsi || '', // Deskripsi lengkap dari list_product
-        harga: product.harga_final || 0, // Harga dari list_product
-        kosong: product.stok_kosong || product.kosong,
-        gangguan: product.stok_gangguan || product.gangguan
+    paketBulanan.forEach(paket => {
+      mapping[paket.kode_produk.toLowerCase()] = {
+        kode: paket.kode_produk,
+        nama: paket.nama_display,
+        stok: 999, // Default stok tinggi karena tidak ada realtime check
+        deskripsi: 'Detail kuota sesuai area coverage', // Default deskripsi
+        harga: 0, // Akan diambil dari database
+        kosong: false, // Default tidak kosong
+        gangguan: false // Default tidak gangguan
       };
     });
     
     return mapping;
   } catch (error) {
-    console.error('Error getting dynamic product mapping:', error);
+    console.error('Error getting static product mapping:', error);
     return {};
   }
 }
@@ -85,11 +100,11 @@ const generateDetailPaketGlobalKeyboard = (kodeProduK) => [
   ]
 ];
 
-// Preload template pesan untuk detail paket global (dynamic) dengan detail berdasarkan kode
-const generateDetailPaketGlobal = async (productData, stokCount = 0) => {
-  const statusStok = stokCount > 0 ? `✅ Tersedia (${stokCount})` : '❌ Habis';
+// Preload template pesan untuk detail paket global (static) dengan detail berdasarkan kode
+const generateDetailPaketGlobal = async (productData, stokCount = 999) => {
+  const statusStok = stokCount > 0 ? `✅ Tersedia` : '❌ Habis';
   
-  // Priority untuk harga: database berdasarkan kode produk -> API harga -> fallback 'Hubungi admin'
+  // Priority untuk harga: database berdasarkan kode produk -> fallback 'Hubungi admin'
   let hargaDisplay = 'Hubungi admin';
   let finalHarga = 0;
   
@@ -98,36 +113,13 @@ const generateDetailPaketGlobal = async (productData, stokCount = 0) => {
     
     if (finalHarga > 0) {
       hargaDisplay = finalHarga.toLocaleString('id-ID');
-    } else if (productData.harga > 0) {
-      finalHarga = productData.harga;
-      hargaDisplay = productData.harga.toLocaleString('id-ID');
     }
   } catch (error) {
     console.error('Error getting price from database:', error);
-    if (productData.harga > 0) {
-      finalHarga = productData.harga;
-      hargaDisplay = productData.harga.toLocaleString('id-ID');
-    }
   }
   
-  // Gunakan deskripsi langsung dari API (bukan statis)
-  let deskripsiPaket = 'Detail tidak tersedia';
-  if (productData.deskripsi && productData.deskripsi.trim()) {
-    // Format deskripsi dari API dengan line breaks yang proper
-    let cleanDescription = productData.deskripsi
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n')
-      .trim();
-    
-    // Filter out bagian "noted" dan setelahnya (case insensitive)
-    const notedIndex = cleanDescription.toLowerCase().indexOf('noted');
-    if (notedIndex !== -1) {
-      cleanDescription = cleanDescription.substring(0, notedIndex).trim();
-    }
-    
-    // Jika masih ada isi setelah filtering, gunakan itu
-    deskripsiPaket = cleanDescription || 'Detail kuota sesuai area coverage';
-  }
+  // Gunakan deskripsi statis untuk hardcode data
+  const deskripsiPaket = productData.deskripsi || 'Detail kuota sesuai area coverage operator';
   
   return {
     message: `🌍 <b>Detail BULANAN GLOBAL ${(productData.nama || 'UNKNOWN').toUpperCase()}</b>\n\n` +
@@ -151,44 +143,6 @@ const generateUserDetail = (userId, username, saldo, uptime) => {
          '📧 <b>Saldo</b>     : <code>Rp. ' + saldo.toLocaleString('id-ID') + '</code>\n' +
          '⌚ <b>Uptime</b>  : <code>' + uptime + '</code>';
 };
-
-// Function untuk fetch stok global dan ambil hanya paket bulanan (bukan BPA) - Updated untuk Combined API
-async function fetchStokPaketBulanan() {
-  try {
-    // Fetch data gabungan dari API list_product + cek_stock
-    const products = await fetchCombinedProductData();
-    
-    // Convert ke format yang dibutuhkan sistem existing
-    const paketBulanan = {};
-    products.forEach(product => {
-      // Data sudah difilter non-BPA dari fetchCombinedProductData
-      // Gunakan stok riil dari API gabungan
-      const stokRiil = product.stok || 0;
-      paketBulanan[product.kode_produk] = {
-        nama: product.nama_produk,
-        jumlah: stokRiil, // Stok riil dari cek_stock API
-        harga: product.harga_final, // Harga dari list_product API
-        deskripsi: product.deskripsi // Deskripsi lengkap dari list_product API
-      };
-    });
-    
-    return paketBulanan;
-  } catch (error) {
-    console.error('Error fetching stok paket bulanan:', error);
-    return {};
-  }
-}
-
-// Function untuk mapping kode produk - Updated untuk dynamic
-async function getProductByCode(kodeProduK) {
-  try {
-    const mapping = await getDynamicProductMapping();
-    return mapping[kodeProduK.toLowerCase()] || null;
-  } catch (error) {
-    console.error('Error getting product by code:', error);
-    return null;
-  }
-}
 
 module.exports = (bot, formatUptime, BOT_START_TIME) => {
   bot.on('callback_query', async (query) => {
@@ -221,8 +175,8 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
           });
         }
 
-        // Generate keyboard secara dinamis berdasarkan API response
-        const keyboard = await generateDynamicBulananGlobalKeyboard();
+        // Generate keyboard secara statis berdasarkan daftar-paket.js (menghindari rate limit)
+        const keyboard = await generateStaticBulananGlobalKeyboard();
 
         // Ambil data user untuk ditampilkan
         const uptime = formatUptime(Date.now() - BOT_START_TIME);
@@ -245,7 +199,7 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
         const kodeProduK = data.replace('bulanan_global_', '').toUpperCase();
         
         try {
-          // Get product data dari mapping dinamis
+          // Get product data dari mapping statis (tidak ada API call)
           const productData = await getProductByCode(kodeProduK);
           
           if (!productData) {
@@ -255,11 +209,10 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
             });
           }
           
-          // Fetch stok paket bulanan dari API global
-          const stokPaketBulanan = await fetchStokPaketBulanan();
-          const stokCount = stokPaketBulanan[kodeProduK]?.jumlah || 0;
+          // Gunakan stok default (tidak fetch API untuk menghindari rate limit)
+          const stokCount = 999; // Default stok tinggi
           
-          // Generate detail paket secara dinamis (await karena sekarang async)
+          // Generate detail paket secara statis
           const detailResult = await generateDetailPaketGlobal(productData, stokCount);
           const keyboard = generateDetailPaketGlobalKeyboard(kodeProduK);
 
@@ -272,7 +225,7 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
           });
           
         } catch (error) {
-          console.error('Error fetching dynamic product info:', error);
+          console.error('Error fetching static product info:', error);
           
           return bot.answerCallbackQuery(id, {
             text: '❌ Terjadi kesalahan saat mengambil informasi produk.',
@@ -289,7 +242,7 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
         const kodeProduK = data.replace('proses_bulanan_global_', '').toUpperCase();
         
         try {
-          // Get product data dari mapping dinamis
+          // Get product data dari mapping statis (tidak ada API call)
           const productData = await getProductByCode(kodeProduK);
           
           if (!productData) {
@@ -360,17 +313,41 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
 };
 
 // === HELPER FUNCTIONS FOR PRODUCT DATA ===
-// Function untuk mendapatkan data produk berdasarkan kode
+// Function untuk mendapatkan data produk berdasarkan kode (menggunakan data statis)
 async function getProductByCode(kodeProduK) {
-  const mapping = await getDynamicProductMapping();
+  const mapping = await getStaticProductMapping();
   return mapping[kodeProduK.toLowerCase()] || null;
+}
+
+// Function untuk fetch stok paket bulanan (simplified - tidak ada API call)
+// UPDATE: Hanya mengambil data BULANAN GLOBAL saja (tidak termasuk bekasan)
+async function fetchStokPaketBulanan() {
+  try {
+    // Return data statis BULANAN GLOBAL saja untuk menghindari rate limit
+    const paketBulanan = getPaketBulananGlobal();
+    const stokMapping = {};
+    
+    paketBulanan.forEach(paket => {
+      stokMapping[paket.kode_produk] = {
+        nama: paket.nama_display,
+        jumlah: 999, // Default stok tinggi
+        harga: 0, // Akan diambil dari database
+        deskripsi: 'Detail kuota sesuai area coverage'
+      };
+    });
+    
+    return stokMapping;
+  } catch (error) {
+    console.error('Error fetching static stok paket bulanan:', error);
+    return {};
+  }
 }
 
 // Export functions untuk digunakan di tempat lain
 module.exports.fetchStokPaketBulanan = fetchStokPaketBulanan;
 module.exports.getProductByCode = getProductByCode;
-module.exports.getDynamicProductMapping = getDynamicProductMapping;
-module.exports.generateDynamicBulananGlobalKeyboard = generateDynamicBulananGlobalKeyboard;
+module.exports.getStaticProductMapping = getStaticProductMapping;
+module.exports.generateStaticBulananGlobalKeyboard = generateStaticBulananGlobalKeyboard;
 module.exports.generateDetailPaketGlobal = generateDetailPaketGlobal;
 
-// === END OF DYNAMIC BULANAN GLOBAL HANDLER ===
+// === END OF STATIC BULANAN GLOBAL HANDLER ===
