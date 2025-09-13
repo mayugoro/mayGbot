@@ -237,6 +237,96 @@ const sendStyledInputMessage = async (bot, chatId, mainText, subtitle = '', exit
 };
 
 /**
+ * Handle exit untuk step-by-step flow (tidak mengganggu logika flow)
+ * Fungsi ini untuk digunakan di dalam setiap step, bukan di awal handler
+ * @param {Object} bot - Bot instance
+ * @param {Object} msg - Message object dari user
+ * @param {string} chatId - Chat ID
+ * @param {Object} state - Current state object
+ * @param {Map} stateMap - State management map
+ * @param {Array} exitKeywords - Exit keywords (default: EXIT_KEYWORDS.COMBINED)
+ * @returns {boolean} - true jika exit berhasil diproses, false jika bukan exit
+ */
+const handleStepByStepExit = async (bot, msg, chatId, state, stateMap, exitKeywords = null) => {
+  if (!msg.text) return false;
+  
+  // Default menggunakan EXIT_KEYWORDS.COMBINED jika tidak disediakan
+  const keywords = exitKeywords || module.exports.EXIT_KEYWORDS.COMBINED;
+  
+  if (keywords.includes(msg.text.trim())) {
+    // Hapus input message dan user message dengan delay 100ms untuk smooth effect
+    if (state.inputMessageId) {
+      autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
+    }
+    autoDeleteMessage(bot, chatId, msg.message_id, 100);
+    
+    // Clear state dari map
+    stateMap.delete(chatId);
+    
+    return true; // Exit berhasil diproses
+  }
+  
+  return false; // Bukan exit command
+};
+
+/**
+ * Template untuk step dalam step-by-step flow dengan built-in exit handling
+ * Digunakan untuk setiap step dalam multi-step flow
+ * @param {Object} bot - Bot instance
+ * @param {Object} msg - Message object
+ * @param {string} chatId - Chat ID
+ * @param {Object} state - Current state object
+ * @param {Map} stateMap - State management map
+ * @param {string} currentStep - Current step name untuk validasi
+ * @param {Function} stepLogic - Function yang berisi logika step (akan dipanggil jika bukan exit)
+ * @param {Array} exitKeywords - Custom exit keywords (optional)
+ * @returns {boolean} - true jika step selesai diproses (exit atau logic), false jika bukan step ini
+ */
+const handleStepWithExit = async (bot, msg, chatId, state, stateMap, currentStep, stepLogic, exitKeywords = null) => {
+  // Pastikan ini adalah step yang benar
+  if (!state || state.step !== currentStep) return false;
+  
+  // Handle exit untuk step ini
+  if (await handleStepByStepExit(bot, msg, chatId, state, stateMap, exitKeywords)) {
+    return true; // Exit berhasil diproses
+  }
+  
+  // Jika bukan exit, jalankan logika step
+  if (typeof stepLogic === 'function') {
+    await stepLogic();
+  }
+  
+  return true; // Step selesai diproses
+};
+
+/**
+ * Utility untuk transisi antar step dengan smooth message cleanup
+ * @param {Object} bot - Bot instance
+ * @param {string} chatId - Chat ID
+ * @param {Object} state - Current state object
+ * @param {Map} stateMap - State management map
+ * @param {Object} msg - User message object
+ * @param {string} nextStep - Next step name
+ * @param {string} mainText - Main text untuk input step berikutnya
+ * @param {string} subtitle - Subtitle untuk input step berikutnya
+ * @param {string} exitText - Custom exit text (default: "membatalkan")
+ */
+const transitionToNextStep = async (bot, chatId, state, stateMap, msg, nextStep, mainText, subtitle = '', exitText = 'membatalkan') => {
+  // Update state ke step berikutnya
+  state.step = nextStep;
+  stateMap.set(chatId, state);
+  
+  // Hapus pesan sebelumnya dengan smooth delete
+  autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
+  autoDeleteMessage(bot, chatId, msg.message_id, 100);
+  
+  // Kirim input form untuk step berikutnya
+  const nextInputMsg = await sendStyledInputMessage(bot, chatId, mainText, subtitle, exitText);
+  state.inputMessageId = nextInputMsg.message_id;
+  stateMap.set(chatId, state);
+};
+
+/**
  * Inisialisasi flow state
  * @param {Map} stateMap - State management map
  * @param {string} chatId - Chat ID
@@ -256,6 +346,9 @@ module.exports = {
   autoDeleteMessage,
   autoDeleteMultipleMessages,
   handleExitWithAutoDelete,
+  handleStepByStepExit,
+  handleStepWithExit,
+  transitionToNextStep,
   sendMessageWithTracking,
   handleFlowWithExit,
   generateExitInstruction,
