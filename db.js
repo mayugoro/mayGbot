@@ -770,42 +770,7 @@ const getKuotaPaket = async (kategori) => {
 
 // === FUNGSI PRODUK DINAMIS ===
 
-// Sync produk dari API ke database
-const syncProdukFromAPI = async (apiData) => {
-  return new Promise((resolve, reject) => {
-    const promises = [];
-    
-    apiData.forEach(product => {
-      const promise = new Promise((res, rej) => {
-        const kategori = product.kode_produk.includes('BPA') ? 'bekasan' : 'bulanan';
-        
-        db.run(`
-          INSERT OR REPLACE INTO produk_dinamis 
-          (kode_produk, nama_produk, kategori, harga_api, deskripsi, status_api, last_updated)
-          VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        `, [
-          product.kode_produk,
-          product.nama_produk,
-          kategori,
-          product.harga_final || 0,
-          product.deskripsi || '',
-          (product.kosong === 0 && product.gangguan === 0) ? 'active' : 'inactive'
-        ], function(err) {
-          if (err) rej(err);
-          else res(this.changes);
-        });
-      });
-      promises.push(promise);
-    });
-    
-    Promise.all(promises)
-      .then(results => {
-        console.log(`✅ Synced ${results.length} products from API to database`);
-        resolve(results.length);
-      })
-      .catch(reject);
-  });
-};
+// REMOVED: syncProdukFromAPI - manual tools digunakan untuk sync produk
 
 // Get semua produk dinamis
 const getAllProdukDinamis = (kategori = null) => {
@@ -871,141 +836,14 @@ const getHargaFinalProduk = (kodeProduK) => {
   });
 };
 
-// Auto-sync produk dari API (menggunakan external API call)
-const autoSyncProdukFromAPI = async () => {
-  try {
-    // console.log("🔄 Starting auto-sync produk from API...");
-    
-    // Check jika API key tersedia
-    if (!process.env.APIKEYG) {
-      // console.log("ℹ️  APIKEYG not configured, skipping auto-sync");
-      return 0;
-    }
-    
-    // Import fungsi fetch API
-    const { fetchRawStokData } = require('./menu/cek_stok_global');
-    
-    try {
-      // console.log("📡 Fetching products from KHFY-STORE API...");
-      const apiData = await fetchRawStokData();
-      
-      if (!apiData || apiData.length === 0) {
-        // console.log("⚠️  No products received from API");
-        return 0;
-      }
-      
-      // console.log(`📦 Received ${apiData.length} products from API`);
-      
-      // Filter hanya produk bulanan (non-BPA) yang aktif
-      const bulanProducts = apiData.filter(product => 
-        !product.kode_produk.includes('BPA') && 
-        product.kosong === 0 && 
-        product.gangguan === 0
-      );
-      
-      // console.log(`🔍 Filtered to ${bulanProducts.length} active bulanan products`);
-      
-      if (bulanProducts.length === 0) {
-        // console.log("⚠️  No active bulanan products to sync");
-        return 0;
-      }
-      
-      // Sync ke database dengan preserve existing markup
-      const syncedCount = await syncProdukFromAPIPreserveMarkup(bulanProducts);
-      // console.log(`✅ Auto-sync completed: ${syncedCount} products synced/updated`);
-      
-      return syncedCount;
-      
-    } catch (apiError) {
-      console.error("❌ API fetch failed:", apiError.message);
-      // console.log("ℹ️  API dependencies not ready, skipping auto-sync");
-      return 0;
-    }
-    
-  } catch (error) {
-    console.error("❌ Auto-sync failed:", error.message);
-    return 0;
-  }
-};
+// REMOVED: Auto-sync functions - manual tools digunakan untuk fetch API KHFY
 
-// Sync produk dari API ke database dengan preserve markup yang sudah ada
-const syncProdukFromAPIPreserveMarkup = async (apiData) => {
-  return new Promise((resolve, reject) => {
-    const promises = [];
-    
-    apiData.forEach(product => {
-      const promise = new Promise((res, rej) => {
-        const kategori = product.kode_produk.includes('BPA') ? 'bekasan' : 'bulanan';
-        const kodeProduK = product.kode_produk.toUpperCase();
-        
-        // First, check if product already exists to preserve markup
-        db.get(`
-          SELECT harga_markup FROM produk_dinamis WHERE kode_produk = ?
-        `, [kodeProduK], (err, existing) => {
-          if (err) return rej(err);
-          
-          // Preserve existing markup if available
-          const preservedMarkup = existing ? existing.harga_markup : null;
-          
-          db.run(`
-            INSERT OR REPLACE INTO produk_dinamis 
-            (kode_produk, nama_produk, kategori, harga_api, harga_markup, deskripsi, status_api, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-          `, [
-            kodeProduK,
-            product.nama_produk,
-            kategori,
-            product.harga_final || 0,
-            preservedMarkup, // Keep existing markup
-            product.deskripsi || '',
-            (product.kosong === 0 && product.gangguan === 0) ? 'active' : 'inactive'
-          ], function(err) {
-            if (err) rej(err);
-            else {
-              const action = existing ? 'updated' : 'added';
-              // console.log(`   ${action}: ${kodeProduK} (API: ${product.harga_final || 0}${preservedMarkup ? ', Markup preserved: ' + preservedMarkup : ''})`);
-              res(this.changes);
-            }
-          });
-        });
-      });
-      promises.push(promise);
-    });
-    
-    Promise.all(promises)
-      .then(results => {
-        resolve(results.length);
-      })
-      .catch(reject);
-  });
-};
+// REMOVED: syncProdukFromAPIPreserveMarkup - manual tools digunakan untuk sync produk
 
 // Jalankan fungsi init() dan tunggu sampai selesai
 init().then(() => {
-  // console.log("✅ Database initialized successfully");
-  
-  // Auto-sync produk dari API saat startup (delayed untuk memastikan dependencies tersedia)
-  setTimeout(() => {
-    autoSyncProdukFromAPI().then(syncedCount => {
-      if (syncedCount > 0) {
-        // console.log(`🎉 Initial sync completed: ${syncedCount} products synced`);
-      }
-    }).catch(err => {
-      // console.log("ℹ️  Initial auto-sync skipped:", err.message || "dependencies not ready");
-    });
-  }, 5000);
-  
-  // Setup periodic sync setiap 1 jam untuk menjaga data tetap update
-  setInterval(() => {
-    // console.log("⏰ Running periodic product sync...");
-    autoSyncProdukFromAPI().then(syncedCount => {
-      if (syncedCount > 0) {
-        // console.log(`🔄 Periodic sync completed: ${syncedCount} products updated`);
-      }
-    }).catch(err => {
-      // console.log("ℹ️  Periodic sync skipped:", err.message || "API not available");
-    });
-  }, 60 * 60 * 1000); // 1 jam = 60 menit * 60 detik * 1000 ms
+  console.log("✅ Database initialized successfully");
+  // NOTE: Auto-sync ke API KHFY sudah dihapus - gunakan manual tools untuk fetch data
   
 }).catch((err) => {
   console.error("Database initialization failed:", err);
@@ -1366,11 +1204,9 @@ module.exports = {
   unblockUser,
   autoUnblockIfActive,
   // === PRODUK DINAMIS ===
-  syncProdukFromAPI,
-  syncProdukFromAPIPreserveMarkup,
   getAllProdukDinamis,
   getProdukDinamis,
   updateHargaMarkup,
-  getHargaFinalProduk,
-  autoSyncProdukFromAPI
+  getHargaFinalProduk
+  // REMOVED: semua fungsi auto-sync API - gunakan manual tools
 };
