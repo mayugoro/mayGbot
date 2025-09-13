@@ -3,6 +3,7 @@
 // Dynamic loading untuk optimasi performance
 
 const { getKuotaPaket, setKonfigurasi } = require('../../../db');
+const { sendStyledInputMessage, autoDeleteMessage, EXIT_KEYWORDS } = require('../../../utils/exiter');
 
 const adminState = new Map();
 
@@ -36,15 +37,12 @@ const SETTING_KUOTA_CONTENT = '⚙️ <b>SETTING KUOTA</b>\n\nPilih jenis kuota 
 const KUOTA_BULANAN_CONTENT = '🌙 <b>KUOTA STOK GLOBAL</b>\n\nPilih paket bulanan yang ingin diubah kuotanya:\n\n💡 <i>Kuota 0 = Unlimited</i>';
 const KUOTA_PRIBADI_CONTENT = '🏪 <b>KUOTA STOK PRIBADI</b>\n\n📋 Menu kuota pribadi sedang disiapkan...\n\n💡 <i>Fitur ini akan segera tersedia</i>';
 
-// Template input form untuk edit kuota
-const generateEditKuotaForm = (paket, kuotaSekarang) => {
+// Function untuk generate input kuota menggunakan sendStyledInputMessage pattern
+const generateKuotaInputMessage = (paket, kuotaSekarang) => {
   const kuotaText = kuotaSekarang === '0' ? 'Unlimited' : `${kuotaSekarang} GB`;
-  return `🌙 <b>EDIT KUOTA BULANAN ${paket.toUpperCase()}</b>\n\n` +
-    `Kuota saat ini: <code>${kuotaText}</code>\n\n` +
-    `Masukkan kuota baru (dalam GB):\n\n` +
-    `💡 Contoh: 100 (untuk 100 GB)\n` +
-    `💡 Ketik 0 untuk unlimited\n` +
-    `💡 Ketik "exit" untuk membatalkan.`;
+  const mainText = `🌙 Edit Kuota Bulanan ${paket.toUpperCase()}\n\nKuota saat ini: ${kuotaText}`;
+  const subtitle = `Masukkan kuota baru (dalam GB):\n💡 Contoh: 100 (untuk 100 GB)\n💡 Ketik 0 untuk unlimited`;
+  return { mainText, subtitle };
 };
 
 module.exports = (bot) => {
@@ -186,9 +184,9 @@ module.exports = (bot) => {
         
         adminState.set(chatId, { mode: 'edit_kuota', kategori: paket });
         
-        const inputMsg = await bot.sendMessage(chatId, generateEditKuotaForm(paket, kuotaSekarang), {
-          parse_mode: 'HTML'
-        });
+        // Generate styled input menggunakan sendStyledInputMessage
+        const { mainText, subtitle } = generateKuotaInputMessage(paket, kuotaSekarang);
+        const inputMsg = await sendStyledInputMessage(bot, chatId, mainText, subtitle, 'membatalkan');
         
         const currentState = adminState.get(chatId);
         currentState.inputMessageId = inputMsg.message_id;
@@ -210,17 +208,13 @@ module.exports = (bot) => {
     if (!state || state.mode !== 'edit_kuota') return;
 
     // === CEK CANCEL/EXIT ===
-    if (['exit', 'EXIT', 'Exit'].includes(msg.text.trim())) {
+    if (EXIT_KEYWORDS.COMBINED.includes(msg.text.trim())) {
       if (state.inputMessageId) {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {
-          // Ignore delete error
-        }
+        autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
       }
       
       adminState.delete(chatId);
-      await bot.deleteMessage(chatId, msg.message_id);
+      autoDeleteMessage(bot, chatId, msg.message_id, 100);
       return;
     }
 
@@ -229,7 +223,7 @@ module.exports = (bot) => {
       
       if (isNaN(kuotaBaru) || kuotaBaru < 0) {
         await bot.sendMessage(chatId, '❌ Format kuota salah! Masukkan angka yang valid (0 untuk unlimited).');
-        await bot.deleteMessage(chatId, msg.message_id);
+        autoDeleteMessage(bot, chatId, msg.message_id, 100);
         return;
       }
       
@@ -255,16 +249,11 @@ module.exports = (bot) => {
         await bot.sendMessage(chatId, teksHasil, { parse_mode: 'HTML' });
       }
       
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {
-          // Ignore delete error
-        }
-      }, 2000);
+      // Auto delete dengan exiter autoDeleteMessage
+      autoDeleteMessage(bot, chatId, state.inputMessageId, 2000);
       
       adminState.delete(chatId);
-      await bot.deleteMessage(chatId, msg.message_id);
+      autoDeleteMessage(bot, chatId, msg.message_id, 100);
       
     } catch (e) {
       const teksError = `❌ Gagal menyimpan kuota: ${e.message}`;
@@ -283,7 +272,7 @@ module.exports = (bot) => {
       }
       
       adminState.delete(chatId);
-      await bot.deleteMessage(chatId, msg.message_id);
+      autoDeleteMessage(bot, chatId, msg.message_id, 100);
     }
   });
 };
