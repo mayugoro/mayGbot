@@ -1,5 +1,7 @@
 const axios = require('axios');
 require('dotenv').config({ quiet: true });
+// Import Input Exiter utilities untuk modern pattern
+const { sendStyledInputMessage, autoDeleteMessage, EXIT_KEYWORDS } = require('../../../utils/exiter');
 
 // API Configuration dari .env
 const API_PRIMARY_BASE = process.env.API1;
@@ -244,6 +246,14 @@ const stateResetTanggal = new Map();
 const rekapResetData = new Map(); // Untuk menyimpan data berdasarkan tanggal
 const globalRekapData = new Map(); // Untuk menyimpan rekap global per chat
 
+// Function untuk generate input form menggunakan modern Input Exiter pattern
+const generateTanggalResetInputMessage = () => {
+  const mainText = `📅 SCAN TANGGAL RESET MASA AKTIF`;
+  const subtitle = `🔍 Masukan nomor, pisah dengan enter/baris baru:\n\n📝 Contoh:\n08123456789\n08234567890\n08345678901`;
+  
+  return { mainText, subtitle };
+};
+
 function isAuthorized(id) {
   return id.toString() === process.env.ADMIN_ID;
 }
@@ -309,21 +319,15 @@ module.exports = (bot) => {
           results: []
         });
 
-        // Kirim message baru untuk input (seperti scan_bekasan.js)
-        const inputMsg = await bot.sendMessage(chatId,
-          `📅 <b>SCAN TANGGAL RESET MASA AKTIF</b>\n\n` +
-          `🔍 Masukan nomor, pisah dengan enter/baris baru:\n\n` +
-          `📝 <b>Contoh:</b>\n` +
-          `08123456789\n08234567890\n08345678901\n\n` +
-          `⚠️ Ketik "exit" untuk membatalkan`,
-          { parse_mode: 'HTML' }
-        );
+        // Kirim styled input message menggunakan modern utility
+        const inputMessage = generateTanggalResetInputMessage();
+        const inputMsg = await sendStyledInputMessage(bot, chatId, inputMessage.mainText, inputMessage.subtitle);
         
-        // Simpan input message ID ke state
+        // Track input message untuk cleanup saat exit
         const currentState = stateResetTanggal.get(chatId);
         currentState.inputMessageId = inputMsg.message_id;
         stateResetTanggal.set(chatId, currentState);
-
+        
       } catch (error) {
         console.error('Error handling reset_tanggal:', error);
         await bot.answerCallbackQuery(id, {
@@ -445,41 +449,31 @@ module.exports = (bot) => {
     }
 
     // === CEK CANCEL/EXIT ===
-    if (['exit', 'EXIT', 'Exit'].includes(text)) {
-      // Hapus input form
+    if (EXIT_KEYWORDS.COMBINED.includes(text)) {
+      // Cleanup input message jika ada
       if (state.inputMessageId) {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {
-          // Ignore delete error
-        }
+        await autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
       }
-      
+      // Clear state and auto delete user message
       stateResetTanggal.delete(chatId);
-      await bot.deleteMessage(chatId, msg.message_id);
+      await autoDeleteMessage(bot, chatId, msg.message_id, 100);
       return;
     }
 
     const nomorList = text.split(/\n|\r/).map(s => s.trim()).filter(s => s.length > 9);
     if (nomorList.length === 0) {
       try {
-        await bot.sendMessage(chatId, '❌ Masukkan minimal satu nomor.');
-        await bot.deleteMessage(chatId, msg.message_id);
+        const errorMsg = await bot.sendMessage(chatId, '❌ Masukkan minimal satu nomor.');
+        await autoDeleteMessage(bot, chatId, errorMsg.message_id, 2000);
+        await autoDeleteMessage(bot, chatId, msg.message_id, 100);
       } catch (e) {
         console.error('Error sending validation message:', e);
       }
       return;
     }
 
-    // Hapus pesan input user dan form input
-    if (state.inputMessageId) {
-      try {
-        await bot.deleteMessage(chatId, state.inputMessageId);
-      } catch (e) {}
-    }
-    try {
-      await bot.deleteMessage(chatId, msg.message_id);
-    } catch (e) {}
+    // Hapus pesan input user (modern auto-delete)
+    await autoDeleteMessage(bot, chatId, msg.message_id, 100);
 
     stateResetTanggal.delete(chatId);
 

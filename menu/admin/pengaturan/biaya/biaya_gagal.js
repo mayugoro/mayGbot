@@ -3,8 +3,18 @@
 // File ini dimuat secara dinamis oleh biaya_operasi.js
 
 const { getKonfigurasi, setKonfigurasi } = require('../../../../db');
+// Import Input Exiter utilities untuk modern pattern
+const { sendStyledInputMessage, autoDeleteMessage, EXIT_KEYWORDS } = require('../../../../utils/exiter');
 
 const adminState = new Map();
+
+// Function untuk generate input form menggunakan modern Input Exiter pattern
+const generateBiayaGagalInputMessage = (currentBiaya) => {
+  const mainText = `❌ SET BIAYA TRX GAGAL\n\nBiaya saat ini: Rp. ${currentBiaya.toLocaleString('id-ID')}`;
+  const subtitle = `Masukkan biaya baru untuk transaksi yang gagal:\n💡 Masukkan angka saja (contoh: 700)\n💡 Ketik 0 untuk tidak ada biaya gagal`;
+  
+  return { mainText, subtitle };
+};
 
 module.exports = (bot) => {
   bot.on('callback_query', async (query) => {
@@ -22,26 +32,17 @@ module.exports = (bot) => {
         const currentValue = await getKonfigurasi('harga_gagal');
         const currentBiaya = currentValue ? parseInt(currentValue) : 0;
         
-        adminState.set(chatId, { 
-          mode: 'set_biaya_gagal', 
-          menuMessageId: msgId 
-        });
+        // Set state untuk input exiter (gunakan from.id yang konsistent)
+        adminState.set(from.id, { type: 'biaya_gagal' });
         
-        const inputMsg = await bot.sendMessage(chatId, 
-          `❌ <b>SET BIAYA TRX GAGAL</b>\n\n` +
-          `💰 <b>Biaya saat ini:</b> Rp. ${currentBiaya.toLocaleString('id-ID')}\n\n` +
-          `💡 Masukkan biaya baru untuk transaksi yang gagal:\n\n` +
-          `📝 <b>Catatan:</b>\n` +
-          `• Masukkan angka saja (tanpa "Rp." atau titik)\n` +
-          `• Contoh: 700 untuk Rp. 700\n` +
-          `• Ketik 0 untuk tidak ada biaya gagal\n\n` +
-          `💡 Ketik "exit" untuk membatalkan.`, {
-          parse_mode: 'HTML'
-        });
+        // Kirim styled input message menggunakan modern utility
+        const inputMessage = generateBiayaGagalInputMessage(currentBiaya);
+        const inputMsg = await sendStyledInputMessage(bot, chatId, inputMessage.mainText, inputMessage.subtitle);
         
-        const currentState = adminState.get(chatId);
+        // Track input message untuk cleanup saat exit
+        const currentState = adminState.get(from.id);
         currentState.inputMessageId = inputMsg.message_id;
-        adminState.set(chatId, currentState);
+        adminState.set(from.id, currentState);
         
       } catch (e) {
         console.error('Error getting biaya gagal:', e);
@@ -62,77 +63,46 @@ module.exports = (bot) => {
     if (!msg.text) return;
     if (msg.from.id.toString() !== process.env.ADMIN_ID) return;
 
-    const state = adminState.get(chatId);
-    if (!state || state.mode !== 'set_biaya_gagal') return;
+    const state = adminState.get(msg.from.id);
+    if (!state || state.type !== 'biaya_gagal') return;
 
-    // === CEK CANCEL/EXIT ===
-    if (['exit', 'EXIT', 'Exit'].includes(msg.text.trim())) {
-      try {
-        await bot.deleteMessage(chatId, state.inputMessageId);
-      } catch (e) {}
-      
-      adminState.delete(chatId);
-      await bot.deleteMessage(chatId, msg.message_id);
+    const userInput = msg.text.trim();
+    
+    // Check modern exit keywords
+    if (EXIT_KEYWORDS.COMBINED.includes(userInput)) {
+      // Cleanup input message jika ada
+      if (state.inputMessageId) {
+        await autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
+      }
+      adminState.delete(msg.from.id);
+      await autoDeleteMessage(bot, chatId, msg.message_id, 100);
       return;
     }
 
-    const nilai = parseFloat(msg.text.trim());
+    const nilai = parseFloat(userInput);
     if (isNaN(nilai) || nilai < 0) {
-      await bot.sendMessage(chatId, '❌ Format nilai salah! Masukkan angka yang valid (minimal 0).');
-      await bot.deleteMessage(chatId, msg.message_id);
+      const errorMsg = await bot.sendMessage(chatId, '❌ Format nilai salah! Masukkan angka yang valid (minimal 0).');
+      await autoDeleteMessage(bot, chatId, errorMsg.message_id, 2000);
+      await autoDeleteMessage(bot, chatId, msg.message_id, 100);
       return;
     }
 
     try {
+      // Update konfigurasi
       await setKonfigurasi('harga_gagal', nilai.toString());
 
-      const successMessage = `✅ Biaya transaksi gagal berhasil diubah menjadi Rp. ${nilai.toLocaleString('id-ID')}`;
-
-      if (state.inputMessageId) {
-        try {
-          await bot.editMessageText(successMessage, {
-            chat_id: chatId,
-            message_id: state.inputMessageId
-          });
-        } catch (e) {
-          await bot.sendMessage(chatId, successMessage);
-        }
-      } else {
-        await bot.sendMessage(chatId, successMessage);
-      }
-      
-      // Auto delete notifikasi hasil setelah 2 detik
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {}
-      }, 2000);
+      // Konfirmasi berhasil
+      const successMsg = await bot.sendMessage(chatId, `✅ Biaya transaksi gagal berhasil diubah menjadi Rp. ${nilai.toLocaleString('id-ID')}`);
+      await autoDeleteMessage(bot, chatId, successMsg.message_id, 3000);
       
     } catch (e) {
-      const errorMessage = `❌ Gagal mengubah biaya gagal: ${e.message}`;
-      
-      if (state.inputMessageId) {
-        try {
-          await bot.editMessageText(errorMessage, {
-            chat_id: chatId,
-            message_id: state.inputMessageId
-          });
-        } catch (e) {
-          await bot.sendMessage(chatId, errorMessage);
-        }
-      } else {
-        await bot.sendMessage(chatId, errorMessage);
-      }
-      
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {}
-      }, 2000);
+      const errorMsg = await bot.sendMessage(chatId, `❌ Gagal mengubah biaya gagal: ${e.message}`);
+      await autoDeleteMessage(bot, chatId, errorMsg.message_id, 2000);
     }
     
-    adminState.delete(chatId);
-    await bot.deleteMessage(chatId, msg.message_id);
+    // Cleanup
+    adminState.delete(msg.from.id);
+    await autoDeleteMessage(bot, chatId, msg.message_id, 100);
     return;
   });
 };
