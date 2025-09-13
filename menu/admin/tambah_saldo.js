@@ -1,10 +1,11 @@
 const { tambahSaldo } = require('../../db');
 
-// Import utils EXITER untuk input yang konsisten dan aman
+// Import utils EXITER untuk full step-by-step flow yang aman
 const { 
   sendStyledInputMessage,
   autoDeleteMessage,
-  handleExitWithAutoDelete,
+  handleStepByStepExit,
+  transitionToNextStep,
   EXIT_KEYWORDS
 } = require('../../utils/exiter');
 
@@ -51,40 +52,26 @@ module.exports = (bot) => {
 
     // Step 1: input user id
     if (state.step === 'input_id') {
-      // Exit handling khusus untuk step 1
-      if (EXIT_KEYWORDS.COMBINED.includes(msg.text.trim())) {
-        autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
-        autoDeleteMessage(bot, chatId, msg.message_id, 100);
-        adminState.delete(chatId);
+      // Exit handling dengan full step-by-step exiter
+      if (await handleStepByStepExit(bot, msg, chatId, state, adminState)) {
         return;
       }
       
       state.userId = msg.text.trim();
-      state.step = 'input_jumlah';
-      adminState.set(chatId, state);
       
-      // Hapus pesan sebelumnya dengan exiter autoDeleteMessage yang aman
-      autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
-      autoDeleteMessage(bot, chatId, msg.message_id, 100);
-      
-      // Input form step 2 dengan exiter pattern
-      const jumlahMsg = await sendStyledInputMessage(bot, chatId,
+      // Transisi ke step 2 dengan smooth cleanup
+      await transitionToNextStep(bot, chatId, state, adminState, msg, 'input_jumlah',
         '💰 Masukkan jumlah saldo yang akan ditambahkan',
         '',
         'membatalkan'
       );
-      state.inputMessageId = jumlahMsg.message_id;
-      adminState.set(chatId, state);
       return;
     }
     
     // Step 2: input jumlah saldo
     if (state.step === 'input_jumlah') {
-      // Exit handling khusus untuk step 2
-      if (EXIT_KEYWORDS.COMBINED.includes(msg.text.trim())) {
-        autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
-        autoDeleteMessage(bot, chatId, msg.message_id, 100);
-        adminState.delete(chatId);
+      // Exit handling dengan full step-by-step exiter
+      if (await handleStepByStepExit(bot, msg, chatId, state, adminState)) {
         return;
       }
       
@@ -98,31 +85,20 @@ module.exports = (bot) => {
       }
       
       state.jumlah = jumlah;
-      state.step = 'input_pesan';
-      adminState.set(chatId, state);
       
-      // Hapus pesan sebelumnya dengan exiter autoDeleteMessage yang aman
-      autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
-      autoDeleteMessage(bot, chatId, msg.message_id, 100);
-      
-      // Input form step 3 dengan exiter pattern
-      const pesanMsg = await sendStyledInputMessage(bot, chatId,
+      // Transisi ke step 3 dengan smooth cleanup
+      await transitionToNextStep(bot, chatId, state, adminState, msg, 'input_pesan',
         '💬 Masukkan pesan untuk user (opsional)',
         'Ketik "skip" untuk lewati',
         'membatalkan'
       );
-      state.inputMessageId = pesanMsg.message_id;
-      adminState.set(chatId, state);
       return;
     }
 
     // Step 3: input pesan untuk user
     if (state.step === 'input_pesan') {
-      // Exit handling khusus untuk step 3
-      if (EXIT_KEYWORDS.COMBINED.includes(msg.text.trim())) {
-        autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
-        autoDeleteMessage(bot, chatId, msg.message_id, 100);
-        adminState.delete(chatId);
+      // Exit handling dengan full step-by-step exiter
+      if (await handleStepByStepExit(bot, msg, chatId, state, adminState)) {
         return;
       }
       
