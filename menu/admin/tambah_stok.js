@@ -1,22 +1,13 @@
 const { addStok } = require('../../db');
 
-const adminState = new Map();
+// Import utils EXITER untuk input yang konsisten
+const { 
+  sendStyledInputMessage,
+  autoDeleteMessage: exiterAutoDelete,
+  EXIT_KEYWORDS
+} = require('../../utils/exiter');
 
-// === HELPER FUNCTION ===
-const autoDeleteMessage = async (bot, chatId, messageId, delayMs = 3000) => {
-  return new Promise((resolve) => {
-    setTimeout(async () => {
-      try {
-        await bot.deleteMessage(chatId, messageId);
-        // Success auto-delete: silent (no console.log untuk clean terminal)
-        resolve(true);
-      } catch (e) {
-        console.log(`❌ Auto-delete failed for message ${messageId}: ${e.message}`);
-        resolve(false);
-      }
-    }, delayMs);
-  });
-};
+const adminState = new Map();
 
 // === PRELOAD INLINE KEYBOARDS ===
 const TAMBAH_STOK_MAIN_KEYBOARD = [
@@ -56,17 +47,13 @@ const TAMBAH_STOK_MAIN_CONTENT = '📦 <b>TAMBAH STOK</b>\n\nPilih kategori stok
 const TAMBAH_STOK_BEKASAN_CONTENT = '⚡ <b>TAMBAH STOK BEKASAN</b>\n\nPilih kategori bekasan yang akan ditambah:';
 const TAMBAH_STOK_BULANAN_CONTENT = '🌙 <b>TAMBAH STOK BULANAN</b>\n\nPilih paket bulanan yang akan ditambah:';
 
-// Template input form
+// Template input form dengan pattern exiter yang konsisten
 const generateInputForm = (jenis, kategori) => {
   const jenisText = jenis === 'bekasan' ? 'BEKASAN' : 'BULANAN';
-  return `📝 <b>TAMBAH STOK ${jenisText} ${kategori}</b>\n\n` +
-    `Masukkan nomor-nomor untuk ${jenis === 'bekasan' ? 'kategori' : 'paket'} ${jenisText} ${kategori}:\n\n` +
-    `Format: Satu nomor per baris\n` +
-    `Contoh:\n` +
-    `087777111111\n` +
-    `087777222222\n` +
-    `087777333333\n\n` +
-    `💡 Ketik "exit" untuk membatalkan.`;
+  const mainText = `📝 TAMBAH STOK ${jenisText} ${kategori}`;
+  const subtitle = `Masukkan nomor-nomor untuk ${jenis === 'bekasan' ? 'kategori' : 'paket'} ${jenisText} ${kategori}:\n\nFormat: Satu nomor per baris\nContoh:\n087777111111\n087777222222\n087777333333`;
+  
+  return { mainText, subtitle };
 };
 
 module.exports = (bot) => {
@@ -234,10 +221,9 @@ module.exports = (bot) => {
       const kategori = data.split('_')[2].toUpperCase();
       adminState.set(chatId, { mode: 'tambah_stok', kategori: kategori, jenis: 'bekasan', menuMessageId: msgId });
       
-      // JANGAN hapus menu, kirim input form di bawah menu
-      const inputMsg = await bot.sendMessage(chatId, generateInputForm('bekasan', kategori), {
-        parse_mode: 'HTML'
-      });
+      // JANGAN hapus menu, kirim input form di bawah menu dengan pattern exiter
+      const { mainText, subtitle } = generateInputForm('bekasan', kategori);
+      const inputMsg = await sendStyledInputMessage(bot, chatId, mainText, subtitle, 'membatalkan');
       
       // Simpan message ID untuk bisa diedit nanti
       const currentState = adminState.get(chatId);
@@ -257,10 +243,9 @@ module.exports = (bot) => {
       const paket = data.split('_')[2].toLowerCase();
       adminState.set(chatId, { mode: 'tambah_stok', kategori: paket.toUpperCase(), jenis: 'bulanan', menuMessageId: msgId });
       
-      // JANGAN hapus menu, kirim input form di bawah menu
-      const inputMsg = await bot.sendMessage(chatId, generateInputForm('bulanan', paket.toUpperCase()), {
-        parse_mode: 'HTML'
-      });
+      // JANGAN hapus menu, kirim input form di bawah menu dengan pattern exiter
+      const { mainText, subtitle } = generateInputForm('bulanan', paket.toUpperCase());
+      const inputMsg = await sendStyledInputMessage(bot, chatId, mainText, subtitle, 'membatalkan');
       
       // Simpan message ID untuk bisa diedit nanti
       const currentState = adminState.get(chatId);
@@ -280,19 +265,17 @@ module.exports = (bot) => {
     const state = adminState.get(chatId);
     if (!state || state.mode !== 'tambah_stok' || !state.kategori) return;
 
-    // === CEK CANCEL/EXIT ===
-    if (['exit', 'EXIT', 'Exit'].includes(msg.text.trim())) {
-      // Hapus input form
+    // === CEK CANCEL/EXIT menggunakan EXIT_KEYWORDS dari exiter ===
+    if (EXIT_KEYWORDS.COMBINED.includes(msg.text.trim())) {
+      // Hapus input form jika ada (sama seperti cekpulsa.js)
       if (state.inputMessageId) {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {
-          // Ignore delete error
-        }
+        exiterAutoDelete(bot, chatId, state.inputMessageId, 100);
       }
       
+      // Hapus user message dengan delay kecil agar terlihat bersamaan
+      exiterAutoDelete(bot, chatId, msg.message_id, 100);
+      
       adminState.delete(chatId);
-      await bot.deleteMessage(chatId, msg.message_id);
       return;
     }
 
@@ -383,10 +366,10 @@ module.exports = (bot) => {
     // Clean up state
     adminState.delete(chatId);
     
-    // Auto delete notifikasi hasil menggunakan helper function
+    // Auto delete notifikasi hasil menggunakan exiter function
     if (resultMessageId) {
-      // Non-blocking auto-delete
-      autoDeleteMessage(bot, chatId, resultMessageId, 3000);
+      // Non-blocking auto-delete dengan exiter helper
+      exiterAutoDelete(bot, chatId, resultMessageId, 3000);
     }
     
     return;

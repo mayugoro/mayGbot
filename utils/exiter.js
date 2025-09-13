@@ -25,21 +25,16 @@ const handleExitFlow = async (bot, msg, stateMap, chatId, state, exitKeywords = 
   
   // Cek apakah input adalah exit command
   if (exitKeywords.includes(text)) {
-    // Hapus result message jika ada
+    // Hapus result/input message jika ada dengan autoDeleteMessage (non-sequential)
     if (state.resultMessageId) {
-      try {
-        await bot.deleteMessage(chatId, state.resultMessageId);
-      } catch (e) {
-        // Ignore delete error
-      }
+      autoDeleteMessage(bot, chatId, state.resultMessageId, 100);
+    }
+    if (state.inputMessageId) {
+      autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
     }
     
-    // Hapus user message
-    try {
-      await bot.deleteMessage(chatId, msg.message_id);
-    } catch (e) {
-      // Ignore delete error
-    }
+    // Hapus user message dengan delay kecil agar bersamaan
+    autoDeleteMessage(bot, chatId, msg.message_id, 100);
     
     // Clear state
     stateMap.delete(chatId);
@@ -80,6 +75,59 @@ const autoDeleteMessage = async (bot, chatId, messageId, delay = 1000) => {
       // Ignore delete error
     }
   }, delay);
+};
+
+/**
+ * Auto-delete multiple messages secara bersamaan (non-sequential)
+ * @param {Object} bot - Bot instance
+ * @param {string} chatId - Chat ID
+ * @param {Array} messageIds - Array of message IDs yang akan dihapus
+ * @param {number} delay - Delay dalam milliseconds (default: 100)
+ */
+const autoDeleteMultipleMessages = async (bot, chatId, messageIds, delay = 100) => {
+  if (!Array.isArray(messageIds) || messageIds.length === 0) return;
+  
+  // Hapus semua messages dengan delay yang sama agar terlihat bersamaan
+  messageIds.forEach(messageId => {
+    if (messageId) {
+      autoDeleteMessage(bot, chatId, messageId, delay);
+    }
+  });
+};
+
+/**
+ * Handle exit dengan auto-delete bersamaan untuk exiter dan target messages
+ * @param {Object} bot - Bot instance
+ * @param {Object} msg - Message object dari user
+ * @param {string} chatId - Chat ID
+ * @param {Object} state - Current state object
+ * @param {Array} exitKeywords - Exit keywords (default: EXIT_KEYWORDS.COMBINED)
+ * @returns {boolean} - true jika exit berhasil diproses
+ */
+const handleExitWithAutoDelete = async (bot, msg, chatId, state, exitKeywords = null) => {
+  if (!msg.text) return false;
+  
+  // Default menggunakan EXIT_KEYWORDS.COMBINED jika tidak disediakan
+  const keywords = exitKeywords || module.exports.EXIT_KEYWORDS.COMBINED;
+  
+  if (keywords.includes(msg.text.trim())) {
+    // Kumpulkan semua message IDs yang perlu dihapus
+    const messagesToDelete = [msg.message_id]; // User message
+    
+    if (state.inputMessageId) {
+      messagesToDelete.push(state.inputMessageId);
+    }
+    if (state.resultMessageId) {
+      messagesToDelete.push(state.resultMessageId);
+    }
+    
+    // Hapus semua messages secara bersamaan
+    autoDeleteMultipleMessages(bot, chatId, messagesToDelete, 100);
+    
+    return true; // Exit berhasil diproses
+  }
+  
+  return false; // Bukan exit command
 };
 
 /**
@@ -206,6 +254,8 @@ module.exports = {
   handleExitFlow,
   handleNonExitInput,
   autoDeleteMessage,
+  autoDeleteMultipleMessages,
+  handleExitWithAutoDelete,
   sendMessageWithTracking,
   handleFlowWithExit,
   generateExitInstruction,
