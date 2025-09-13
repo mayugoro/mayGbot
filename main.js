@@ -248,6 +248,11 @@ bot.on('callback_query', async (query) => {
   const msgId = message?.message_id;
   const userId = from?.id;
 
+  // Early return untuk callback yang dihandle oleh handler spesifik
+  if (data === 'cek_stok' || data === 'cek_stok_bulanan') {
+    return; // Biarkan handler spesifik di menu/cek_stok.js yang menangani
+  }
+
   // Handler untuk CEK SIDOMPUL
   if (data === 'cek_sidompul') {
     try {
