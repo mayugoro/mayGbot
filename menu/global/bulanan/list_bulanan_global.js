@@ -116,19 +116,32 @@ const generateDetailPaketGlobal = async (productData) => {
     console.error('Error getting price from database:', error);
   }
   
-  // Gunakan deskripsi statis untuk hardcode data
-  const deskripsiPaket = productData.deskripsi || 'Detail kuota sesuai area coverage operator';
+  // Default deskripsi per paket bulanan global dengan detail area coverage
+  const defaultDeskripsi = {
+    'SUPERMINI': 'AREA 1 = 13 GB\nAREA 2 = 15 GB\nAREA 3 = 20 GB\nAREA 4 = 30 GB',
+    'MINI': 'AREA 1 : 23 GB\nAREA 2 : 25 GB\nAREA 3 : 34 GB\nAREA 4 : 49 GB',
+    'BIG L': 'AREA 1 : 38 GB\nAREA 2 : 40 GB\nAREA 3 : 45 GB\nAREA 4 : 55 GB',
+    'JUMBO': 'AREA 1 : 66 GB\nAREA 2 : 70 GB\nAREA 3 : 83 GB\nAREA 4 : 123 GB',
+    'JUMBO V2': 'AREA 1 = 50 GB\nAREA 2 = 52 GB\nAREA 3 = 57 GB\nAREA 4 = 67 GB',
+    'MEGABIG': 'AREA 1 : 88 GB\nAREA 2 : 90 GB\nAREA 3 : 95 GB\nAREA 4 : 105 GB',
+    'BIG PLUS': 'AREA 1 : 33 GB\nAREA 2 : 36 GB\nAREA 3 : 47 GB\nAREA 4 : 71 GB'
+  };
+  
+  const paketName = (productData.nama || 'UNKNOWN').toUpperCase();
+  // FORCE menggunakan area coverage yang baru (ignoring database deskripsi untuk sementara)
+  const finalDeskripsi = defaultDeskripsi[paketName] || 'Detail kuota sesuai area coverage operator';
   
   return {
-    message: `🌍 <b>Detail BULANAN GLOBAL ${(productData.nama || 'UNKNOWN').toUpperCase()}</b>\n\n` +
-      `📦 <b>Kode Produk:</b> ${productData.kode}\n\n` +
-      `📝 <b>Detail Paket:</b>\n` +
-      `${deskripsiPaket}\n\n` +
+    message: `🌍 Detail BULANAN GLOBAL\n\n` +
+      `📦 <b>Paket:</b> ${paketName}\n` +
+      `📝 <b>Deskripsi:</b>\n${finalDeskripsi}\n\n` +
       `💰 <b>Detail Harga:</b>\n` +
       `💸 Rp. ${hargaDisplay}\n\n` +
-      ` <b>Catatan:</b>\n` +
-      `✅ Official, resmi, bergaransi\n` +
-      `✅ Berlaku untuk XL, Axis, Live-on✨`,
+      `📝 <b>Catatan:</b>\n` +
+      `• ✅ Paket bulanan akrab global\n` +
+      `• ✅ Aktif segera setelah pembelian\n` +
+      `• ✅ Full garansi AKRAB GLOBAL\n` +
+      `• ✅ Berlaku untuk XL,Axis,Live-on✨`,
     finalHarga: finalHarga
   };
 };

@@ -135,11 +135,19 @@ const generateDetailPaketBekasan = (tipe, hari, deskripsi, hargaValue) => {
     'xxl': 'BEKASAN XXL'
   };
   
+  // Default deskripsi per tipe bekasan dengan detail area coverage
+  const defaultDeskripsi = {
+    'l': 'AREA 1 = 8 GB\nAREA 2 = 10 GB\nAREA 3 = 15 GB\nAREA 4 = 25 GB',
+    'xl': 'AREA 1 = 1,5 GB\nAREA 2 = 4,5 GB\nAREA 3 = 15 GB\nAREA 4 = 39 GB',
+    'xxl': 'AREA 1 = 7.5 GB\nAREA 2 = 12 GB\nAREA 3 = 25 GB\nAREA 4 = 65 GB'
+  };
+  
   const tipeName = tipeNames[tipe] || tipe.toUpperCase();
+  const finalDeskripsi = deskripsi || defaultDeskripsi[tipe] || 'Paket bekasan akrab global';
   
   return `🌍 Detail BEKASAN GLOBAL\n\n` +
     `📦 <b>Paket:</b> ${tipeName} ${hari} HARI\n` +
-    `📝 <b>Deskripsi:</b>\n${deskripsi || 'Paket bekasan akrab global'}\n\n` +
+    `📝 <b>Deskripsi:</b>\n${finalDeskripsi}\n\n` +
     `💰 <b>Detail Harga:</b>\n` +
     `💸 Rp. ${hargaValue.toLocaleString('id-ID')}\n\n` +
     `📝 <b>Catatan:</b>\n` +
