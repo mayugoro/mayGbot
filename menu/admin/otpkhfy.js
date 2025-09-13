@@ -1,5 +1,6 @@
 require('dotenv').config({ quiet: true });
 const axios = require('axios');
+const { EXIT_KEYWORDS, sendStyledInputMessage, autoDeleteMessage } = require('../../utils/exiter');
 
 // Storage untuk OTP KHFY states
 const otpKhfyStates = new Map();
@@ -156,13 +157,11 @@ module.exports = (bot) => {
           menuMessageId: msgId
         });
 
-        const instructionText = 
-          '🟢 <b>OTP KHFY - REQUEST OTP</b>\n' +
-          '<i>~Masukan Nomor~\n' +
-          '💡 Ketik "exit" untuk membatalkan</i>';
+        const instructionText = '🟢 <b>OTP KHFY - REQUEST OTP</b>';
+        const subtitle = '~Masukan Nomor~';
 
-        // Kirim pesan baru langsung (tidak edit)
-        const inputMsg = await bot.sendMessage(chatId, instructionText, { parse_mode: 'HTML' });
+        // Kirim pesan styled dengan modern STEP EXITER
+        const inputMsg = await sendStyledInputMessage(bot, chatId, instructionText, subtitle, 'membatalkan');
         
         // Simpan message ID untuk bisa dihapus nanti
         const currentState = otpKhfyStates.get(chatId);
@@ -188,20 +187,12 @@ module.exports = (bot) => {
 
     try {
       // Handle exit command - bersihkan semua tanpa pesan
-      if (['exit', 'EXIT', 'Exit'].includes(msg.text?.trim())) {
-        // Hapus pesan input bot dan user
+      if (EXIT_KEYWORDS.COMBINED.includes(msg.text?.trim())) {
+        // Hapus pesan input bot dan user dengan auto cleanup
         if (state.inputMessageId) {
-          try {
-            await bot.deleteMessage(chatId, state.inputMessageId);
-          } catch (e) {
-            // Ignore delete error
-          }
+          autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
         }
-        try {
-          await bot.deleteMessage(chatId, msg.message_id);
-        } catch (e) {
-          // Ignore delete error
-        }
+        autoDeleteMessage(bot, chatId, msg.message_id, 100);
         
         otpKhfyStates.delete(chatId);
         return;
@@ -223,13 +214,12 @@ module.exports = (bot) => {
             await bot.deleteMessage(chatId, msg.message_id);
           } catch (e) {}
           
-          if (state.inputMessageId) {
-            try {
-              await bot.deleteMessage(chatId, state.inputMessageId);
-            } catch (e) {}
-          }
+          // Hapus pesan user yang salah format
+          autoDeleteMessage(bot, chatId, msg.message_id, 100);
           
-          const errorMsg = await bot.sendMessage(chatId, '❌ <b>Format nomor tidak valid!</b>\nContoh: 087824020447\n\n<i>Ketik "exit" untuk batal</i>', { parse_mode: 'HTML' });
+          const errorText = '❌ <b>Format nomor tidak valid!</b>';
+          const errorSubtitle = 'Contoh: 087824020447';
+          const errorMsg = await sendStyledInputMessage(bot, chatId, errorText, errorSubtitle, 'membatalkan');
           
           // Update state dengan message ID baru
           const currentState = otpKhfyStates.get(chatId);
@@ -238,15 +228,11 @@ module.exports = (bot) => {
           return;
         }
 
-        // Hapus pesan input bot dan user sebelumnya
+        // Hapus pesan input bot dan user sebelumnya dengan auto cleanup
         if (state.inputMessageId) {
-          try {
-            await bot.deleteMessage(chatId, state.inputMessageId);
-          } catch (e) {}
+          autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
         }
-        try {
-          await bot.deleteMessage(chatId, msg.message_id);
-        } catch (e) {}
+        autoDeleteMessage(bot, chatId, msg.message_id, 100);
 
         // Update state dan request OTP
         otpKhfyStates.set(chatId, {
@@ -271,15 +257,26 @@ module.exports = (bot) => {
           const tempSuccessText = '✅ <b>OTP BERHASIL DIKIRIM!</b>';
           const tempMessage = await bot.sendMessage(chatId, tempSuccessText, { parse_mode: 'HTML' });
 
-          // Tunggu 1 detik lalu ubah jadi pesan input OTP
+          // Tunggu 1 detik lalu ubah jadi modern styled input OTP
           setTimeout(async () => {
             try {
-              await bot.editMessageText('❗<b>MASUKAN OTP</b>', {
-                chat_id: chatId,
-                message_id: tempMessage.message_id,
-                parse_mode: 'HTML'
-              });
-            } catch (e) {}
+              // Hapus pesan sukses
+              autoDeleteMessage(bot, chatId, tempMessage.message_id, 100);
+              
+              // Kirim styled input message untuk OTP
+              const otpText = '❗<b>MASUKAN OTP</b>';
+              const otpSubtitle = 'Masukkan kode OTP yang diterima';
+              const otpInputMsg = await sendStyledInputMessage(bot, chatId, otpText, otpSubtitle, 'membatalkan');
+              
+              // Update state dengan message ID baru
+              const currentState = otpKhfyStates.get(chatId);
+              if (currentState) {
+                currentState.inputMessageId = otpInputMsg.message_id;
+                otpKhfyStates.set(chatId, currentState);
+              }
+            } catch (e) {
+              // Ignore error
+            }
           }, 1000);
 
           // Update state untuk menunggu OTP
@@ -288,14 +285,15 @@ module.exports = (bot) => {
             step: 'waiting_otp',
             phoneNumber: phoneNumber, // Pastikan phoneNumber tetap tersimpan
             otpData: result.data,
-            inputMessageId: tempMessage.message_id // Update input message ID
+            inputMessageId: tempMessage.message_id // Temporary, akan diupdate di setTimeout
           });
 
         } else {
           // OTP gagal dikirim
           const errorText = '🔴 <b>OTP GAGAL DIKIRIM</b>';
+          const errorSubtitle = 'Silakan coba lagi dengan nomor yang berbeda';
 
-          const errorMsg = await bot.sendMessage(chatId, errorText, { parse_mode: 'HTML' });
+          const errorMsg = await sendStyledInputMessage(bot, chatId, errorText, errorSubtitle, 'membatalkan');
 
           // Reset state untuk input nomor lagi dengan message ID baru
           otpKhfyStates.set(chatId, {
@@ -320,17 +318,11 @@ module.exports = (bot) => {
         const cleanOTP = otpCode.replace(/\D/g, '');
         if (cleanOTP.length < 4 || cleanOTP.length > 8) {
           // Hapus pesan user yang tidak valid
-          try {
-            await bot.deleteMessage(chatId, msg.message_id);
-          } catch (e) {}
+          autoDeleteMessage(bot, chatId, msg.message_id, 100);
           
-          if (state.inputMessageId) {
-            try {
-              await bot.deleteMessage(chatId, state.inputMessageId);
-            } catch (e) {}
-          }
-          
-          const errorMsg = await bot.sendMessage(chatId, '❌ <b>Kode OTP tidak valid!</b>\nMasukkan 4-8 digit angka\n\n<i>Ketik "exit" untuk batal</i>', { parse_mode: 'HTML' });
+          const errorText = '❌ <b>Kode OTP tidak valid!</b>';
+          const errorSubtitle = 'Masukkan 4-8 digit angka';
+          const errorMsg = await sendStyledInputMessage(bot, chatId, errorText, errorSubtitle, 'membatalkan');
           
           // Update state dengan message ID baru
           const currentState = otpKhfyStates.get(chatId);
@@ -342,19 +334,16 @@ module.exports = (bot) => {
         // Check if phoneNumber exists in state
         if (!state.phoneNumber) {
           const errorMsg = await bot.sendMessage(chatId, '❌ <b>Session expired!</b>\nNomor HP tidak ditemukan. Silakan mulai ulang dengan klik tombol OTP KHFY.', { parse_mode: 'HTML' });
+          autoDeleteMessage(bot, chatId, errorMsg.message_id, 5000); // Delete after 5 seconds
           otpKhfyStates.delete(chatId);
           return;
         }
 
-        // Hapus pesan input bot dan user sebelumnya
+        // Hapus pesan input bot dan user sebelumnya dengan auto cleanup
         if (state.inputMessageId) {
-          try {
-            await bot.deleteMessage(chatId, state.inputMessageId);
-          } catch (e) {}
+          autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
         }
-        try {
-          await bot.deleteMessage(chatId, msg.message_id);
-        } catch (e) {}
+        autoDeleteMessage(bot, chatId, msg.message_id, 100);
 
         // Kirim pesan loading
         const waitingMessage = await bot.sendMessage(chatId, '<i>🔄 Memverifikasi OTP, mohon tunggu...</i>', { parse_mode: 'HTML' });
@@ -362,10 +351,8 @@ module.exports = (bot) => {
         // Verify OTP dengan phoneNumber yang sudah validated
         const result = await verifyOTP(state.phoneNumber, cleanOTP);
 
-        // Hapus pesan loading
-        try {
-          await bot.deleteMessage(chatId, waitingMessage.message_id);
-        } catch (e) {}
+        // Hapus pesan loading dengan auto cleanup
+        autoDeleteMessage(bot, chatId, waitingMessage.message_id, 100);
 
         if (result.status === 'success' && result.data.status === true) {
           // OTP berhasil diverifikasi, langsung hit API cek pulsa
@@ -397,14 +384,8 @@ module.exports = (bot) => {
 
             const resultMsg = await bot.sendMessage(chatId, finalResultText, { parse_mode: 'HTML' });
             
-            // Auto delete setelah 3 detik
-            setTimeout(async () => {
-              try {
-                await bot.deleteMessage(chatId, resultMsg.message_id);
-              } catch (e) {
-                // Ignore delete error
-              }
-            }, 3000);
+            // Auto delete result dengan modern method
+            autoDeleteMessage(bot, chatId, resultMsg.message_id, 3000);
 
           } else {
             // Cek pulsa gagal setelah OTP sukses
@@ -418,13 +399,8 @@ module.exports = (bot) => {
             const errorMsg = await bot.sendMessage(chatId, errorResultText, { parse_mode: 'HTML' });
             
             // Auto delete setelah 3 detik
-            setTimeout(async () => {
-              try {
-                await bot.deleteMessage(chatId, errorMsg.message_id);
-              } catch (e) {
-                // Ignore delete error
-              }
-            }, 3000);
+            // Auto delete error message dengan modern method
+            autoDeleteMessage(bot, chatId, errorMsg.message_id, 3000);
           }
 
         } else {
@@ -437,13 +413,15 @@ module.exports = (bot) => {
 
           const errorMsg = await bot.sendMessage(chatId, errorText, { parse_mode: 'HTML' });
 
-          // Auto delete setelah 3 detik lalu kirim prompt baru
+          // Auto delete error dan kirim prompt baru
+          autoDeleteMessage(bot, chatId, errorMsg.message_id, 3000);
+          
+          // Set delay 3 detik lalu kirim prompt baru
           setTimeout(async () => {
             try {
-              await bot.deleteMessage(chatId, errorMsg.message_id);
-              
-              // Kirim prompt baru untuk input OTP lagi
-              const retryMsg = await bot.sendMessage(chatId, '❗<b>MASUKAN OTP</b>\n<i>Ketik "exit" untuk batal</i>', { parse_mode: 'HTML' });
+              const retryText = '❗<b>MASUKAN OTP</b>';
+              const retrySubtitle = '';
+              const retryMsg = await sendStyledInputMessage(bot, chatId, retryText, retrySubtitle, 'membatalkan');
               
               // Update state dengan message ID baru
               const currentState = otpKhfyStates.get(chatId);
@@ -452,7 +430,7 @@ module.exports = (bot) => {
                 otpKhfyStates.set(chatId, currentState);
               }
             } catch (e) {
-              // Ignore delete error
+              // Ignore error
             }
           }, 3000);
 
@@ -467,28 +445,17 @@ module.exports = (bot) => {
     } catch (error) {
       console.error('Error handling OTP KHFY input:', error.message);
       
-      // Hapus pesan user jika ada
-      try {
-        await bot.deleteMessage(chatId, msg.message_id);
-      } catch (e) {}
+      // Hapus pesan user dan input bot jika ada dengan auto cleanup
+      autoDeleteMessage(bot, chatId, msg.message_id, 100);
       
-      // Hapus pesan input bot jika ada
       if (state?.inputMessageId) {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {}
+        autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
       }
       
       const errorMsg = await bot.sendMessage(chatId, '❌ <b>Terjadi error, silakan coba lagi!</b>', { parse_mode: 'HTML' });
       
-      // Auto delete error message setelah 3 detik
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(chatId, errorMsg.message_id);
-        } catch (e) {
-          // Ignore delete error
-        }
-      }, 3000);
+      // Auto delete error message dengan modern method
+      autoDeleteMessage(bot, chatId, errorMsg.message_id, 3000);
       
       // Clean up states
       otpKhfyStates.delete(chatId);
