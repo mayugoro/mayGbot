@@ -1,6 +1,6 @@
 const { getAllUsers, getTotalUsers, db, getUsersWithHistoryCount } = require('./db');
 
-// Import utils template untuk flow management
+// Import utils exiter untuk flow management
 const { 
   handleFlowWithExit, 
   sendMessageWithTracking, 
@@ -8,7 +8,7 @@ const {
   generateExitInstruction,
   autoDeleteMessage,
   EXIT_KEYWORDS
-} = require('./utils/flow_sendMessage');
+} = require('./utils/exiter');
 
 const adminState = new Map();
 

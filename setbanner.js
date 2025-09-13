@@ -2,6 +2,16 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
+// Import utils exiter untuk flow management
+const { 
+  handleFlowWithExit, 
+  sendMessageWithTracking, 
+  initializeFlowState,
+  generateExitInstruction,
+  autoDeleteMessage,
+  EXIT_KEYWORDS
+} = require('./utils/exiter');
+
 const adminState = new Map();
 
 module.exports = (bot) => {
@@ -13,7 +23,7 @@ module.exports = (bot) => {
     'banner change', 'new banner'
   ];
 
-  // === Text Triggers for setbanner ===
+  // === Text Triggers for setbanner - MENGGUNAKAN UTILS TEMPLATE ===
   bot.on('message', async (msg) => {
     if (!msg.text) return;
     if (msg.from.id.toString() !== process.env.ADMIN_ID) return;
@@ -24,15 +34,22 @@ module.exports = (bot) => {
       return; // Skip processing, biarkan broadcast handler yang menangani
     }
     
+    // ✅ MENGGUNAKAN UTILS TEMPLATE untuk handle flow dengan exit
+    const flowControl = await handleFlowWithExit(bot, msg, adminState, 'set_banner', EXIT_KEYWORDS.COMBINED);
+    
+    if (flowControl.isExit) {
+      return; // Exit berhasil diproses oleh utils
+    }
+    
+    if (!flowControl.shouldContinue) {
+      return; // Flow sedang aktif, stop processing
+    }
+    
     // Check if message contains any setbanner keywords
     const messageText = msg.text.toLowerCase();
     const hasKeyword = setbannerKeywords.some(keyword => messageText.includes(keyword.toLowerCase()));
     
     if (!hasKeyword) return;
-    
-    // Check if this is already being handled by state machine
-    const state = adminState.get(msg.chat.id);
-    if (state && state.mode === 'set_banner') return;
     
     // Execute setbanner functionality
     await executeSetBanner(bot, msg);
@@ -43,36 +60,30 @@ module.exports = (bot) => {
     await executeSetBanner(bot, msg);
   });
 
-  // Main setbanner execution function
+  // Main setbanner execution function - MENGGUNAKAN UTILS TEMPLATE
   const executeSetBanner = async (bot, msg) => {
     if (msg.from.id.toString() !== process.env.ADMIN_ID) {
       await bot.sendMessage(msg.chat.id, 'ente siapa njir🗿');
-      // Auto-delete command message
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(msg.chat.id, msg.message_id);
-        } catch (e) {}
-      }, 1000);
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto-delete
+      await autoDeleteMessage(bot, msg.chat.id, msg.message_id);
       return;
     }
     
-    adminState.set(msg.chat.id, { mode: 'set_banner' });
+    // ✅ MENGGUNAKAN UTILS TEMPLATE untuk inisialisasi flow state
+    initializeFlowState(adminState, msg.chat.id, 'set_banner');
     
-    const inputMsg = await bot.sendMessage(msg.chat.id, '🖼️ <b>SET BANNER</b>\n\n📸 Kirim foto yang akan dijadikan banner baru untuk bot:\n\n📝 <b>Spesifikasi:</b>\n• Format: JPG/PNG\n• Ukuran: Max 10MB\n• Resolusi: Rekomendasi 1280x720\n• Orientasi: Landscape lebih baik\n\n💡 Ketik "exit" untuk membatalkan\n💡 Ketik "restore" untuk kembalikan banner default', {
-      parse_mode: 'HTML'
-    });
+    const bannerPrompt = '🖼️ <b>SET BANNER</b>\n\n📸 Kirim foto yang akan dijadikan banner baru untuk bot:\n\n📝 <b>Spesifikasi:</b>\n• Format: JPG/PNG\n• Ukuran: Max 10MB\n• Resolusi: Rekomendasi 1280x720\n• Orientasi: Landscape lebih baik\n\n' + generateExitInstruction() + '\n💡 Ketik "restore" untuk kembalikan banner default';
     
-    // Auto-delete command message setelah respons dikirim
-    setTimeout(async () => {
-      try {
-        await bot.deleteMessage(msg.chat.id, msg.message_id);
-      } catch (e) {}
-    }, 1000);
-    
-    // Simpan message ID untuk tracking
-    const currentState = adminState.get(msg.chat.id);
-    currentState.inputMessageId = inputMsg.message_id;
-    adminState.set(msg.chat.id, currentState);
+    // ✅ MENGGUNAKAN UTILS TEMPLATE untuk send message dengan tracking
+    await sendMessageWithTracking(
+      bot, 
+      msg.chat.id, 
+      bannerPrompt, 
+      { parse_mode: 'HTML' },
+      adminState,
+      adminState.get(msg.chat.id),
+      msg
+    );
   };
 
   bot.on('message', async (msg) => {
@@ -82,33 +93,10 @@ module.exports = (bot) => {
     const state = adminState.get(chatId);
     if (!state || state.mode !== 'set_banner') return;
 
-    // === CEK CANCEL/EXIT ===
-    if (msg.text && ['exit', 'EXIT', 'Exit'].includes(msg.text.trim())) {
-      // Hapus pesan input bot dan user
-      if (state.inputMessageId) {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {}
-      }
-      try {
-        await bot.deleteMessage(chatId, msg.message_id);
-      } catch (e) {}
-      
-      adminState.delete(chatId);
-      return;
-    }
-
     // === RESTORE BANNER DEFAULT ===
     if (msg.text && ['restore', 'RESTORE', 'Restore'].includes(msg.text.trim())) {
-      // Hapus pesan input sebelumnya
-      if (state.inputMessageId) {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {}
-      }
-      try {
-        await bot.deleteMessage(chatId, msg.message_id);
-      } catch (e) {}
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto-delete message
+      await autoDeleteMessage(bot, chatId, msg.message_id, 100);
 
       try {
         // Cek apakah ada backup banner default
@@ -123,34 +111,23 @@ module.exports = (bot) => {
             parse_mode: 'HTML'
           });
           
-          // Auto delete setelah 3 detik
-          setTimeout(async () => {
-            try {
-              await bot.deleteMessage(chatId, successMsg.message_id);
-            } catch (e) {}
-          }, 3000);
+          // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto delete
+          await autoDeleteMessage(bot, chatId, successMsg.message_id, 3000);
         } else {
           const errorMsg = await bot.sendMessage(chatId, '❌ <b>Backup banner default tidak ditemukan!</b>\n\n💡 Silakan upload banner baru atau pastikan file welcome_default.jpg tersedia.', {
             parse_mode: 'HTML'
           });
           
-          // Auto delete setelah 3 detik
-          setTimeout(async () => {
-            try {
-              await bot.deleteMessage(chatId, errorMsg.message_id);
-            } catch (e) {}
-          }, 3000);
+          // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto delete
+          await autoDeleteMessage(bot, chatId, errorMsg.message_id, 3000);
         }
       } catch (error) {
         const errorMsg = await bot.sendMessage(chatId, `❌ <b>Gagal restore banner:</b>\n<code>${error.message}</code>`, {
           parse_mode: 'HTML'
         });
         
-        setTimeout(async () => {
-          try {
-            await bot.deleteMessage(chatId, errorMsg.message_id);
-          } catch (e) {}
-        }, 3000);
+        // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto delete
+        await autoDeleteMessage(bot, chatId, errorMsg.message_id, 3000);
       }
 
       adminState.delete(chatId);
@@ -159,23 +136,15 @@ module.exports = (bot) => {
 
     // === CEK APAKAH PESAN BERISI FOTO ===
     if (!msg.photo) {
-      try {
-        await bot.deleteMessage(chatId, msg.message_id);
-      } catch (e) {}
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto-delete non-foto message
+      await autoDeleteMessage(bot, chatId, msg.message_id, 100);
       return;
     }
 
     // === PROSES FOTO BANNER ===
     try {
-      // Hapus pesan input sebelumnya
-      if (state.inputMessageId) {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {}
-      }
-      try {
-        await bot.deleteMessage(chatId, msg.message_id);
-      } catch (e) {}
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto-delete message
+      await autoDeleteMessage(bot, chatId, msg.message_id, 100);
 
       // Kirim status processing
       const processMsg = await bot.sendMessage(chatId, '⏳ <b>Memproses banner baru...</b>\n\n📥 Mengunduh foto...', {
@@ -217,12 +186,8 @@ module.exports = (bot) => {
         parse_mode: 'HTML'
       });
 
-      // Auto delete setelah 5 detik
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(chatId, processMsg.message_id);
-        } catch (e) {}
-      }, 5000);
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto delete
+      await autoDeleteMessage(bot, chatId, processMsg.message_id, 5000);
 
     } catch (error) {
       console.error('Error setting banner:', error);
@@ -231,11 +196,8 @@ module.exports = (bot) => {
         parse_mode: 'HTML'
       });
       
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(chatId, errorMsg.message_id);
-        } catch (e) {}
-      }, 5000);
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto delete
+      await autoDeleteMessage(bot, chatId, errorMsg.message_id, 5000);
     }
 
     adminState.delete(chatId);

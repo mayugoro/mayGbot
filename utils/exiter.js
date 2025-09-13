@@ -1,6 +1,10 @@
 /**
- * Utility untuk mengelola flow sendMessage dengan exit functionality
+ * EXITER - Utility untuk mengelola exit flow dengan functionality yang konsisten
  * Template reusable untuk pattern exit yang konsisten di seluruh bot
+ * 
+ * 🚪 Handles all exit scenarios with style!
+ * 💫 Consistent exit behavior across all bot features
+ * 🎯 Smart exit detection with multiple keywords support
  */
 
 /**
