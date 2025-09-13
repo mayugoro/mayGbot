@@ -126,6 +126,15 @@ const init = () => {
           { key: 'harga_jumbo', value: '75000', description: 'Harga paket BULANAN JUMBO' },
           { key: 'harga_megabig', value: '85000', description: 'Harga paket BULANAN MEGABIG' },
           { key: 'harga_superjumbo', value: '90000', description: 'Harga paket BULANAN SUPER JUMBO' },
+
+          // === PRODUK GLOBAL (BULANAN) - Berdasarkan daftar-paket.js ===
+          { key: 'harga_xla14', value: '45000', description: 'Harga paket BULANAN GLOBAL SUPERMINI (XLA14)' },
+          { key: 'harga_xla32', value: '55000', description: 'Harga paket BULANAN GLOBAL MINI (XLA32)' },
+          { key: 'harga_xla39', value: '60000', description: 'Harga paket BULANAN GLOBAL BIG L (XLA39)' },
+          { key: 'harga_xla65', value: '80000', description: 'Harga paket BULANAN GLOBAL JUMBO (XLA65)' },
+          { key: 'harga_xla51', value: '82000', description: 'Harga paket BULANAN GLOBAL JUMBO V2 (XLA51)' },
+          { key: 'harga_xla89', value: '90000', description: 'Harga paket BULANAN GLOBAL MEGABIG (XLA89)' },
+          { key: 'harga_xx', value: '65000', description: 'Harga paket BULANAN GLOBAL BIG PLUS (XX)' },
           
           // Deskripsi bulanan lokal
           { key: 'deskripsi_supermini', value: 'AREA 1 : 13 GB\nAREA 2 : 15 GB\nAREA 3 : 20 GB\nAREA 4 : 30 GB', description: 'Deskripsi kuota BULANAN SUPERMINI' },
@@ -136,6 +145,15 @@ const init = () => {
           { key: 'deskripsi_jumbo', value: 'AREA 1 : 66 GB\nAREA 2 : 70 GB\nAREA 3 : 83 GB\nAREA 4 : 123 GB', description: 'Deskripsi kuota BULANAN JUMBO' },
           { key: 'deskripsi_megabig', value: 'AREA 1 : 88 GB\nAREA 2 : 90 GB\nAREA 3 : 95 GB\nAREA 4 : 105 GB', description: 'Deskripsi kuota BULANAN MEGABIG' },
           { key: 'deskripsi_superjumbo', value: 'AREA 1 : 86 GB\nAREA 2 : 91 GB\nAREA 3 : 104 GB\nAREA 4 : 144 GB', description: 'Deskripsi kuota BULANAN SUPER JUMBO' },
+
+          // === DESKRIPSI PRODUK GLOBAL (BULANAN) - Berdasarkan daftar-paket.js ===
+          { key: 'deskripsi_xla14', value: 'Kuota Global Unlimited\nSpeed Full Speed\nMasa Aktif 30 Hari\nBonus Kuota Lokal', description: 'Deskripsi BULANAN GLOBAL SUPERMINI (XLA14)' },
+          { key: 'deskripsi_xla32', value: 'Kuota Global Unlimited\nSpeed Full Speed\nMasa Aktif 30 Hari\nBonus Kuota Lokal', description: 'Deskripsi BULANAN GLOBAL MINI (XLA32)' },
+          { key: 'deskripsi_xla39', value: 'Kuota Global Unlimited\nSpeed Full Speed\nMasa Aktif 30 Hari\nBonus Kuota Lokal', description: 'Deskripsi BULANAN GLOBAL BIG L (XLA39)' },
+          { key: 'deskripsi_xla65', value: 'Kuota Global Unlimited\nSpeed Full Speed\nMasa Aktif 30 Hari\nBonus Kuota Lokal', description: 'Deskripsi BULANAN GLOBAL JUMBO (XLA65)' },
+          { key: 'deskripsi_xla51', value: 'Kuota Global Unlimited\nSpeed Full Speed\nMasa Aktif 30 Hari\nBonus Kuota Lokal', description: 'Deskripsi BULANAN GLOBAL JUMBO V2 (XLA51)' },
+          { key: 'deskripsi_xla89', value: 'Kuota Global Unlimited\nSpeed Full Speed\nMasa Aktif 30 Hari\nBonus Kuota Lokal', description: 'Deskripsi BULANAN GLOBAL MEGABIG (XLA89)' },
+          { key: 'deskripsi_xx', value: 'Kuota Global Unlimited\nSpeed Full Speed\nMasa Aktif 30 Hari\nBonus Kuota Lokal', description: 'Deskripsi BULANAN GLOBAL BIG PLUS (XX)' },
           
           // Konfigurasi kuota default untuk bulanan lokal
           { key: 'kuota_supermini', value: '0', description: 'Kuota default BULANAN SUPERMINI (GB)' },
@@ -146,6 +164,9 @@ const init = () => {
           { key: 'kuota_jumbo', value: '40', description: 'Kuota default BULANAN JUMBO (GB)' },
           { key: 'kuota_megabig', value: '75', description: 'Kuota default BULANAN MEGABIG (GB)' },
           { key: 'kuota_superjumbo', value: '60', description: 'Kuota default BULANAN SUPER JUMBO (GB)' },
+
+          // NOTE: Kuota untuk produk bulanan global (XLA14, XLA32, etc) tidak perlu dikonfigurasi
+          // karena sudah diatur otomatis oleh API KHFY-STORE
 
           // === KONFIGURASI SISTEM ===
           { key: 'harga_gagal', value: '700', description: 'Harga yang dipotong jika transaksi gagal' },
