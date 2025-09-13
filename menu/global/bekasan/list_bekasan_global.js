@@ -216,7 +216,7 @@ module.exports = (bot, formatUptime, BOT_START_TIME) => {
         try {
           // GUNAKAN DATA STATIS SAJA - TIDAK ADA FETCH API
           // Display name diambil dari daftar-paket.js, tidak perlu fetch stok untuk menu
-          console.log(`Info: Generating menu ${tipe.toUpperCase()} menggunakan data statis`);
+          // console.log(`Info: Generating menu ${tipe.toUpperCase()} menggunakan data statis`);
           
           // Generate keyboard menggunakan data statis murni (tanpa fetch API)
           const keyboard = generateStaticPaketKeyboard(tipe, {});
