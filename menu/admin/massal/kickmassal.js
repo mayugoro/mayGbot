@@ -3,6 +3,16 @@ require('dotenv').config({ quiet: true });
 const { getStok, addKickSchedule, getKickSchedules, getAllKickSchedules, deleteKickSchedule, completeKickSchedule } = require('../../../db');
 const { getSlotInfoAPI1Only } = require('../../admin/manage_akrab/cekslot1.js');
 
+// Import utils EXITER untuk flow management
+const { 
+  handleFlowWithExit, 
+  sendMessageWithTracking, 
+  initializeFlowState,
+  generateExitInstruction,
+  autoDeleteMessage,
+  EXIT_KEYWORDS
+} = require('../../../utils/exiter');
+
 // API1 Configuration (KHUSUS - SAMA DENGAN KICK1.JS)
 const API_PRIMARY_BASE = process.env.API1;
 const API_PRIMARY_KICK_ENDPOINT = process.env.KICK1;
@@ -263,7 +273,7 @@ const kickSingleMemberAPI1Only = async (nomorPengelola, memberData) => {
 // Function untuk kick semua anggota dari satu nomor HP (COMBO API1+CEKSLOT1+KICK1)
 const kickSemuaAnggotaSingle = async (nomor_hp, chatId, bot) => {
   // Send initial message
-  const statusMsg = await bot.sendMessage(chatId, 
+  const statusMsg = await sendMessageWithTracking(bot, chatId, 
     `🔄 <b>STARTING API1 COMBO KICKMASSAL - ${nomor_hp}</b>\n\n⚡ Step 1: API1+CEKSLOT1 - Mengambil semua data slot...`, 
     { parse_mode: 'HTML' }
   );
@@ -970,7 +980,7 @@ module.exports = (bot) => {
         kickStates.set(chatId, { step: 'input_nomor', menuMessageId: message.message_id });
         
         // JANGAN hapus menu, kirim input form di bawah menu (sama seperti scan_bekasan)
-        const inputMsg = await bot.sendMessage(chatId,
+        const inputMsg = await sendMessageWithTracking(bot, chatId,
           `🦵 <b>KICK MASSAL - API1 COMBO ONLY</b>\n\n` +
           `📞 <b>MASUKAN NOMOR HP</b>\n\n` +
           `Ketik nomor HP yang ingin di-kick semua membernya:\n\n` +
@@ -989,7 +999,7 @@ module.exports = (bot) => {
           `• Multiple nomor: Parallel (bersamaan)\n` +
           `• Members per nomor: Sequential (berurutan)\n\n` +
           `⚠️ <b>Pastikan semua nomor HP sudah benar!</b>\n\n` +
-          `💡 Ketik "exit" untuk membatalkan`,
+          generateExitInstruction(),
           { parse_mode: 'HTML' }
         );
         
@@ -1052,12 +1062,12 @@ module.exports = (bot) => {
           }
           
           listText += `\n💡 <b>Status:</b> ✅ = Aktif, ⏸️ = Tertunda\n`;
-          listText += `💡 Ketik "exit" untuk keluar dari tampilan ini.`;
+          listText += generateExitInstruction();
           
           // Set state untuk handle exit
           kickStates.set(chatId, { step: 'viewing_schedule' });
           
-          const scheduleMsg = await bot.sendMessage(chatId, listText, { parse_mode: 'HTML' });
+          const scheduleMsg = await sendMessageWithTracking(bot, chatId, listText, { parse_mode: 'HTML' });
           
           // Simpan message ID untuk bisa dihapus saat exit
           const newState = kickStates.get(chatId);
@@ -1176,16 +1186,9 @@ module.exports = (bot) => {
           
           resultText += `\n💡 <b>Semua jadwal sudah dikembalikan ke memori!</b>`;
           
-          const resultMsg = await bot.sendMessage(chatId, resultText, { parse_mode: 'HTML' });
+          const resultMsg = await sendMessageWithTracking(bot, chatId, resultText, { parse_mode: 'HTML' });
           
-          // Auto delete result after 8 seconds
-          setTimeout(async () => {
-            try {
-              await bot.deleteMessage(chatId, resultMsg.message_id);
-            } catch (e) {
-              // Ignore delete error
-            }
-          }, 8000);
+          // Auto cleanup handled by sendMessageWithTracking
           
           await bot.answerCallbackQuery(id, { 
             text: `✅ ${reactivatedCount} jadwal berhasil diaktifkan kembali`, 
@@ -1290,7 +1293,7 @@ module.exports = (bot) => {
     }
   });
 
-  // Handle text input for kick massal
+  // Handle text input for kick massal - MENGGUNAKAN EXITER
   bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
@@ -1302,28 +1305,26 @@ module.exports = (bot) => {
     if (!state) return;
     
     try {
-      // === CEK CANCEL/EXIT ===
-      if (['exit', 'EXIT', 'Exit'].includes(text)) {
+      // ✅ MENGGUNAKAN EXITER untuk handle exit flow (custom implementation for step-based state)
+      if (text && EXIT_KEYWORDS.COMBINED.includes(text)) {
         // Hapus input form jika ada
         if (state.inputMessageId) {
-          try {
-            await bot.deleteMessage(chatId, state.inputMessageId);
-          } catch (e) {
-            // Ignore delete error
-          }
+          await autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
         }
         
         // Hapus pesan jadwal jika sedang viewing schedule
         if (state.scheduleMessageId) {
-          try {
-            await bot.deleteMessage(chatId, state.scheduleMessageId);
-          } catch (e) {
-            // Ignore delete error
-          }
+          await autoDeleteMessage(bot, chatId, state.scheduleMessageId, 100);
         }
         
+        // Hapus result message jika ada
+        if (state.resultMessageId) {
+          await autoDeleteMessage(bot, chatId, state.resultMessageId, 100);
+        }
+        
+        // Clear state dan hapus user message
         kickStates.delete(chatId);
-        await bot.deleteMessage(chatId, msg.message_id);
+        await autoDeleteMessage(bot, chatId, msg.message_id, 100);
         return;
       }
 
@@ -1353,7 +1354,7 @@ module.exports = (bot) => {
             `❌ <b>Nomor tidak valid ditemukan:</b>\n\n` +
             invalidNumbers.map(num => `• ${num}`).join('\n') + '\n\n' +
             `Nomor harus 10-15 digit angka.\n` +
-            `Coba lagi atau ketik "exit" untuk batal.`,
+            `Coba lagi atau ${generateExitInstruction().replace('💡 ', '').toLowerCase()}`,
             { parse_mode: 'HTML' }
           );
           await bot.deleteMessage(chatId, msg.message_id);
@@ -1365,7 +1366,7 @@ module.exports = (bot) => {
           await bot.sendMessage(chatId, 
             `❌ <b>Tidak ada nomor valid ditemukan!</b>\n\n` +
             `Pastikan format nomor benar (10-15 digit).\n` +
-            `Coba lagi atau ketik "exit" untuk batal.`,
+            `Coba lagi atau ${generateExitInstruction().replace('💡 ', '').toLowerCase()}`,
             { parse_mode: 'HTML' }
           );
           await bot.deleteMessage(chatId, msg.message_id);
@@ -1409,7 +1410,7 @@ module.exports = (bot) => {
           `• Date + Time scheduling: Multi-day planning\n` +
           `• Database persistent: Restart-safe\n` +
           `• Flexible dates: Support berbagai format\n\n` +
-          `💡 Ketik "exit" untuk membatalkan`,
+          generateExitInstruction(),
           { parse_mode: 'HTML' }
         );
         
@@ -1451,7 +1452,7 @@ module.exports = (bot) => {
             `• <code>23</code> (HH) - Otomatis :00\n` +
             `• <code>9</code> (H) - Otomatis 09:00\n\n` +
             `⚠️ <b>Jika waktu sudah lewat, akan di-set untuk besok.</b>\n\n` +
-            `💡 Ketik "exit" untuk membatalkan`,
+            generateExitInstruction(),
             { parse_mode: 'HTML' }
           );
           
@@ -1476,7 +1477,7 @@ module.exports = (bot) => {
             `• <code>15-09-2025</code> (DD-MM-YYYY)\n` +
             `• <code>15.09.2025</code> (DD.MM.YYYY)\n\n` +
             `⚠️ <b>Tanggal harus di masa depan!</b>\n\n` +
-            `Coba lagi atau ketik "skip" untuk mode lama atau "exit" untuk batal.`,
+            `Coba lagi atau ketik "skip" untuk mode lama atau ${generateExitInstruction().replace('💡 ', '').toLowerCase()}`,
             { parse_mode: 'HTML' }
           );
           await bot.deleteMessage(chatId, msg.message_id);
@@ -1517,7 +1518,7 @@ module.exports = (bot) => {
           `🗓️ <b>Jadwal akan dibuat untuk:</b>\n` +
           `📅 ${displayDate}\n` +
           `⏰ [Waktu yang akan dimasukkan]\n\n` +
-          `💡 Ketik "exit" untuk membatalkan`,
+          generateExitInstruction(),
           { parse_mode: 'HTML' }
         );
         
@@ -1618,7 +1619,7 @@ module.exports = (bot) => {
             `• 23:00, 23.00, 2300, 23;00, 23\n` +
             `• 00:00, 0.00, 0000, 0;00, 0\n\n` +
             `⏰ <b>Range:</b> 00:00 - 23:59 (24 jam)\n\n` +
-            `Coba lagi atau ketik "exit" untuk batal.`,
+            `Coba lagi atau ${generateExitInstruction().replace('💡 ', '').toLowerCase()}`,
             { parse_mode: 'HTML' }
           );
           await bot.deleteMessage(chatId, msg.message_id);
