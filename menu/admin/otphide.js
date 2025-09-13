@@ -452,13 +452,12 @@ module.exports = (bot) => {
           }
 
         } else {
-          // OTP gagal diverifikasi - dengan error detail
+          // OTP gagal diverifikasi - tampilkan pesan user-friendly
           const displayOTP = cleanOTP.split('').join('-');
           
           const errorText = 
             '🔴 <b>OTP HIDE SALAH!</b>\n' +
-            `<i>Otp yg anda masukan ${displayOTP}</i>\n` +
-            `💬 Error: ${result.data?.message || result.data?.data?.message || result.message || 'OTP tidak valid'}`;
+            `<i>Otp yg anda masukan ${displayOTP}</i>`;
 
           const errorMsg = await bot.sendMessage(chatId, errorText, { parse_mode: 'HTML' });
 
