@@ -1,4 +1,5 @@
 const { getKonfigurasi, setKonfigurasi, getAllKonfigurasi } = require('../../../db');
+const { autoDeleteMessage, EXIT_KEYWORDS } = require('../../../utils/exiter');
 
 const adminState = new Map();
 
@@ -114,17 +115,13 @@ module.exports = (bot) => {
     if (!state) return;
 
     // === CEK CANCEL/EXIT UNTUK LIHAT KONFIGURASI ===
-    if (state.mode === 'lihat_konfigurasi' && ['exit', 'EXIT', 'Exit'].includes(msg.text.trim())) {
+    if (state.mode === 'lihat_konfigurasi' && EXIT_KEYWORDS.COMBINED.includes(msg.text.trim())) {
       if (state.inputMessageId) {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {
-          // Ignore delete error
-        }
+        autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
       }
       
       adminState.delete(chatId);
-      await bot.deleteMessage(chatId, msg.message_id);
+      autoDeleteMessage(bot, chatId, msg.message_id, 100);
       return;
     }
   });

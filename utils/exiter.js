@@ -1,21 +1,48 @@
 /**
- * EXITER - Utility untuk mengelola exit flow dengan functionality yang konsisten
- * Template reusable untuk pattern exit yang konsisten di seluruh bot
+ * 🚪 EXITER UTILITY - Comprehensive Exit Flow Management System
+ * ================================================================
  * 
- * 🚪 Handles all exit scenarios with style!
- * 💫 Consistent exit behavior across all bot features
- * 🎯 Smart exit detection with multiple keywords support
+ * Utilitas lengkap untuk mengelola berbagai pattern exit flow yang konsisten
+ * dan smooth di seluruh bot dengan bug-free implementation.
+ * 
+ * 🎯 SUPPORTED EXITER PATTERNS:
+ * 
+ * 1️⃣ VIEW EXITER (exiter biasa)
+ *    └── Untuk tampilan read-only (config, laporan, view-only content)
+ *    └── Flow: Display → Exit
+ *    └── Usage: Lihat konfigurasi, tampilan data, dll.
+ * 
+ * 2️⃣ INPUT EXITER
+ *    └── Untuk single-step input collection
+ *    └── Flow: Input Request → User Input/Exit → Result
+ *    └── Usage: Delete item, single form input, dll.
+ * 
+ * 3️⃣ STEP EXITER (step-by-step exiter)
+ *    └── Untuk multi-step input flows
+ *    └── Flow: Step 1 → Step 2 → Step N → Result
+ *    └── Usage: Multi-form input, wizard-like flows, dll.
+ * 
+ * 💫 FEATURES:
+ * ✅ 13 comprehensive exit keywords (exit, keluar, batal, c, x + variations)
+ * ✅ Smooth auto-delete dengan delay untuk UX profesional
+ * ✅ Styled input messages dengan italic formatting
+ * ✅ Built-in error handling untuk semua delete operations
+ * ✅ Centralized logic untuk consistency dan maintainability
  */
 
 /**
- * Menangani exit flow untuk message yang dikirim dengan pattern yang konsisten
- * @param {Object} bot - Bot instance
- * @param {Object} msg - Message object dari Telegram
+ * 🔧 CORE EXIT FLOW HANDLER (untuk manual implementation)
+ * =======================================================
+ * Legacy function untuk backward compatibility.
+ * Disarankan menggunakan pattern-specific functions di bawah.
+ * 
+ * @param {Object} bot - Bot instance Telegram
+ * @param {Object} msg - Message object dari Telegram  
  * @param {Map} stateMap - Map untuk tracking state (contoh: adminState)
  * @param {string} chatId - Chat ID
  * @param {Object} state - Current state object
- * @param {Array} exitKeywords - Array kata kunci untuk exit (default: ['exit', 'EXIT', 'Exit'])
- * @returns {boolean} - true jika message adalah exit command dan sudah diproses, false jika bukan
+ * @param {Array} exitKeywords - Array kata kunci exit (default: manual keywords)
+ * @returns {boolean} true jika exit berhasil diproses
  */
 const handleExitFlow = async (bot, msg, stateMap, chatId, state, exitKeywords = ['exit', 'EXIT', 'Exit']) => {
   // Pastikan ada text message
@@ -45,11 +72,14 @@ const handleExitFlow = async (bot, msg, stateMap, chatId, state, exitKeywords = 
 };
 
 /**
- * Menangani cleanup untuk input non-exit dalam flow mode
- * @param {Object} bot - Bot instance
+ * 🧹 INPUT CLEANUP HANDLER
+ * ========================
+ * Utility untuk cleanup input non-exit dalam flow mode.
+ * 
+ * @param {Object} bot - Bot instance Telegram
  * @param {Object} msg - Message object dari Telegram
- * @param {string} chatId - Chat ID
- * @param {boolean} keepResult - Apakah result message tetap tampil (default: true)
+ * @param {string} chatId - Chat ID  
+ * @param {boolean} keepResult - Tetap tampilkan result message (default: true)
  */
 const handleNonExitInput = async (bot, msg, chatId, keepResult = true) => {
   // Untuk input lainnya, hapus message user (biarkan result tetap tampil jika keepResult = true)
@@ -61,11 +91,15 @@ const handleNonExitInput = async (bot, msg, chatId, keepResult = true) => {
 };
 
 /**
- * Auto-delete command message dengan delay
- * @param {Object} bot - Bot instance
+ * ⏰ SMART AUTO-DELETE MESSAGE
+ * ============================
+ * Menghapus message dengan delay untuk smooth UX.
+ * Built-in error handling untuk semua delete operations.
+ * 
+ * @param {Object} bot - Bot instance Telegram
  * @param {string} chatId - Chat ID
  * @param {number} messageId - Message ID yang akan dihapus
- * @param {number} delay - Delay dalam milliseconds (default: 1000)
+ * @param {number} delay - Delay dalam milliseconds (default: 1000ms)
  */
 const autoDeleteMessage = async (bot, chatId, messageId, delay = 1000) => {
   setTimeout(async () => {
@@ -78,11 +112,15 @@ const autoDeleteMessage = async (bot, chatId, messageId, delay = 1000) => {
 };
 
 /**
- * Auto-delete multiple messages secara bersamaan (non-sequential)
- * @param {Object} bot - Bot instance
+ * 🔥 BATCH AUTO-DELETE MESSAGES  
+ * ==============================
+ * Menghapus multiple messages secara bersamaan untuk smooth UX.
+ * Semua messages akan hilang dengan delay yang sama (simultan).
+ * 
+ * @param {Object} bot - Bot instance Telegram
  * @param {string} chatId - Chat ID
- * @param {Array} messageIds - Array of message IDs yang akan dihapus
- * @param {number} delay - Delay dalam milliseconds (default: 100)
+ * @param {Array} messageIds - Array message IDs untuk dihapus
+ * @param {number} delay - Delay dalam milliseconds (default: 100ms)
  */
 const autoDeleteMultipleMessages = async (bot, chatId, messageIds, delay = 100) => {
   if (!Array.isArray(messageIds) || messageIds.length === 0) return;
@@ -96,13 +134,17 @@ const autoDeleteMultipleMessages = async (bot, chatId, messageIds, delay = 100) 
 };
 
 /**
- * Handle exit dengan auto-delete bersamaan untuk exiter dan target messages
- * @param {Object} bot - Bot instance
+ * 🚪 ENHANCED EXIT HANDLER WITH AUTO-DELETE
+ * ==========================================
+ * Advanced exit handler dengan automatic cleanup untuk semua related messages.
+ * Menggabungkan exit detection + auto-delete dalam satu function.
+ * 
+ * @param {Object} bot - Bot instance Telegram
  * @param {Object} msg - Message object dari user
  * @param {string} chatId - Chat ID
- * @param {Object} state - Current state object
+ * @param {Object} state - Current state object (dengan inputMessageId, resultMessageId, dll)
  * @param {Array} exitKeywords - Exit keywords (default: EXIT_KEYWORDS.COMBINED)
- * @returns {boolean} - true jika exit berhasil diproses
+ * @returns {boolean} true jika exit berhasil diproses
  */
 const handleExitWithAutoDelete = async (bot, msg, chatId, state, exitKeywords = null) => {
   if (!msg.text) return false;
@@ -131,15 +173,19 @@ const handleExitWithAutoDelete = async (bot, msg, chatId, state, exitKeywords = 
 };
 
 /**
- * Kirim message dengan auto-delete dan tracking state
- * @param {Object} bot - Bot instance
+ * 📨 SMART MESSAGE SENDER WITH TRACKING
+ * ====================================== 
+ * Mengirim message dengan auto-tracking state dan optional auto-delete.
+ * Menggabungkan send + state management + cleanup dalam satu function.
+ * 
+ * @param {Object} bot - Bot instance Telegram
  * @param {string} chatId - Chat ID
- * @param {string} content - Content message
- * @param {Object} options - Send message options
- * @param {Map} stateMap - State map untuk tracking
+ * @param {string} content - Content message yang akan dikirim
+ * @param {Object} options - Telegram sendMessage options
+ * @param {Map} stateMap - State map untuk tracking (contoh: adminState)
  * @param {Object} currentState - Current state object
  * @param {Object} originalMsg - Original message untuk auto-delete
- * @returns {Object} - Sent message object
+ * @returns {Object} Sent message object
  */
 const sendMessageWithTracking = async (bot, chatId, content, options, stateMap, currentState, originalMsg) => {
   // Kirim output
@@ -160,13 +206,17 @@ const sendMessageWithTracking = async (bot, chatId, content, options, stateMap, 
 };
 
 /**
- * Template complete untuk flow dengan exit functionality
- * @param {Object} bot - Bot instance
+ * 🔄 COMPLETE FLOW HANDLER WITH EXIT 
+ * ==================================
+ * Template lengkap untuk flow dengan exit functionality.
+ * Handles state management, exit detection, dan cleanup automatik.
+ * 
+ * @param {Object} bot - Bot instance Telegram
  * @param {Object} msg - Message object
- * @param {Map} stateMap - State management map
- * @param {string} flowMode - Mode name untuk state tracking
- * @param {Array} exitKeywords - Custom exit keywords (optional)
- * @returns {Object} - Flow control object { isExit: boolean, shouldContinue: boolean }
+ * @param {Map} stateMap - State management map (contoh: adminState)
+ * @param {string} flowMode - Mode name untuk state tracking (contoh: 'lihat_konfigurasi')
+ * @param {Array} exitKeywords - Custom exit keywords (optional, default: manual keywords)
+ * @returns {Object} Flow control object { isExit: boolean, shouldContinue: boolean }
  */
 const handleFlowWithExit = async (bot, msg, stateMap, flowMode, exitKeywords = ['exit', 'EXIT', 'Exit']) => {
   const chatId = msg.chat.id;
@@ -190,20 +240,27 @@ const handleFlowWithExit = async (bot, msg, stateMap, flowMode, exitKeywords = [
 };
 
 /**
- * Generate standard exit instruction text
+ * 💬 EXIT INSTRUCTION GENERATOR
+ * =============================
+ * Generate text instruksi exit yang standard dan konsisten.
+ * 
  * @param {string} exitKeyword - Kata kunci exit (default: 'exit')
- * @returns {string} - Exit instruction text
+ * @returns {string} Exit instruction text dengan formatting
  */
 const generateExitInstruction = (exitKeyword = 'exit') => {
   return `<i>💡 Ketik "${exitKeyword}" untuk keluar dari tampilan ini</i>`;
 };
 
 /**
- * Generate styled input message dengan italic dan exit instruction (seperti pattern cekpulsa.js)
- * @param {string} mainText - Text utama untuk input (misal: "📱 Masukkan nomor untuk cek pulsa . . .")
- * @param {string} subtitle - Subtitle atau instruction tambahan (misal: "Bisa massal, pisahkan dengan Enter.")
+ * 🎨 STYLED INPUT MESSAGE GENERATOR (untuk INPUT EXITER)
+ * ======================================================
+ * Generate styled input message dengan italic formatting dan exit instruction.
+ * Khusus digunakan untuk INPUT EXITER pattern (single-step input collection).
+ * 
+ * @param {string} mainText - Text utama untuk input (contoh: "📱 Masukkan nomor untuk cek pulsa")
+ * @param {string} subtitle - Subtitle atau instruction tambahan (contoh: "Bisa massal, pisahkan dengan Enter.")
  * @param {string} exitText - Custom exit text (default: "membatalkan")
- * @returns {string} - Styled input message dengan format italic lengkap
+ * @returns {string} Styled input message dengan format italic lengkap
  */
 const generateStyledInputMessage = (mainText, subtitle = '', exitText = 'membatalkan') => {
   let message = `<i>${mainText}`;
@@ -218,14 +275,18 @@ const generateStyledInputMessage = (mainText, subtitle = '', exitText = 'membata
 };
 
 /**
- * Kirim styled input message dengan tracking dan exiter support
- * @param {Object} bot - Bot instance
+ * 📤 STYLED INPUT MESSAGE SENDER (untuk INPUT EXITER)
+ * ===================================================
+ * Mengirim styled input message dengan tracking dan exiter support.
+ * Menggabungkan generateStyledInputMessage + sendMessage + tracking.
+ * 
+ * @param {Object} bot - Bot instance Telegram
  * @param {string} chatId - Chat ID
  * @param {string} mainText - Text utama untuk input
- * @param {string} subtitle - Subtitle atau instruction tambahan
+ * @param {string} subtitle - Subtitle atau instruction tambahan  
  * @param {string} exitText - Custom exit text (default: "membatalkan")
  * @param {Object} options - Additional send message options
- * @returns {Object} - Sent message object
+ * @returns {Object} Sent message object
  */
 const sendStyledInputMessage = async (bot, chatId, mainText, subtitle = '', exitText = 'membatalkan', options = {}) => {
   const styledMessage = generateStyledInputMessage(mainText, subtitle, exitText);
@@ -237,15 +298,18 @@ const sendStyledInputMessage = async (bot, chatId, mainText, subtitle = '', exit
 };
 
 /**
- * Handle exit untuk step-by-step flow (tidak mengganggu logika flow)
- * Fungsi ini untuk digunakan di dalam setiap step, bukan di awal handler
- * @param {Object} bot - Bot instance
+ * 🔄 STEP-BY-STEP EXIT HANDLER (untuk STEP EXITER)
+ * =================================================
+ * Handle exit untuk step-by-step flow tanpa mengganggu logika flow.
+ * Fungsi ini digunakan di dalam setiap step, bukan di awal handler.
+ * 
+ * @param {Object} bot - Bot instance Telegram
  * @param {Object} msg - Message object dari user
  * @param {string} chatId - Chat ID
  * @param {Object} state - Current state object
- * @param {Map} stateMap - State management map
+ * @param {Map} stateMap - State management map (contoh: adminState)
  * @param {Array} exitKeywords - Exit keywords (default: EXIT_KEYWORDS.COMBINED)
- * @returns {boolean} - true jika exit berhasil diproses, false jika bukan exit
+ * @returns {boolean} true jika exit berhasil diproses, false jika bukan exit
  */
 const handleStepByStepExit = async (bot, msg, chatId, state, stateMap, exitKeywords = null) => {
   if (!msg.text) return false;
@@ -270,17 +334,20 @@ const handleStepByStepExit = async (bot, msg, chatId, state, stateMap, exitKeywo
 };
 
 /**
- * Template untuk step dalam step-by-step flow dengan built-in exit handling
- * Digunakan untuk setiap step dalam multi-step flow
- * @param {Object} bot - Bot instance
+ * 🔧 STEP HANDLER WITH EXIT (untuk STEP EXITER)
+ * ==============================================
+ * Template untuk step dalam step-by-step flow dengan built-in exit handling.
+ * Digunakan untuk setiap step dalam multi-step flow agar konsisten.
+ * 
+ * @param {Object} bot - Bot instance Telegram
  * @param {Object} msg - Message object
  * @param {string} chatId - Chat ID
  * @param {Object} state - Current state object
- * @param {Map} stateMap - State management map
+ * @param {Map} stateMap - State management map (contoh: adminState)
  * @param {string} currentStep - Current step name untuk validasi
- * @param {Function} stepLogic - Function yang berisi logika step (akan dipanggil jika bukan exit)
+ * @param {Function} stepLogic - Function yang berisi logika step (dipanggil jika bukan exit)
  * @param {Array} exitKeywords - Custom exit keywords (optional)
- * @returns {boolean} - true jika step selesai diproses (exit atau logic), false jika bukan step ini
+ * @returns {boolean} true jika step selesai diproses (exit atau logic), false jika bukan step ini
  */
 const handleStepWithExit = async (bot, msg, chatId, state, stateMap, currentStep, stepLogic, exitKeywords = null) => {
   // Pastikan ini adalah step yang benar
@@ -300,8 +367,12 @@ const handleStepWithExit = async (bot, msg, chatId, state, stateMap, currentStep
 };
 
 /**
- * Utility untuk transisi antar step dengan smooth message cleanup
- * @param {Object} bot - Bot instance
+ * ➡️ STEP TRANSITION UTILITY (untuk STEP EXITER)
+ * =============================================== 
+ * Utility untuk transisi antar step dengan smooth message cleanup.
+ * Menghapus input sebelumnya, update state, dan kirim input form berikutnya.
+ * 
+ * @param {Object} bot - Bot instance Telegram
  * @param {string} chatId - Chat ID
  * @param {Object} state - Current state object
  * @param {Map} stateMap - State management map
@@ -327,10 +398,13 @@ const transitionToNextStep = async (bot, chatId, state, stateMap, msg, nextStep,
 };
 
 /**
- * Inisialisasi flow state
- * @param {Map} stateMap - State management map
+ * 🚀 FLOW STATE INITIALIZER
+ * =========================
+ * Inisialisasi flow state untuk memulai pattern exiter baru.
+ * 
+ * @param {Map} stateMap - State management map (contoh: adminState)
  * @param {string} chatId - Chat ID
- * @param {string} mode - Flow mode name
+ * @param {string} mode - Flow mode name (contoh: 'tambah_saldo', 'lihat_konfigurasi')
  * @param {Object} additionalData - Data tambahan untuk state (optional)
  */
 const initializeFlowState = (stateMap, chatId, mode, additionalData = {}) => {
@@ -340,28 +414,76 @@ const initializeFlowState = (stateMap, chatId, mode, additionalData = {}) => {
   });
 };
 
+// ================================================================
+// 🎯 EXPORT SECTION - All Functions & Constants
+// ================================================================
+
 module.exports = {
-  handleExitFlow,
-  handleNonExitInput,
-  autoDeleteMessage,
-  autoDeleteMultipleMessages,
-  handleExitWithAutoDelete,
-  handleStepByStepExit,
-  handleStepWithExit,
-  transitionToNextStep,
-  sendMessageWithTracking,
-  handleFlowWithExit,
-  generateExitInstruction,
-  generateStyledInputMessage,
-  sendStyledInputMessage,
-  initializeFlowState
+  // 🔧 Core Functions
+  handleExitFlow,                // Legacy exit handler
+  handleNonExitInput,           // Input cleanup utility
+  
+  // ⏰ Auto-Delete Functions
+  autoDeleteMessage,            // Single message auto-delete
+  autoDeleteMultipleMessages,   // Batch message auto-delete
+  handleExitWithAutoDelete,     // Enhanced exit dengan auto-delete
+  
+  // 🔄 Step Exiter Functions (untuk step-by-step flows)
+  handleStepByStepExit,         // Exit handler untuk step flows
+  handleStepWithExit,           // Step template dengan exit
+  transitionToNextStep,         // Step transition utility
+  
+  // 📨 Message Functions
+  sendMessageWithTracking,      // Smart message sender dengan tracking
+  generateStyledInputMessage,   // Generate styled input text
+  sendStyledInputMessage,       // Send styled input dengan tracking
+  
+  // 🎛️ Flow Management
+  handleFlowWithExit,          // Complete flow handler
+  generateExitInstruction,     // Generate exit instruction text
+  initializeFlowState         // Flow state initializer
 };
 
-// Export constants untuk consistent exit keywords
+// ================================================================
+// 🔑 EXIT KEYWORDS CONSTANTS - 13 Comprehensive Exit Options
+// ================================================================
 module.exports.EXIT_KEYWORDS = {
+  // 🚪 Standard Exit Keywords
   STANDARD: ['exit', 'EXIT', 'Exit', 'c', 'C', 'x', 'X'],
+  
+  // 🔙 Indonesian "Keluar" (Exit)
   KELUAR: ['keluar', 'KELUAR', 'Keluar'],
+  
+  // ❌ Indonesian "Batal" (Cancel)
   BATAL: ['batal', 'BATAL', 'Batal'],
+  
+  // 🛑 Stop Keywords
   STOP: ['stop', 'STOP', 'Stop'],
+  
+  // 🎯 Combined - All 13 Exit Options (RECOMMENDED)
   COMBINED: ['exit', 'EXIT', 'Exit', 'keluar', 'KELUAR', 'Keluar', 'batal', 'BATAL', 'Batal', 'c', 'C', 'x', 'X']
 };
+
+// ================================================================
+// 📚 USAGE EXAMPLES & PATTERN GUIDELINES
+// ================================================================
+//
+// 🔴 VIEW EXITER (untuk read-only displays seperti atur_lainnya.js):
+// const { autoDeleteMessage, EXIT_KEYWORDS } = require('./utils/exiter');
+// if (EXIT_KEYWORDS.COMBINED.includes(msg.text.trim())) {
+//   autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
+//   autoDeleteMessage(bot, chatId, msg.message_id, 100);
+//   adminState.delete(chatId);
+// }
+//
+// 🟡 INPUT EXITER (untuk single-step input seperti hapus_stok.js):
+// const { sendStyledInputMessage, autoDeleteMessage, EXIT_KEYWORDS } = require('./utils/exiter');
+// const inputMsg = await sendStyledInputMessage(bot, chatId, "Masukkan data...", "Subtitle...");
+// if (EXIT_KEYWORDS.COMBINED.includes(msg.text.trim())) { /* handle exit */ }
+//
+// 🟢 STEP EXITER (untuk multi-step flows seperti tambah_saldo.js):
+// const { handleStepByStepExit, transitionToNextStep } = require('./utils/exiter');
+// if (await handleStepByStepExit(bot, msg, chatId, state, adminState)) return;
+// await transitionToNextStep(bot, chatId, state, adminState, msg, 'step2', 'Next input...');
+//
+// ================================================================
