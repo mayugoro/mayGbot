@@ -1,9 +1,18 @@
 const { getStok } = require('./db');
 
+// Import utils template untuk flow management
+const { 
+  handleFlowWithExit, 
+  sendMessageWithTracking, 
+  initializeFlowState,
+  generateExitInstruction,
+  autoDeleteMessage
+} = require('./utils/flow_sendMessage');
+
 const adminState = new Map();
 
 module.exports = (bot) => {
-  // === Allstok dengan teks biasa ===
+  // === Allstok dengan teks biasa (MENGGUNAKAN UTILS TEMPLATE) ===
   bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     
@@ -16,42 +25,15 @@ module.exports = (bot) => {
       return; // Skip processing, biarkan broadcast handler yang menangani
     }
     
-    // Cek state untuk mode allstok
-    const state = adminState.get(chatId);
+    // ✅ MENGGUNAKAN UTILS TEMPLATE untuk handle flow dengan exit
+    const flowControl = await handleFlowWithExit(bot, msg, adminState, 'view_allstok');
     
-    // Jika sedang dalam mode view_allstok, handle exit
-    if (state && state.mode === 'view_allstok') {
-      if (!msg.text) return;
-      
-      const text = msg.text.trim();
-
-      // === CEK EXIT ===
-      if (['exit', 'EXIT', 'Exit'].includes(text)) {
-        // Hapus result message dan user message
-        if (state.resultMessageId) {
-          try {
-            await bot.deleteMessage(chatId, state.resultMessageId);
-          } catch (e) {
-            // Ignore delete error
-          }
-        }
-        try {
-          await bot.deleteMessage(chatId, msg.message_id);
-        } catch (e) {
-          // Ignore delete error
-        }
-        
-        adminState.delete(chatId);
-        return;
-      }
-
-      // Untuk input lainnya, hapus message user (biarkan result tetap tampil)
-      try {
-        await bot.deleteMessage(chatId, msg.message_id);
-      } catch (e) {
-        // Ignore delete error
-      }
-      return;
+    if (flowControl.isExit) {
+      return; // Exit berhasil diproses oleh utils
+    }
+    
+    if (!flowControl.shouldContinue) {
+      return; // Flow sedang aktif, stop processing
     }
     
     // Cek apakah ini bukan command slash dan ada text
@@ -71,8 +53,8 @@ module.exports = (bot) => {
     
     if (!isAllstokRequest) return;
     
-    // Mulai proses allstok
-    adminState.set(msg.chat.id, { mode: 'view_allstok' });
+    // ✅ MENGGUNAKAN UTILS TEMPLATE untuk inisialisasi flow state
+    initializeFlowState(adminState, chatId, 'view_allstok');
     
     try {
       // Definisikan semua kategori
@@ -126,54 +108,42 @@ module.exports = (bot) => {
         output += '• Bulanan: SUPERMINI, MINI, BIG, LITE, JUMBO, MEGABIG\n\n';
       }
       
-      output += '💡 Ketik <b>"exit"</b> untuk keluar dari tampilan ini';
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk generate exit instruction
+      output += generateExitInstruction();
       
-      // Kirim output
-      const resultMsg = await bot.sendMessage(msg.chat.id, output, {
-        parse_mode: 'HTML'
-      });
-      
-      // Auto-delete command message setelah respons dikirim
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(msg.chat.id, msg.message_id);
-        } catch (e) {}
-      }, 1000);
-      
-      // Simpan message ID untuk tracking
-      const currentState = adminState.get(msg.chat.id);
-      currentState.resultMessageId = resultMsg.message_id;
-      adminState.set(msg.chat.id, currentState);
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk send message dengan tracking
+      await sendMessageWithTracking(
+        bot, 
+        chatId, 
+        output, 
+        { parse_mode: 'HTML' },
+        adminState,
+        adminState.get(chatId),
+        msg
+      );
       
     } catch (error) {
       console.error('Error in allstok:', error);
-      await bot.sendMessage(msg.chat.id, `❌ Gagal mengambil data stok: ${error.message}`);
+      await bot.sendMessage(chatId, `❌ Gagal mengambil data stok: ${error.message}`);
       
-      // Auto-delete command message
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(msg.chat.id, msg.message_id);
-        } catch (e) {}
-      }, 1000);
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto-delete
+      await autoDeleteMessage(bot, chatId, msg.message_id);
       
-      adminState.delete(msg.chat.id);
+      adminState.delete(chatId);
     }
   });
 
-  // === /allstok command (backward compatibility) ===
+  // === /allstok command (backward compatibility) - MENGGUNAKAN UTILS TEMPLATE ===
   bot.onText(/\/allstok/, async (msg) => {
     if (msg.from.id.toString() !== process.env.ADMIN_ID) {
       await bot.sendMessage(msg.chat.id, 'ente siapa njir🗿');
-      // Auto-delete command message
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(msg.chat.id, msg.message_id);
-        } catch (e) {}
-      }, 1000);
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto-delete
+      await autoDeleteMessage(bot, msg.chat.id, msg.message_id);
       return;
     }
     
-    adminState.set(msg.chat.id, { mode: 'view_allstok' });
+    // ✅ MENGGUNAKAN UTILS TEMPLATE untuk inisialisasi flow state
+    initializeFlowState(adminState, msg.chat.id, 'view_allstok');
     
     try {
       // Definisikan semua kategori
@@ -227,35 +197,26 @@ module.exports = (bot) => {
         output += '• Bulanan: SUPERMINI, MINI, BIG, LITE, JUMBO, MEGABIG\n\n';
       }
       
-      output += '💡 Ketik <b>"exit"</b> untuk keluar dari tampilan ini';
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk generate exit instruction
+      output += generateExitInstruction();
       
-      // Kirim output
-      const resultMsg = await bot.sendMessage(msg.chat.id, output, {
-        parse_mode: 'HTML'
-      });
-      
-      // Auto-delete command message setelah respons dikirim
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(msg.chat.id, msg.message_id);
-        } catch (e) {}
-      }, 1000);
-      
-      // Simpan message ID untuk tracking
-      const currentState = adminState.get(msg.chat.id);
-      currentState.resultMessageId = resultMsg.message_id;
-      adminState.set(msg.chat.id, currentState);
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk send message dengan tracking
+      await sendMessageWithTracking(
+        bot, 
+        msg.chat.id, 
+        output, 
+        { parse_mode: 'HTML' },
+        adminState,
+        adminState.get(msg.chat.id),
+        msg
+      );
       
     } catch (error) {
       console.error('Error in /allstok:', error);
       await bot.sendMessage(msg.chat.id, `❌ Gagal mengambil data stok: ${error.message}`);
       
-      // Auto-delete command message
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(msg.chat.id, msg.message_id);
-        } catch (e) {}
-      }, 1000);
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto-delete
+      await autoDeleteMessage(bot, msg.chat.id, msg.message_id);
       
       adminState.delete(msg.chat.id);
     }
