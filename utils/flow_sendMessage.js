@@ -172,9 +172,9 @@ module.exports = {
 
 // Export constants untuk consistent exit keywords
 module.exports.EXIT_KEYWORDS = {
-  STANDARD: ['exit', 'EXIT', 'Exit'],
+  STANDARD: ['exit', 'EXIT', 'Exit', 'c', 'C', 'x', 'X'],
   KELUAR: ['keluar', 'KELUAR', 'Keluar'],
   BATAL: ['batal', 'BATAL', 'Batal'],
   STOP: ['stop', 'STOP', 'Stop'],
-  COMBINED: ['exit', 'EXIT', 'Exit', 'keluar', 'KELUAR', 'Keluar', 'batal', 'BATAL', 'Batal']
+  COMBINED: ['exit', 'EXIT', 'Exit', 'keluar', 'KELUAR', 'Keluar', 'batal', 'BATAL', 'Batal', 'c', 'C', 'x', 'X']
 };

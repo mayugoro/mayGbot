@@ -6,7 +6,8 @@ const {
   sendMessageWithTracking, 
   initializeFlowState,
   generateExitInstruction,
-  autoDeleteMessage
+  autoDeleteMessage,
+  EXIT_KEYWORDS
 } = require('./utils/flow_sendMessage');
 
 const adminState = new Map();
@@ -26,7 +27,7 @@ module.exports = (bot) => {
     }
     
     // ✅ MENGGUNAKAN UTILS TEMPLATE untuk handle flow dengan exit
-    const flowControl = await handleFlowWithExit(bot, msg, adminState, 'view_allstok');
+    const flowControl = await handleFlowWithExit(bot, msg, adminState, 'view_allstok', EXIT_KEYWORDS.COMBINED);
     
     if (flowControl.isExit) {
       return; // Exit berhasil diproses oleh utils

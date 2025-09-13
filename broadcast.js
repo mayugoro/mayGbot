@@ -1,5 +1,15 @@
 const { getAllUsers, logBroadcast, markUserBlocked } = require('./db');
 
+// Import utils template untuk flow management
+const { 
+  handleFlowWithExit, 
+  sendMessageWithTracking, 
+  initializeFlowState,
+  generateExitInstruction,
+  autoDeleteMessage,
+  EXIT_KEYWORDS
+} = require('./utils/flow_sendMessage');
+
 const adminState = new Map();
 
 module.exports = (bot) => {
@@ -22,38 +32,27 @@ module.exports = (bot) => {
   const clearBroadcastSession = (chatId) => {
     adminState.delete(chatId);
   };
-  // === Broadcast dengan teks biasa ===
+  // === Broadcast dengan teks biasa (MENGGUNAKAN UTILS TEMPLATE) ===
   bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     
     // Cek apakah user adalah admin
     if (msg.from.id.toString() !== process.env.ADMIN_ID) return;
     
-    // === PRIORITAS TERTINGGI: CEK SESI BROADCAST AKTIF ===
+    // ✅ MENGGUNAKAN UTILS TEMPLATE untuk handle flow dengan exit  
+    // Gunakan EXIT_KEYWORDS.COMBINED untuk mendukung lebih banyak exit keywords
+    const flowControl = await handleFlowWithExit(bot, msg, adminState, 'broadcast', EXIT_KEYWORDS.COMBINED);
+    
+    if (flowControl.isExit) {
+      return; // Exit berhasil diproses oleh utils
+    }
+    
+    // Cek apakah sedang dalam broadcast mode dan perlu melanjutkan processing
     const state = adminState.get(chatId);
     const inBroadcastSession = isInBroadcastSession(chatId);
     
-    // Jika sedang dalam sesi broadcast, HANYA terima input broadcast atau exit
-    if (inBroadcastSession && state.step === 'input_message') {
-      
-      // === CEK CANCEL/EXIT ===
-      if (msg.text && ['exit', 'EXIT', 'Exit', '/exit', 'batal', 'cancel'].includes(msg.text.trim())) {
-        if (state.inputMessageId) {
-          try {
-            await bot.deleteMessage(chatId, state.inputMessageId);
-          } catch (e) {}
-        }
-        
-        clearBroadcastSession(chatId);
-        try {
-          await bot.deleteMessage(chatId, msg.message_id);
-        } catch (e) {
-          if (!e.message.includes('message to delete not found')) {
-            console.error('Error deleting message:', e.message);
-          }
-        }
-        return;
-      }
+    // Jika sedang dalam sesi broadcast dan step input_message, tapi bukan exit
+    if (inBroadcastSession && state && state.step === 'input_message' && !flowControl.shouldContinue) {
       
       // Jika dalam sesi broadcast dan bukan exit, lanjut ke proses broadcast
       await processBroadcastMessage(msg, bot, chatId, state);
@@ -77,29 +76,28 @@ module.exports = (bot) => {
       );
       
       if (isBroadcastRequest) {
-        // Mulai sesi broadcast baru
-        adminState.set(chatId, { mode: 'broadcast', step: 'input_message', startTime: Date.now() });
+        // ✅ MENGGUNAKAN UTILS TEMPLATE untuk inisialisasi flow state
+        initializeFlowState(adminState, chatId, 'broadcast', { 
+          step: 'input_message', 
+          startTime: Date.now() 
+        });
         
-        const inputMsg = await bot.sendMessage(chatId, 
-          '📢 <b>SESI BROADCAST DIMULAI</b>\n\n' +
+        const broadcastPrompt = '📢 <b>SESI BROADCAST DIMULAI</b>\n\n' +
           '🔒 <b>Mode:</b> Broadcast Aktif\n' +
           '📝 Kirim pesan yang akan di-broadcast:\n\n' +
           '✅ <b>Support:</b>\n• Teks\n• Foto + Caption\n• Video + Caption\n• Audio/Voice\n• Document/File\n• Sticker\n• GIF/Animation\n\n' +
-          '❌ <b>Keluar:</b> Ketik "exit" atau "batal"', {
-          parse_mode: 'HTML'
-        });
+          '❌ <b>Keluar:</b> ' + generateExitInstruction('exit');
         
-        // Auto-delete command message setelah respons dikirim
-        setTimeout(async () => {
-          try {
-            await bot.deleteMessage(chatId, msg.message_id);
-          } catch (e) {}
-        }, 1000);
-        
-        // Simpan message ID untuk bisa diedit nanti
-        const currentState = adminState.get(chatId);
-        currentState.inputMessageId = inputMsg.message_id;
-        adminState.set(chatId, currentState);
+        // ✅ MENGGUNAKAN UTILS TEMPLATE untuk send message dengan tracking
+        await sendMessageWithTracking(
+          bot, 
+          chatId, 
+          broadcastPrompt, 
+          { parse_mode: 'HTML' },
+          adminState,
+          adminState.get(chatId),
+          msg
+        );
         return;
       }
     }
@@ -449,47 +447,43 @@ module.exports = (bot) => {
     return;
   }
 
-  // === /broadcast command (backward compatibility) ===
+  // === /broadcast command (backward compatibility) - MENGGUNAKAN UTILS TEMPLATE ===
   bot.onText(/\/broadcast/, async (msg) => {
     if (msg.from.id.toString() !== process.env.ADMIN_ID) {
       await bot.sendMessage(msg.chat.id, 'ente siapa njir🗿');
-      // Auto-delete command message
-      setTimeout(async () => {
-        try {
-          await bot.deleteMessage(msg.chat.id, msg.message_id);
-        } catch (e) {}
-      }, 1000);
+      // ✅ MENGGUNAKAN UTILS TEMPLATE untuk auto-delete
+      await autoDeleteMessage(bot, msg.chat.id, msg.message_id);
       return;
     }
     
     // Cek jika sedang dalam sesi broadcast lain
     if (isInBroadcastSession(msg.chat.id)) {
-      await bot.sendMessage(msg.chat.id, '⚠️ Anda sedang dalam sesi broadcast aktif!\n\nKetik "exit" untuk keluar atau lanjutkan mengirim pesan broadcast.');
+      await bot.sendMessage(msg.chat.id, '⚠️ Anda sedang dalam sesi broadcast aktif!\n\n' + generateExitInstruction() + ' untuk keluar atau lanjutkan mengirim pesan broadcast.');
       return;
     }
     
-    adminState.set(msg.chat.id, { mode: 'broadcast', step: 'input_message', startTime: Date.now() });
+    // ✅ MENGGUNAKAN UTILS TEMPLATE untuk inisialisasi flow state
+    initializeFlowState(adminState, msg.chat.id, 'broadcast', { 
+      step: 'input_message', 
+      startTime: Date.now() 
+    });
     
-    const inputMsg = await bot.sendMessage(msg.chat.id, 
-      '📢 <b>SESI BROADCAST DIMULAI</b>\n\n' +
+    const broadcastPrompt = '📢 <b>SESI BROADCAST DIMULAI</b>\n\n' +
       '🔒 <b>Mode:</b> Broadcast Aktif (via command)\n' +
       '📝 Kirim pesan yang akan di-broadcast:\n\n' +
       '✅ <b>Support:</b>\n• Teks\n• Foto + Caption\n• Video + Caption\n• Audio/Voice\n• Document/File\n• Sticker\n• GIF/Animation\n\n' +
-      '❌ <b>Keluar:</b> Ketik "exit" atau "batal"', {
-      parse_mode: 'HTML'
-    });
+      '❌ <b>Keluar:</b> ' + generateExitInstruction('exit');
     
-    // Auto-delete command message setelah respons dikirim
-    setTimeout(async () => {
-      try {
-        await bot.deleteMessage(msg.chat.id, msg.message_id);
-      } catch (e) {}
-    }, 1000);
-    
-    // Simpan message ID untuk bisa diedit nanti
-    const currentState = adminState.get(msg.chat.id);
-    currentState.inputMessageId = inputMsg.message_id;
-    adminState.set(msg.chat.id, currentState);
+    // ✅ MENGGUNAKAN UTILS TEMPLATE untuk send message dengan tracking
+    await sendMessageWithTracking(
+      bot, 
+      msg.chat.id, 
+      broadcastPrompt, 
+      { parse_mode: 'HTML' },
+      adminState,
+      adminState.get(msg.chat.id),
+      msg
+    );
   });
 
   // Export function untuk cek sesi dari luar (opsional)
