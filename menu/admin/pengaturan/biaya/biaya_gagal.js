@@ -88,6 +88,11 @@ module.exports = (bot) => {
     }
 
     try {
+      // Hapus input message terlebih dahulu
+      if (state.inputMessageId) {
+        await autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
+      }
+      
       // Update konfigurasi
       await setKonfigurasi('harga_gagal', nilai.toString());
 

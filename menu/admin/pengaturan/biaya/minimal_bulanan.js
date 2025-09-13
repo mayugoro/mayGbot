@@ -87,6 +87,11 @@ module.exports = (bot) => {
     }
 
     try {
+      // Hapus input message terlebih dahulu
+      if (state.inputMessageId) {
+        await autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
+      }
+      
       await setKonfigurasi('min_saldo_bulanan', nilai.toString());
 
       // Konfirmasi berhasil

@@ -471,20 +471,36 @@ module.exports = (bot) => {
       return;
     }
 
-    // Hapus pesan input user (modern auto-delete)
+    // Hapus pesan input user dan input message (modern auto-delete)
     await autoDeleteMessage(bot, chatId, msg.message_id, 100);
+    if (state.inputMessageId) {
+      await autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
+    }
+
+    // Kirim pesan processing
+    let processingMsg = null;
+    try {
+      processingMsg = await bot.sendMessage(chatId, '<i>Sedang diproses, mohon tunggu...</i>', { parse_mode: 'HTML' });
+    } catch (e) {
+      console.error('Error sending processing message:', e);
+    }
 
     let rekapStokArray = [];
     let currentStatusMsg = null;
 
     // === MASSAL SERENTAK HARDCORE - NO RATE LIMIT ===
     
-    // Kirim status awal
-    try {
-      currentStatusMsg = await bot.sendMessage(chatId, `📝 HARDCORE SCAN ${nomorList.length} nomor - NO RATE LIMIT!`);
-    } catch (e) {
-      console.error('Error sending initial status:', e);
-    }
+    // Hapus processing message dan kirim status awal setelah delay singkat
+    setTimeout(async () => {
+      if (processingMsg) {
+        await autoDeleteMessage(bot, chatId, processingMsg.message_id, 100);
+      }
+      try {
+        currentStatusMsg = await bot.sendMessage(chatId, `📝 HARDCORE SCAN ${nomorList.length} nomor - NO RATE LIMIT!`);
+      } catch (e) {
+        console.error('Error sending initial status:', e);
+      }
+    }, 800);
 
     // Function untuk scan single nomor dengan API Primary/Secondary strategy
     const scanSingleNomor = async (nomor_hp, index) => {

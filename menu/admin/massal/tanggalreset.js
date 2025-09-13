@@ -472,8 +472,19 @@ module.exports = (bot) => {
       return;
     }
 
-    // Hapus pesan input user (modern auto-delete)
+    // Hapus pesan input user dan input message (modern auto-delete)
     await autoDeleteMessage(bot, chatId, msg.message_id, 100);
+    if (state.inputMessageId) {
+      await autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
+    }
+
+    // Kirim pesan processing
+    let processingMsg = null;
+    try {
+      processingMsg = await bot.sendMessage(chatId, '<i>Sedang diproses, mohon tunggu...</i>', { parse_mode: 'HTML' });
+    } catch (e) {
+      console.error('Error sending processing message:', e);
+    }
 
     stateResetTanggal.delete(chatId);
 
@@ -487,12 +498,17 @@ module.exports = (bot) => {
 
     // === CONCURRENT PROCESSING WITH REAL-TIME STREAMING ===
     
-    // Kirim status awal
-    try {
-      currentStatusMsg = await bot.sendMessage(chatId, `📅 CONCURRENT SCAN ${nomorList.length} nomor - Dual API Strategy!`);
-    } catch (e) {
-      console.error('Error sending initial status:', e);
-    }
+    // Hapus processing message dan kirim status awal setelah delay singkat
+    setTimeout(async () => {
+      if (processingMsg) {
+        await autoDeleteMessage(bot, chatId, processingMsg.message_id, 100);
+      }
+      try {
+        currentStatusMsg = await bot.sendMessage(chatId, `📅 CONCURRENT SCAN ${nomorList.length} nomor - Dual API Strategy!`);
+      } catch (e) {
+        console.error('Error sending initial status:', e);
+      }
+    }, 800);
 
     // Clear rekap data
     rekapResetData.clear();
