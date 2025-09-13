@@ -1,5 +1,12 @@
 const { getStok, deleteStok, deleteSingleStok, clearStokKategori } = require('../../db');
 
+// Import utils EXITER untuk input single-step yang aman
+const { 
+  sendStyledInputMessage,
+  autoDeleteMessage,
+  EXIT_KEYWORDS
+} = require('../../utils/exiter');
+
 const adminState = new Map();
 
 // === PRELOAD INLINE KEYBOARDS ===
@@ -49,25 +56,23 @@ const HAPUS_STOK_BEKASAN_CONTENT = '⚡ <b>HAPUS STOK BEKASAN</b>\n\nPilih kateg
 const HAPUS_STOK_BULANAN_CONTENT = '🌙 <b>HAPUS STOK BULANAN</b>\n\nPilih paket bulanan yang akan dihapus:';
 const HAPUS_SEMUA_CONTENT = '⚠️ <b>PERINGATAN!</b>\n\nAnda akan menghapus <b>SEMUA STOK</b> dari semua kategori (BEKASAN & BULANAN).\n\n<b>Tindakan ini tidak dapat dibatalkan!</b>\n\nApakah Anda yakin?';
 
-// Template input form untuk hapus stok
-const generateHapusStokForm = (jenis, kategori, daftarNomor) => {
+// Template input form untuk hapus stok dengan exiter pattern
+const generateHapusStokInput = (jenis, kategori, daftarNomor) => {
   const jenisText = jenis === 'bekasan' ? 'BEKASAN' : 'BULANAN';
-  let daftarText = '';
+  const mainText = `🗑️ HAPUS STOK ${jenisText} ${kategori}`;
   
+  let subtitle = '';
   if (daftarNomor.length > 0) {
-    daftarText = `DAFTAR PENGELOLA UNTUK ${jenisText} ${kategori}:\n\n<code>`;
+    subtitle = `DAFTAR PENGELOLA UNTUK ${jenisText} ${kategori}:\n\n`;
     daftarNomor.forEach(nomor => {
-      daftarText += `${nomor}\n`;
+      subtitle += `${nomor}\n`;
     });
-    daftarText += `</code>\n`;
+    subtitle += `\n💡 Ketik "ALL" untuk hapus semua`;
   } else {
-    daftarText = `❌ TIDAK ADA STOK UNTUK ${jenisText} ${kategori}\n\n`;
+    subtitle = `❌ TIDAK ADA STOK UNTUK ${jenisText} ${kategori}`;
   }
   
-  return `🗑️ <b>HAPUS STOK ${jenisText} ${kategori}</b>\n\n` +
-    daftarText +
-    `💡 Ketik "ALL" untuk hapus semua\n` +
-    `💡 Ketik "exit" untuk membatalkan.`;
+  return { mainText, subtitle };
 };
 
 module.exports = (bot) => {
@@ -285,7 +290,7 @@ module.exports = (bot) => {
           parse_mode: 'HTML'
         });
         
-        // Countdown 2 detik
+        // Countdown dan auto delete dengan exiter
         setTimeout(async () => {
           try {
             await bot.editMessageText(`✅ <b>Berhasil menghapus semua stok!</b>\n\n📊 Total stok yang dihapus: <b>${totalHapus}</b> nomor\n\n🗑️ Semua kategori (BEKASAN & BULANAN) telah dikosongkan.`, {
@@ -293,19 +298,11 @@ module.exports = (bot) => {
               message_id: resultMsg.message_id,
               parse_mode: 'HTML'
             });
-          } catch (e) {
-            // Ignore edit error
-          }
+          } catch (e) { }
         }, 1000);
         
-        // Auto delete notifikasi hasil setelah 2 detik
-        setTimeout(async () => {
-          try {
-            await bot.deleteMessage(chatId, resultMsg.message_id);
-          } catch (e) {
-            // Ignore delete error
-          }
-        }, 2000);
+        // Auto delete dengan exiter autoDeleteMessage
+        autoDeleteMessage(bot, chatId, resultMsg.message_id, 2000);
         
       } catch (e) {
         await bot.sendMessage(chatId, `❌ Gagal menghapus semua stok: ${e.message}`);
@@ -327,23 +324,11 @@ module.exports = (bot) => {
         // Ambil daftar nomor untuk kategori ini
         const daftarNomor = await getStok(kategori);
         
-        let daftarText = '';
-        if (daftarNomor.length > 0) {
-          daftarText = `DAFTAR PENGELOLA UNTUK BEKASAN ${kategori}:\n\n<code>`;
-          daftarNomor.forEach(nomor => {
-            daftarText += `${nomor}\n`;
-          });
-          daftarText += `</code>\n`;
-        } else {
-          daftarText = `❌ TIDAK ADA STOK UNTUK BEKASAN ${kategori}\n\n`;
-        }
-        
         adminState.set(chatId, { mode: 'hapus_stok', kategori: kategori, jenis: 'bekasan', menuMessageId: msgId });
         
-        // JANGAN hapus menu, kirim input form di bawah menu
-        const inputMsg = await bot.sendMessage(chatId, generateHapusStokForm('bekasan', kategori, daftarNomor), {
-          parse_mode: 'HTML'
-        });
+        // Input form dengan styled exiter pattern
+        const { mainText, subtitle } = generateHapusStokInput('bekasan', kategori, daftarNomor);
+        const inputMsg = await sendStyledInputMessage(bot, chatId, mainText, subtitle, 'membatalkan');
         
         // Simpan message ID untuk bisa diedit nanti
         const currentState = adminState.get(chatId);
@@ -372,23 +357,11 @@ module.exports = (bot) => {
         // Ambil daftar nomor untuk paket ini
         const daftarNomor = await getStok(paket.toUpperCase());
         
-        let daftarText = '';
-        if (daftarNomor.length > 0) {
-          daftarText = `DAFTAR PENGELOLA UNTUK BULANAN ${paket.toUpperCase()}:\n\n<code>`;
-          daftarNomor.forEach(nomor => {
-            daftarText += `${nomor}\n`;
-          });
-          daftarText += `</code>\n`;
-        } else {
-          daftarText = `❌ TIDAK ADA STOK UNTUK BULANAN ${paket.toUpperCase()}\n\n`;
-        }
-        
         adminState.set(chatId, { mode: 'hapus_stok', kategori: paket.toUpperCase(), jenis: 'bulanan', menuMessageId: msgId });
         
-        // JANGAN hapus menu, kirim input form di bawah menu
-        const inputMsg = await bot.sendMessage(chatId, generateHapusStokForm('bulanan', paket.toUpperCase(), daftarNomor), {
-          parse_mode: 'HTML'
-        });
+        // Input form dengan styled exiter pattern
+        const { mainText, subtitle } = generateHapusStokInput('bulanan', paket.toUpperCase(), daftarNomor);
+        const inputMsg = await sendStyledInputMessage(bot, chatId, mainText, subtitle, 'membatalkan');
         
         // Simpan message ID untuk bisa diedit nanti
         const currentState = adminState.get(chatId);
@@ -414,19 +387,15 @@ module.exports = (bot) => {
     const state = adminState.get(chatId);
     if (!state || state.mode !== 'hapus_stok' || !state.kategori) return;
 
-    // === CEK CANCEL/EXIT ===
-    if (['exit', 'EXIT', 'Exit'].includes(msg.text.trim())) {
-      // Hapus input form
+    // === EXIT HANDLING dengan input exiter yang aman ===
+    if (EXIT_KEYWORDS.COMBINED.includes(msg.text.trim())) {
+      // Hapus input form dan user message dengan smooth delete
       if (state.inputMessageId) {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {
-          // Ignore delete error
-        }
+        autoDeleteMessage(bot, chatId, state.inputMessageId, 100);
       }
+      autoDeleteMessage(bot, chatId, msg.message_id, 100);
       
       adminState.delete(chatId);
-      await bot.deleteMessage(chatId, msg.message_id);
       return;
     }
 
@@ -471,7 +440,7 @@ module.exports = (bot) => {
           resultMessageId = msg.message_id;
         }
         
-        // Countdown 1 detik
+        // Countdown dan auto delete dengan exiter
         setTimeout(async () => {
           try {
             const updatedText = teksHasil.replace('⏰ <i>Pesan akan hilang dalam 2 detik...</i>', '⏰ <i>Pesan akan hilang dalam 1 detik...</i>');
@@ -479,22 +448,14 @@ module.exports = (bot) => {
               chat_id: chatId,
               message_id: resultMessageId
             });
-          } catch (e) {
-            // Ignore edit error
-          }
+          } catch (e) { }
         }, 1000);
         
-        // Auto delete setelah 2 detik
-        setTimeout(async () => {
-          try {
-            await bot.deleteMessage(chatId, resultMessageId);
-          } catch (e) {
-            // Ignore delete error
-          }
-        }, 2000);
+        // Auto delete dengan exiter autoDeleteMessage
+        autoDeleteMessage(bot, chatId, resultMessageId, 2000);
         
         adminState.delete(chatId);
-        await bot.deleteMessage(chatId, msg.message_id);
+        autoDeleteMessage(bot, chatId, msg.message_id, 100);
         return;
       } catch (e) {
         await bot.sendMessage(chatId, `❌ Gagal menghapus stok: ${e.message}`);
@@ -578,17 +539,11 @@ module.exports = (bot) => {
       }
     }, 1000);
     
-    // Auto delete notifikasi hasil setelah 2 detik
-    setTimeout(async () => {
-      try {
-        await bot.deleteMessage(chatId, resultMessageId);
-      } catch (e) {
-        // Ignore delete error
-      }
-    }, 2000);
+    // Auto delete dengan exiter autoDeleteMessage
+    autoDeleteMessage(bot, chatId, resultMessageId, 2000);
     
     adminState.delete(chatId);
-    await bot.deleteMessage(chatId, msg.message_id);
+    autoDeleteMessage(bot, chatId, msg.message_id, 100);
     return;
   });
 };
