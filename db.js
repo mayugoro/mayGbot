@@ -842,7 +842,7 @@ const getHargaFinalProduk = (kodeProduK) => {
 
 // Jalankan fungsi init() dan tunggu sampai selesai
 init().then(() => {
-  console.log("✅ Database initialized successfully");
+  // console.log("✅ Database initialized successfully");
   // NOTE: Auto-sync ke API KHFY sudah dihapus - gunakan manual tools untuk fetch data
   
 }).catch((err) => {
