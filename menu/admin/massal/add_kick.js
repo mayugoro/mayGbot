@@ -260,8 +260,8 @@ class ModernComboProcessor {
   constructor(apiClient) {
     this.api = apiClient;
     this.timings = {
-      addWait: 300000,     // 5 minutes wait after ADD (increased from 1 minute)
-      slotInterval: 60000  // 1 minute interval between slots (increased from 15s)
+      addWait: 60000,      // 1 minute wait after ADD (decreased from 5 minutes)
+      slotInterval: 20000  // 20 seconds interval between slots (decreased from 1 minute)
     };
   }
 
@@ -297,7 +297,7 @@ class ModernComboProcessor {
       // console.log('✅ SMART ADD SUCCESS - Proceeding to wait phase...');
       // console.log(`🎯 Slot Used: ${smartAddResult.slotUsed} (index ${slotIndex})`);
 
-      // Step 2: Wait 60 seconds after successful ADD (as requested)
+      // Step 2: Wait 1 minute after successful ADD (optimized timing)
       // console.log(`⏳ Step 2: WAITING ${this.timings.addWait/1000}s (1 minute) after ADD...`);
       const waitStart = Date.now();
       await new Promise(resolve => setTimeout(resolve, this.timings.addWait));
@@ -529,8 +529,8 @@ class ModernProgressTracker {
       text += `⏱️ Elapsed: ${Math.floor(elapsed/60)}m ${elapsed%60}s\n\n`;
     }
     
-    text += `🚀 <b>Modern Strategy:</b> Sequential CEKSLOT→ADD→WAIT 5min→KICK\n`;
-    text += `⚡ <b>Timing:</b> CEKSLOT + ADD + 5min wait + KICK + 1min interval`;
+    text += `🚀 <b>Modern Strategy:</b> Sequential CEKSLOT→ADD→WAIT 1min→KICK\n`;
+    text += `⚡ <b>Timing:</b> CEKSLOT + ADD + 1min wait + KICK + 20s interval`;
     
     return text;
   }
@@ -632,7 +632,7 @@ class ModernBatchProcessor {
           });
           await tracker.updateStatusMessage();
 
-          // Execute Smart Combo: Smart ADD → WAIT 5min → Smart KICK with specific slot index
+          // Execute Smart Combo: Smart ADD → WAIT 1min → Smart KICK with specific slot index
           const comboResult = await this.combo.executeCombo(phone, null, tumbalPhone, j);
           
           // Record result
@@ -753,7 +753,7 @@ class ModernBatchProcessor {
           });
           await tracker.updateStatusMessage();
 
-          // Execute Smart Combo: Smart ADD → WAIT 5min → Smart KICK with specific slot index
+          // Execute Smart Combo: Smart ADD → WAIT 1min → Smart KICK with specific slot index
           const comboResult = await this.combo.executeCombo(phone, null, tumbalPhone, j);
           
           // console.log(`📊 [${phone}] Slot ${j + 1} result: ${comboResult.success ? '✅ Success' : '❌ Failed'}`);
@@ -887,8 +887,8 @@ class ModernBatchProcessor {
     summary += `📊 API Total: ${apiStats.total}\n\n`;
     
     summary += `👤 <b>Tumbal Used:</b> ${tumbalPhone}\n`;
-    summary += `🚀 <b>Strategy:</b> Sequential Modern (CEKSLOT→ADD→WAIT 5min→KICK)\n`;
-    summary += `⚡ <b>Improvements:</b> Fresh validation + 60s wait + sequential reliability`;
+    summary += `🚀 <b>Strategy:</b> Sequential Modern (CEKSLOT→ADD→WAIT 1min→KICK)\n`;
+    summary += `⚡ <b>Improvements:</b> Fresh validation + 1min wait + 20s intervals + sequential reliability`;
 
     await this.bot.sendMessage(this.chatId, summary, { parse_mode: 'HTML' });
   }
@@ -1492,7 +1492,10 @@ const initModernAddKick = (bot) => {
             `💡 <b>Tumbal Example:</b> <code>083821447274</code>\n` +
             `⚠️ <b>This number will be added and kicked repeatedly</b>\n\n` +
             `🚀 <b>Modern Processing Ready:</b>\n` +
-            `• Sequential CEKSLOT→ADD→WAIT 5min→KICK timing\n` +
+            `🚀 <b>Modern Processing Ready:</b>\n` +
+            `• Sequential CEKSLOT→ADD→WAIT 1min→KICK timing\n` +
+            `• Fresh slot validation mechanisms\n` +
+            `• Live progress tracking\n\n` +
             `• Fresh slot validation mechanisms\n` +
             `• Live progress tracking\n\n` +
             `💡 Type "exit" to cancel`,
@@ -1539,7 +1542,7 @@ const initModernAddKick = (bot) => {
           `⚡ <b>PARALLEL STRATEGY V2.0:</b>\n` +
           `• Each manager gets dedicated tumbal\n` +
           `• All managers process simultaneously\n` +
-          `• Sequential timing per manager: CEKSLOT→ADD→WAIT 5min→KICK\n` +
+          `• Sequential timing per manager: CEKSLOT→ADD→WAIT 1min→KICK\n` +
           `• Real-time concurrent progress tracking\n` +
           `• Smart error recovery per manager\n` +
           `• Performance metrics monitoring\n\n` +
@@ -1557,7 +1560,7 @@ const initModernAddKick = (bot) => {
           `• Strict slot validation\n` +
           `• Fresh data validation\n\n` +
           `📊 <b>ESTIMATED TIME:</b>\n` +
-          `• ~75 seconds per slot (concurrent)\n` +
+          `• ~90 seconds per slot (concurrent)\n` +
           `• Real-time progress updates\n` +
           `• Live efficiency monitoring\n\n` +
           `❓ <b>Proceed with parallel processing?</b>`;
@@ -1616,7 +1619,7 @@ const initModernAddKick = (bot) => {
           `💡 <b>Tumbal Example:</b> <code>083821447274</code>\n` +
           `⚠️ <b>This number will be added and kicked repeatedly</b>\n\n` +
           `🚀 <b>Modern Processing Ready:</b>\n` +
-          `• Sequential CEKSLOT→ADD→WAIT 5min→KICK timing\n` +
+          `• Sequential CEKSLOT→ADD→WAIT 1min→KICK timing\n` +
           `• Fresh slot validation mechanisms\n` +
           `• Live progress tracking\n\n` +
           `💡 Type "exit" to cancel`,
@@ -1661,7 +1664,7 @@ const initModernAddKick = (bot) => {
           `👤 <b>Tumbal Phone:</b> ${tumbalPhone}\n\n` +
           `🚀 <b>MODERN STRATEGY V2.0:</b>\n` +
           `• API1 Only (KHFY-Store)\n` +
-          `• Sequential timing: CEKSLOT→ADD→WAIT 5min→KICK\n` +
+          `• Sequential timing: CEKSLOT→ADD→WAIT 1min→KICK\n` +
           `• Fresh slot validation before each ADD\n` +
           `• Real-time progress tracking\n` +
           `• Smart error recovery\n` +
@@ -1679,7 +1682,7 @@ const initModernAddKick = (bot) => {
           `• Strict slot validation\n` +
           `• Fresh data validation\n\n` +
           `📊 <b>ESTIMATED TIME:</b>\n` +
-          `• ~6.5 minutes per slot (CEKSLOT+ADD+5min+KICK)\n` +
+          `• ~1.5 minutes per slot (CEKSLOT+ADD+1min+KICK)\n` +
           `• Real-time progress updates\n` +
           `• Live efficiency monitoring\n\n` +
           `❓ <b>Proceed with sequential modern processing?</b>`;
