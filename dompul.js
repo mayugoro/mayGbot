@@ -320,6 +320,12 @@ module.exports = (bot) => {
       }
       autoDeleteMessage(bot, chatId, msg.message_id, 0);
 
+      // Tampilkan pesan "Sedang diproses"
+      const processingMsg = await bot.sendMessage(chatId, 
+        '<i>Sedang diproses, mohon tunggu</i>', 
+        { parse_mode: 'HTML' }
+      );
+
       // Mulai proses cek dompul massal secara concurrent
       let totalSuccess = 0;
       let totalFailed = 0;
@@ -371,6 +377,11 @@ module.exports = (bot) => {
       // Function untuk send hasil segera setelah API call selesai
       const processAndSendResult = async (result) => {
         completedCount++;
+        
+        // Hapus pesan "Sedang diproses" pada output pertama
+        if (completedCount === 1 && processingMsg) {
+          autoDeleteMessage(bot, chatId, processingMsg.message_id, 0);
+        }
         
         try {
           if (result.success && result.data && result.data.data && result.data.data.hasil) {
