@@ -1150,6 +1150,15 @@ module.exports = (bot) => {
             // === LANGSUNG SET_KUBER DENGAN ROBUST APPROACH ===
             const formattedParent = formatNomorToInternational(nomor_hp);
             
+            // ✅ KONVERSI GB KE BYTES DULU (pindah ke atas agar tersedia di catch block)
+            const kuotaGBInt = parseInt(kuotaGB);
+            let kuberInBytes = kuotaGBInt * 1073741824;
+            
+            // ✅ WORKAROUND: API KHFY tidak support new_allocation: 0, gunakan 1024 bytes sebagai pseudo 0GB
+            if (kuotaGBInt === 0) {
+              kuberInBytes = 1024; // 1024 bytes ≈ 0.000001 GB (praktis 0GB)
+            }
+            
             // ✅ LANGSUNG HIT member_info_akrab untuk mendapat fresh member_id
             const recheckBody = new URLSearchParams({
               id_parent: formattedParent,
@@ -1166,15 +1175,6 @@ module.exports = (bot) => {
                 timeout: 10000
               }
             );
-            
-            // ✅ KONVERSI GB KE BYTES DULU (sebelum member search untuk menghindari undefined error)
-            const kuotaGBInt = parseInt(kuotaGB);
-            let kuberInBytes = kuotaGBInt * 1073741824;
-            
-            // ✅ WORKAROUND: API KHFY tidak support new_allocation: 0, gunakan 1024 bytes sebagai pseudo 0GB
-            if (kuotaGBInt === 0) {
-              kuberInBytes = 1024; // 1024 bytes ≈ 0.000001 GB (praktis 0GB)
-            }
             
             // ✅ ROBUST MEMBER EXTRACTION - Jangan terlalu strict dengan status
             let freshMemberList = [];
