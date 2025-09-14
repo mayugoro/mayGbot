@@ -42,7 +42,7 @@ module.exports = (bot) => {
     
     // Keywords untuk trigger allstok
     const allstokKeywords = [
-      'all stok', 'allstok', 'semua stok', 'cek semua stok', 'lihat stok',
+      'all stok', 'allstok', 'semua stok', 'slot', 'cek semua stok', 'lihat stok',
       'stok lengkap', 'list stok', 'daftar stok', 'inventori', 'stok', 'inventory',
       'cek stok semua', 'tampilkan stok', 'show stock'
     ];
