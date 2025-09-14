@@ -111,6 +111,50 @@ const checkDompul = async (nomor_hp) => {
       timeout: 30000
     });
 
+    // Cek apakah response mengandung pesan error setelah separator ===========================
+    // Tapi tetap return success agar data basic bisa diparsing
+    if (response.data && response.data.data && response.data.data.hasil) {
+      const hasil = response.data.data.hasil;
+      const equalsSeparatorIndex = hasil.indexOf('===========================');
+      
+      if (equalsSeparatorIndex !== -1) {
+        // Ambil content setelah tanda === pertama
+        const contentAfterSeparator = hasil.substring(equalsSeparatorIndex);
+        
+        // Deteksi pesan error dalam content setelah separator
+        const criticalErrorPatterns = [
+          /nomor.*?tidak.*?terdaftar/i,
+          /layanan.*?tidak.*?tersedia/i,
+          /sistem.*?sedang.*?maintenance/i,
+          /gagal.*?memproses.*?permintaan/i
+        ];
+
+        // Hanya return error untuk critical errors yang tidak memiliki data basic
+        const hasCriticalError = criticalErrorPatterns.some(pattern => pattern.test(contentAfterSeparator));
+        
+        if (hasCriticalError) {
+          // Extract pesan error spesifik
+          let errorMessage = 'Error tidak diketahui';
+          for (const pattern of criticalErrorPatterns) {
+            const match = contentAfterSeparator.match(pattern);
+            if (match) {
+              errorMessage = match[0];
+              break;
+            }
+          }
+          
+          // Untuk critical error, kembalikan sebagai error
+          return {
+            status: 'error',
+            message: errorMessage
+          };
+        }
+        
+        // Untuk rate limit dan no package, tetap return success 
+        // biar data basic bisa diparsing dan error ditampilkan di tengah
+      }
+    }
+
     return {
       status: 'success',
       data: response.data
@@ -315,6 +359,36 @@ module.exports = (bot) => {
               .replace(/&nbsp;/g, ' ') // Replace HTML space
               .trim();
 
+            // ===== DETEKSI ERROR MESSAGES DARI FIELD "HASIL" =====
+            // Cek apakah ada pesan error setelah tanda ===========================
+            const equalsSeparatorIndex = rawData.indexOf('===========================');
+            let hasErrorAfterSeparator = false;
+            let errorMessage = '';
+            
+            if (equalsSeparatorIndex !== -1) {
+              // Ambil content setelah tanda === pertama
+              const contentAfterSeparator = rawData.substring(equalsSeparatorIndex).trim();
+              
+              // Deteksi pattern error dalam content setelah separator
+              const errorPatterns = [
+                { pattern: /batas maksimal pengecekan.*?dalam.*?jam/i, message: '❗️Telah melakukan pengecekan 5x\n~  Coba lagi nanti 🗿' },
+                { pattern: /MSISDN.*?tidak memiliki paket/i, message: '📦 Nomor tidak memiliki paket aktif\n~  Langsung isi kuota saja😁' },
+                { pattern: /nomor.*?tidak.*?terdaftar/i, message: '📱 Invalid: Nomor tidak terdaftar' },
+                { pattern: /layanan.*?tidak.*?tersedia/i, message: '🚫 Service: Layanan tidak tersedia' },
+                { pattern: /sistem.*?sedang.*?maintenance/i, message: '🔧 Maintenance: Sistem sedang maintenance' },
+                { pattern: /gagal.*?memproses.*?permintaan/i, message: '❌ Failed: Gagal memproses permintaan' }
+              ];
+
+              for (const errorPattern of errorPatterns) {
+                if (errorPattern.pattern.test(contentAfterSeparator)) {
+                  hasErrorAfterSeparator = true;
+                  errorMessage = errorPattern.message;
+                  break;
+                }
+              }
+            }
+
+            // Jika bukan error message, atau ada error tapi tetap ada data basic, lanjutkan parsing normal
             // Extract informasi dasar
             let formattedResult = `├──────────SUKSES──────────┤\n\n`;
 
@@ -635,21 +709,41 @@ module.exports = (bot) => {
               }
             }
             
-            // Add footer
-            formattedResult += `├──────────────────────────┤\n\n`;
-            formattedResult += `⌚️ <b>Last Update:</b> ${getDompulTimestamp()}\n`;
+            // Add footer dengan error message jika ada
+            formattedResult += `├──────────────────────────┤\n`;
             
-            await bot.sendMessage(chatId, formattedResult, { parse_mode: 'HTML' });
-            totalSuccess++;
+            // Jika ada error setelah separator, tambahkan di tengah sebelum footer timestamp
+            if (hasErrorAfterSeparator) {
+              formattedResult += `${errorMessage}\n`;
+              formattedResult += `├──────────────────────────┤\n\n`;
+              formattedResult += `⌚️ <b>Last Update:</b> ${getDompulTimestamp()}\n`;
+              
+              await bot.sendMessage(chatId, formattedResult, { parse_mode: 'HTML' });
+              totalFailed++; // Count as failed karena ada error message
+            } else {
+              formattedResult += `\n⌚️ <b>Last Update:</b> ${getDompulTimestamp()}\n`;
+              
+              await bot.sendMessage(chatId, formattedResult, { parse_mode: 'HTML' });
+              totalSuccess++; // Count as success karena tidak ada error
+            }
             
           } else {
-            // Handle error hasil
+            // Handle error hasil - termasuk API error atau response tanpa data hasil
             let errorText = '';
             
             if (!result.isValidProvider) {
               errorText = `❌ <b>NOMOR ${result.index + 1}/${uniqueNumbers.length}</b> <code>[${completedCount}/${uniqueNumbers.length}]</code>\n\n<i>Nomer ${result.nomor} ${result.error}</i>`;
             } else {
-              errorText = `❌ <b>NOMOR ${result.index + 1}/${uniqueNumbers.length}</b> <code>[${completedCount}/${uniqueNumbers.length}]</code>\n\n<i>Nomor ${result.nomor} - ${result.error || 'Error tidak diketahui'}</i>`;
+              // Cek apakah error message mengandung pesan khusus dari API
+              let errorMessage = result.error || 'Error tidak diketahui';
+              
+              // Pertahankan pesan error asli tanpa modifikasi berlebihan
+              // Hanya clean up HTML tags jika ada
+              if (typeof errorMessage === 'string') {
+                errorMessage = errorMessage.replace(/<[^>]*>/g, '').trim();
+              }
+              
+              errorText = `❌ <b>NOMOR ${result.index + 1}/${uniqueNumbers.length}</b> <code>[${completedCount}/${uniqueNumbers.length}]</code>\n\n<i>Nomor ${result.nomor} - ${errorMessage}</i>`;
             }
             
             await bot.sendMessage(chatId, errorText, { parse_mode: 'HTML' });
