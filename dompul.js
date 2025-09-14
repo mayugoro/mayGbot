@@ -3,6 +3,7 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const { normalizePhoneNumber, isValidIndonesianPhone, extractPhonesFromMultilineText } = require('./utils/normalize');
 const { getJakartaTime, createJakartaDate, calculateDaysDiff, formatDaysDiff, formatPackageExpiry, parseToJakartaDate, formatToDDMMYYYY, getDompulTimestamp } = require('./utils/date');
+const { sendStyledInputMessage, autoDeleteMessage, EXIT_KEYWORDS } = require('./utils/exiter');
 
 // Storage untuk dompul states
 const dompulStates = new Map(); // key: chatId, value: { step, inputMessageId }
@@ -213,22 +214,26 @@ module.exports = (bot) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
 
+    // Hapus command message segera
+    autoDeleteMessage(bot, chatId, msg.message_id, 0);
+
     // Cek apakah fitur dompul aktif (admin bypass)
     const enabled = await isDompulEnabled();
     const isAdmin = isAuthorized(userId);
     
     if (!enabled && !isAdmin) {
-      return bot.sendMessage(chatId, "<b><i>Fitur ditutup!</i></b>", { parse_mode: 'HTML' });
+      const closedMsg = await bot.sendMessage(chatId, "<b><i>Fitur ditutup!</i></b>", { parse_mode: 'HTML' });
+      autoDeleteMessage(bot, chatId, closedMsg.message_id, 3000);
+      return;
     }
 
     // Set state untuk input nomor
     dompulStates.set(chatId, { step: 'input_nomor' });
     
-    const inputMsg = await bot.sendMessage(chatId,
-      '<i>Masukan nomor . . .\n' +
+    const inputMsg = await sendStyledInputMessage(bot, chatId,
+      'Masukan nomor . . .\n' +
       'Bisa massal, pisahkan dengan Enter.\n\n' +
-      '💡 Ketik "exit" untuk membatalkan</i>',
-      { parse_mode: 'HTML' }
+      '💡 Ketik "exit" untuk membatalkan'
     );
     
     // Simpan message ID input untuk bisa diedit nanti
@@ -258,18 +263,17 @@ module.exports = (bot) => {
     
     try {
       // === CEK CANCEL/EXIT ===
-      if (['exit', 'EXIT', 'Exit'].includes(text)) {
-        // Hapus input form
+      if (EXIT_KEYWORDS.COMBINED.includes(text)) {
+        // Hapus input form dengan auto-delete
         if (state.inputMessageId) {
-          try {
-            await bot.deleteMessage(chatId, state.inputMessageId);
-          } catch (e) {
-            // Ignore delete error
-          }
+          autoDeleteMessage(bot, chatId, state.inputMessageId, 0);
         }
         
+        // Hapus user message
+        autoDeleteMessage(bot, chatId, msg.message_id, 0);
+        
+        // Clear state
         dompulStates.delete(chatId);
-        await bot.deleteMessage(chatId, msg.message_id);
         return;
       }
 
@@ -278,25 +282,24 @@ module.exports = (bot) => {
       const uniqueNumbers = validNumbers; // Already deduplicated by utility
       
       if (uniqueNumbers.length === 0) {
-        await bot.sendMessage(chatId, 
+        const errorMsg = await bot.sendMessage(chatId, 
           '❌ <b>Tidak ada nomor Indonesia yang valid!</b>\n\n' +
           'Format: Nomor Indonesia 08xxxxxxxx\n' +
           'Coba lagi atau ketik "exit" untuk batal.',
           { parse_mode: 'HTML' }
         );
-        await bot.deleteMessage(chatId, msg.message_id);
+        
+        // Auto-delete error message dan user input
+        autoDeleteMessage(bot, chatId, errorMsg.message_id, 3000);
+        autoDeleteMessage(bot, chatId, msg.message_id, 0);
         return;
       }
 
-      // Hapus pesan input user dan form input
+      // Hapus pesan input user dan form input dengan auto-delete
       if (state.inputMessageId) {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {}
+        autoDeleteMessage(bot, chatId, state.inputMessageId, 0);
       }
-      try {
-        await bot.deleteMessage(chatId, msg.message_id);
-      } catch (e) {}
+      autoDeleteMessage(bot, chatId, msg.message_id, 0);
 
       // Mulai proses cek dompul massal secara concurrent
       let totalSuccess = 0;
