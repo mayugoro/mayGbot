@@ -483,7 +483,7 @@ const checkSlotKosong = async (chatId) => {
       // Tambahkan info jika masih tidak ada data setelah retry
       let teksKosong = '❌ <b>Tidak ada slot kosong</b>\n\nSilakan coba lagi nanti atau pilih paket lain.';
       if ((!slotList || slotList.length === 0)) {
-        teksKosong += '\n\n⚠️ <i>Data tidak tersedia setelah 2x hit API</i>';
+        teksKosong += '\n\n<i>JIka masih sama berarti XL sedang maintenance❗❗</i>';
       }
       
       if (loadingMessageId) {

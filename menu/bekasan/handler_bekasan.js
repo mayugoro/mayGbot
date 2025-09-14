@@ -526,7 +526,7 @@ const checkSlotKosong = async (chatId) => {
       // Pesan khusus untuk tidak ada slot dengan add_chances 1
       let teksKosong = '❌ <b>Tidak ada slot dengan add_chances: 1</b>\n\nSemua slot kosong yang tersedia memiliki add_chances selain 1.\nSilakan coba lagi nanti.';
       if ((!slotList || slotList.length === 0)) {
-        teksKosong += '\n\n⚠️ <i>Data tidak tersedia setelah 2x hit API</i>';
+        teksKosong += '\n\n<i>JIka masih sama berarti XL sedang maintenance❗❗</i>';
       }
       
       if (loadingMessageId) {
