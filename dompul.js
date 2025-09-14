@@ -217,6 +217,15 @@ module.exports = (bot) => {
     // Hapus command message segera
     autoDeleteMessage(bot, chatId, msg.message_id, 0);
 
+    // === SAFEGUARD: Clear existing state jika ada ===
+    if (dompulStates.has(chatId)) {
+      const existingState = dompulStates.get(chatId);
+      if (existingState.inputMessageId) {
+        autoDeleteMessage(bot, chatId, existingState.inputMessageId, 0);
+      }
+      dompulStates.delete(chatId);
+    }
+
     // Cek apakah fitur dompul aktif (admin bypass)
     const enabled = await isDompulEnabled();
     const isAdmin = isAuthorized(userId);
@@ -232,8 +241,7 @@ module.exports = (bot) => {
     
     const inputMsg = await sendStyledInputMessage(bot, chatId,
       'Masukan nomor . . .\n' +
-      'Bisa massal, pisahkan dengan Enter.\n\n' +
-      '💡 Ketik "exit" untuk membatalkan'
+      'Bisa massal, pisahkan dengan Enter.'
     );
     
     // Simpan message ID input untuk bisa diedit nanti
@@ -259,9 +267,16 @@ module.exports = (bot) => {
     const state = dompulStates.get(chatId);
     if (!state || state.step !== 'input_nomor') return;
     
+    // === SAFEGUARD: Prevent duplicate processing ===
+    if (state.processing) return; // Skip jika sedang diproses
+    
     if (text.startsWith("/")) return;
     
     try {
+      // === SET PROCESSING FLAG ===
+      state.processing = true;
+      dompulStates.set(chatId, state);
+      
       // === CEK CANCEL/EXIT ===
       if (EXIT_KEYWORDS.COMBINED.includes(text)) {
         // Hapus input form dengan auto-delete
@@ -292,6 +307,10 @@ module.exports = (bot) => {
         // Auto-delete error message dan user input
         autoDeleteMessage(bot, chatId, errorMsg.message_id, 3000);
         autoDeleteMessage(bot, chatId, msg.message_id, 0);
+        
+        // Reset processing flag
+        state.processing = false;
+        dompulStates.set(chatId, state);
         return;
       }
 
@@ -785,7 +804,8 @@ module.exports = (bot) => {
 
     } catch (error) {
       console.error('Error handling dompul input:', error.message);
-      await bot.sendMessage(chatId, '❌ <b>Terjadi error, silakan coba lagi!</b>', { parse_mode: 'HTML' });
+      const errorMsg = await bot.sendMessage(chatId, '❌ <b>Terjadi error, silakan coba lagi!</b>', { parse_mode: 'HTML' });
+      autoDeleteMessage(bot, chatId, errorMsg.message_id, 3000);
       dompulStates.delete(chatId);
     }
   });
