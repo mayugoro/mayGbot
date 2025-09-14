@@ -63,7 +63,7 @@ const showCreateMenu = async (bot, chatId, messageId = null) => {
 };
 
 // Function untuk create code dengan nominal tertentu
-const createRedeemCode = async (bot, chatId, nominal, inputMessageId = null, isDefaultNominal = false) => {
+const createRedeemCode = async (bot, chatId, nominal, inputMessageId = null, isDefaultNominal = false, isFromTrigger = false) => {
   try {
     const { createCode } = require('../db');
     const code = generateCode();
@@ -89,11 +89,23 @@ const createRedeemCode = async (bot, chatId, nominal, inputMessageId = null, isD
       `Kode: <code>${code}</code>\n` +
       `Nominal: <code>Rp.${nominal.toLocaleString('id-ID')}</code>`;
 
-    await bot.sendMessage(chatId, teksSuccess, {
+    const successMsg = await bot.sendMessage(chatId, teksSuccess, {
       parse_mode: 'HTML'
     });
 
-    // Tampilkan menu create lagi setelah 1 detik (untuk semua jenis input)
+    // Jika dari trigger, auto delete setelah 10 detik dan jangan tampilkan menu
+    if (isFromTrigger) {
+      setTimeout(async () => {
+        try {
+          await bot.deleteMessage(chatId, successMsg.message_id);
+        } catch (e) {
+          // Ignore delete error
+        }
+      }, 10000); // 10 detik
+      return; // Tidak tampilkan menu
+    }
+
+    // Tampilkan menu create lagi setelah 1 detik (untuk input via menu)
     setTimeout(() => {
       showCreateMenu(bot, chatId);
     }, 1000);
@@ -250,7 +262,38 @@ module.exports = (bot) => {
     const chatId = msg.chat.id;
     const text = msg.text?.trim();
     
-    if (!text || text.startsWith('/')) return;
+    if (!text) return;
+
+    // === TRIGGER LANGSUNG UNTUK MEMBUAT KODE ===
+    // Format: "kode 100000" atau "KODE 100000"
+    if (text.toLowerCase().startsWith('kode ')) {
+      // Cek apakah user adalah admin
+      if (msg.from.id.toString() !== process.env.ADMIN_ID) {
+        return; // Silent return untuk non-admin
+      }
+
+      const nominalText = text.substring(5).trim(); // Ambil setelah "kode "
+      const nominal = parseInt(nominalText.replace(/\D/g, ''));
+      
+      if (!nominal || nominal < 1) {
+        await bot.sendMessage(chatId, '❌ <b>Format salah!</b>\n\nContoh: <code>kode 100000</code>', {
+          parse_mode: 'HTML'
+        });
+        return;
+      }
+
+      // Hapus message user
+      try {
+        await bot.deleteMessage(chatId, msg.message_id);
+      } catch (e) {}
+
+      // Langsung create code dengan flag isFromTrigger = true
+      await createRedeemCode(bot, chatId, nominal, null, false, true);
+      return;
+    }
+
+    // Skip jika command lain
+    if (text.startsWith('/')) return;
 
     const state = createState.get(chatId);
     if (!state || state.step !== 'waiting_manual_input') return;
