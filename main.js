@@ -214,6 +214,13 @@ bot.onText(/\/start/, (msg) => {
 
 // === /menu ===
 bot.onText(/\/menu/, async (msg) => {
+  // Hapus command message IMMEDIATELY sebelum response (pre-emptive delete)
+  try {
+    await bot.deleteMessage(msg.chat.id, msg.message_id);
+  } catch (e) {
+    // Ignore delete error
+  }
+
   let saldo = 0;
   try {
     saldo = await getUserSaldo(msg.from.id, msg.from.username);
@@ -230,15 +237,6 @@ bot.onText(/\/menu/, async (msg) => {
     filename: 'welcome.jpg',
     contentType: 'image/jpeg'
   });
-
-  // Auto-delete command message setelah respons dikirim
-  setTimeout(async () => {
-    try {
-      await bot.deleteMessage(msg.chat.id, msg.message_id);
-    } catch (e) {
-      // Ignore delete error
-    }
-  }, 1000);
 });
 
 // === Handler callback_query universal ===
