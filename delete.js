@@ -1,4 +1,5 @@
 const { db, getUserSaldo } = require('./db');
+const { EXIT_KEYWORDS, sendStyledInputMessage, autoDeleteMessage } = require('./utils/exiter');
 
 // Storage untuk delete states
 const deleteStates = new Map(); // key: chatId, value: { step, inputMessageId }
@@ -114,19 +115,16 @@ module.exports = (bot) => {
     // Set state untuk input ID
     deleteStates.set(chatId, { step: 'input_id' });
     
-    const inputMsg = await bot.sendMessage(chatId,
-      '<i>Masukan ID yg akan dihapus dari database.\n' +
-      'Bisa massal, pisahkan dengan Enter.\n\n' +
-      '💡 Ketik "exit" untuk membatalkan</i>',
-      { parse_mode: 'HTML' }
+    const inputMsg = await sendStyledInputMessage(
+      bot, 
+      chatId,
+      'Masukan ID yg akan dihapus dari database.',
+      'Bisa massal, pisahkan dengan Enter.',
+      'membatalkan'
     );
     
     // Auto-delete trigger message
-    setTimeout(async () => {
-      try {
-        await bot.deleteMessage(chatId, msg.message_id);
-      } catch (e) {}
-    }, 1000);
+    autoDeleteMessage(bot, chatId, msg.message_id, 1000);
     
     // Simpan message ID input untuk bisa diedit nanti
     const currentState = deleteStates.get(chatId);
@@ -147,11 +145,12 @@ module.exports = (bot) => {
     // Set state untuk input ID
     deleteStates.set(chatId, { step: 'input_id' });
     
-    const inputMsg = await bot.sendMessage(chatId,
-      '<i>Masukan ID yg akan dihapus dari database.\n' +
-      'Bisa massal, pisahkan dengan Enter.\n\n' +
-      '💡 Ketik "exit" untuk membatalkan</i>',
-      { parse_mode: 'HTML' }
+    const inputMsg = await sendStyledInputMessage(
+      bot, 
+      chatId,
+      'Masukan ID yg akan dihapus dari database.',
+      'Bisa massal, pisahkan dengan Enter.',
+      'membatalkan'
     );
     
     // Simpan message ID input untuk bisa diedit nanti
@@ -196,24 +195,21 @@ module.exports = (bot) => {
       });
       
       if (isDeleteKeyword) {
-        // Ini adalah delete trigger, bukan input ID - abaikan
-        await bot.deleteMessage(chatId, msg.message_id);
+        // Ini adalah delete trigger, bukan input ID - hapus spontan
+        autoDeleteMessage(bot, chatId, msg.message_id, 0);
         return;
       }
       
       // === CEK CANCEL/EXIT ===
-      if (['exit', 'EXIT', 'Exit'].includes(text)) {
-        // Hapus input form
+      if (EXIT_KEYWORDS.COMBINED.includes(text)) {
+        // Hapus input form dan user message secara spontan
         if (state.inputMessageId) {
-          try {
-            await bot.deleteMessage(chatId, state.inputMessageId);
-          } catch (e) {
-            // Ignore delete error
-          }
+          autoDeleteMessage(bot, chatId, state.inputMessageId, 0);
         }
+        autoDeleteMessage(bot, chatId, msg.message_id, 0);
         
+        // Clear state langsung
         deleteStates.delete(chatId);
-        await bot.deleteMessage(chatId, msg.message_id);
         return;
       }
 
@@ -235,22 +231,18 @@ module.exports = (bot) => {
         await bot.sendMessage(chatId, 
           '❌ <b>Tidak ada ID yang valid!</b>\n\n' +
           'Format: 8-12 digit angka per baris.\n' +
-          'Coba lagi atau ketik "exit" untuk batal.',
+          'Coba lagi atau ketik salah satu: exit, keluar, batal, stop, x',
           { parse_mode: 'HTML' }
         );
-        await bot.deleteMessage(chatId, msg.message_id);
+        autoDeleteMessage(bot, chatId, msg.message_id, 0);
         return;
       }
 
-      // Hapus pesan input user dan form input
+      // Hapus pesan input user dan form input secara spontan
       if (state.inputMessageId) {
-        try {
-          await bot.deleteMessage(chatId, state.inputMessageId);
-        } catch (e) {}
+        autoDeleteMessage(bot, chatId, state.inputMessageId, 0);
       }
-      try {
-        await bot.deleteMessage(chatId, msg.message_id);
-      } catch (e) {}
+      autoDeleteMessage(bot, chatId, msg.message_id, 0);
 
       // Kirim pesan "Diproses..."
       const processMsg = await bot.sendMessage(chatId, '<i>Diproses...</i>', { parse_mode: 'HTML' });
@@ -319,10 +311,8 @@ module.exports = (bot) => {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      // Hapus pesan "Diproses..."
-      try {
-        await bot.deleteMessage(chatId, processMsg.message_id);
-      } catch (e) {}
+      // Hapus pesan "Diproses..." secara spontan setelah hasil terkirim
+      autoDeleteMessage(bot, chatId, processMsg.message_id, 0);
 
       // Kirim hasil dengan detail powerful
       let resultText = `💥 <b>PENGHAPUSAN TOTAL SELESAI!</b>\n\n`;
