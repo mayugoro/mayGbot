@@ -123,8 +123,8 @@ module.exports = (bot) => {
       'membatalkan'
     );
     
-    // Auto-delete trigger message
-    autoDeleteMessage(bot, chatId, msg.message_id, 1000);
+    // Auto-delete trigger message spontan
+    autoDeleteMessage(bot, chatId, msg.message_id, 0);
     
     // Simpan message ID input untuk bisa diedit nanti
     const currentState = deleteStates.get(chatId);
