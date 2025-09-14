@@ -104,11 +104,11 @@ module.exports = (bot) => {
 
   // Load sub-tools masa aktif
   try {
-    console.log('🔄 [MASA_AKTIF] Loading masa aktif modules...');
+    // console.log('🔄 [MASA_AKTIF] Loading masa aktif modules...');
     require('./masa_aktif/tambah_masa_aktif')(bot);
-    console.log('✅ [MASA_AKTIF] tambah_masa_aktif loaded');
+    // console.log('✅ [MASA_AKTIF] tambah_masa_aktif loaded');
     require('./masa_aktif/cek_masa_aktif')(bot);
-    console.log('✅ [MASA_AKTIF] cek_masa_aktif loaded');
+    // console.log('✅ [MASA_AKTIF] cek_masa_aktif loaded');
   } catch (error) {
     console.error('Error loading masa aktif modules:', error.message);
     console.log('📁 Pastikan folder masa_aktif/ dan file-filenya sudah dibuat:');
