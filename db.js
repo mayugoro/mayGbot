@@ -1,5 +1,6 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const { getJakartaTime, formatJakartaTime, getDompulTimestamp } = require('./utils/date');
 
 const dbPath = path.join(__dirname, 'database.db');
 const db = new sqlite3.Database(dbPath);
@@ -1473,7 +1474,418 @@ const getMostUsedPengelolaForNumber = (nomorCustomer, daysPeriod = 30) => {
   });
 };
 
-// === Function untuk cek apakah nomor customer sedang aktif di pengelola tertentu ===
+// === FUNGSI BEKASAN AUTO-SHIFT SYSTEM ===
+
+// === KONFIGURASI WAKTU SHIFT (EDIT HANYA DI SINI) ===
+const BEKASAN_SHIFT_TIME = "02:05";  // Format: HH:MM (24-hour) - Production: 01:00 WIB
+// ============================================
+
+// Protection flag untuk mencegah multiple execution dalam menit yang sama
+let isShiftInProgress = false;
+
+// Function untuk auto-shift bekasan categories (daily at 00:00 WIB)
+const shiftBekasanDaily = () => {
+  return new Promise((resolve, reject) => {
+    // Get current date in Jakarta timezone using utils/date
+    const jakartaTime = getJakartaTime();
+    const today = jakartaTime.toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    console.log(`🚀 Bekasan auto-shift started at ${formatJakartaTime(jakartaTime)}`);
+    
+    // Check if already shifted today
+    getKonfigurasi('last_bekasan_shift_date').then(lastShiftDate => {
+      if (lastShiftDate === today) {
+        console.log(`⏭️ Already shifted today (${today})`);
+        resolve({ success: false, message: 'Already shifted today', date: today });
+        return;
+      }
+      
+      // Begin transaction
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION', (err) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          
+          // Step 1: Get 3H items yang akan dihapus (untuk debugging)
+          db.all(`
+            SELECT nomor, pengelola, anggota 
+            FROM stok 
+            WHERE kategori = '3H' AND status = 'allow'
+            ORDER BY nomor
+          `, [], (err, expiredItems) => {
+            if (err) {
+              console.error(`❌ Error getting 3H items:`, err.message);
+              db.run('ROLLBACK');
+              reject(err);
+              return;
+            }
+            
+            // Step 2: Get current stock summary
+            db.all(`
+              SELECT kategori, COUNT(*) as count 
+              FROM stok 
+              WHERE kategori IN ('3H', '4H', '5H', '6H', '7H', '8H', '9H', '10H') 
+              AND status = 'allow' 
+              GROUP BY kategori 
+              ORDER BY kategori
+            `, [], (err, beforeRows) => {
+              if (err) {
+                console.error(`❌ Error checking stock:`, err.message);
+                db.run('ROLLBACK');
+                reject(err);
+                return;
+              }
+              
+              // Log before state
+              const beforeSummary = beforeRows.length > 0 
+                ? beforeRows.map(row => `${row.kategori}:${row.count}`).join(', ')
+                : 'No bekasan stock';
+              console.log(`📊 Before: ${beforeSummary}`);
+              
+              // Log items yang akan expired
+              if (expiredItems.length > 0) {
+                console.log(`�️ Will expire: ${expiredItems.length} items from 3H`);
+                expiredItems.forEach(item => {
+                  console.log(`   └ ${item.nomor} (${item.pengelola}) - Member: ${item.anggota || 'N/A'}`);
+                });
+              } else {
+                console.log(`🗑️ Will expire: No 3H items to remove`);
+              }
+              
+              // Show transformation mapping
+              console.log(`📊 BEKASAN SHIFT TRANSFORMATION:`);
+              
+              // Create a complete mapping showing all categories 3H-10H
+              const categoryMap = {};
+              beforeRows.forEach(row => {
+                categoryMap[row.kategori] = row.count;
+              });
+              
+              // Show transformation untuk semua kategori 3H-10H
+              const categories = ['3H', '4H', '5H', '6H', '7H', '8H', '9H', '10H'];
+              categories.forEach(cat => {
+                const count = categoryMap[cat] || 0;
+                if (cat === '3H') {
+                  console.log(`   ${cat} : ${count} stok → 2H (HAPUS)`);
+                } else {
+                  const targetCat = (parseInt(cat) - 1) + 'H';
+                  console.log(`   ${cat} : ${count} stok → ${targetCat}`);
+                }
+              });
+              
+              // Log detail items yang akan dihapus
+              if (expiredItems.length > 0) {
+                console.log(`🗑️ DETAIL STOK YANG AKAN DIHAPUS (${expiredItems.length} items):`);
+                expiredItems.forEach((item, index) => {
+                  console.log(`   ${index + 1}. ${item.nomor} (${item.pengelola})${item.anggota ? ` - Member: ${item.anggota}` : ''}`);
+                });
+              } else {
+                console.log(`🗑️ TIDAK ADA STOK 3H YANG AKAN DIHAPUS`);
+              }
+              
+              // Step 3: Execute single UPDATE to shift all categories
+              console.log(`⚡ Executing shift: All bekasan down 1 level...`);
+              db.run(`
+                UPDATE stok 
+                SET kategori = CASE 
+                  WHEN kategori = '10H' THEN '9H'
+                  WHEN kategori = '9H' THEN '8H'
+                  WHEN kategori = '8H' THEN '7H'
+                  WHEN kategori = '7H' THEN '6H'
+                  WHEN kategori = '6H' THEN '5H'
+                  WHEN kategori = '5H' THEN '4H'
+                  WHEN kategori = '4H' THEN '3H'
+                  WHEN kategori = '3H' THEN '2H'
+                  ELSE kategori
+                END
+                WHERE kategori IN ('3H', '4H', '5H', '6H', '7H', '8H', '9H', '10H')
+                AND status = 'allow'
+              `, [], function(shiftErr) {
+                if (shiftErr) {
+                  console.error(`❌ Shift error:`, shiftErr.message);
+                  db.run('ROLLBACK');
+                  reject(shiftErr);
+                  return;
+                }
+                
+                const totalShifted = this.changes;
+                
+                // Step 4: Delete expired items (now in 2H category)
+                db.run(`DELETE FROM stok WHERE kategori = '2H' AND status = 'allow'`, [], function(deleteErr) {
+                  if (deleteErr) {
+                    console.error(`❌ Delete error:`, deleteErr.message);
+                    db.run('ROLLBACK');
+                    reject(deleteErr);
+                    return;
+                  }
+                  
+                  const deletedCount = this.changes;
+                  const netShifted = totalShifted - deletedCount;
+                  
+                  // Step 5: Get final stock summary
+                  db.all(`
+                    SELECT kategori, COUNT(*) as count 
+                    FROM stok 
+                    WHERE kategori IN ('3H', '4H', '5H', '6H', '7H', '8H', '9H', '10H') 
+                    AND status = 'allow' 
+                    GROUP BY kategori 
+                    ORDER BY kategori
+                  `, [], (err, afterRows) => {
+                    if (err) {
+                      console.error(`❌ Error checking final stock:`, err.message);
+                      db.run('ROLLBACK');
+                      reject(err);
+                      return;
+                    }
+                    
+                    // Show hasil shift dalam format yang mudah dipahami
+                    console.log(`📊 HASIL SETELAH SHIFT:`);
+                    const afterCategoryMap = {};
+                    afterRows.forEach(row => {
+                      afterCategoryMap[row.kategori] = row.count;
+                    });
+                    
+                    const categoriesAfter = ['3H', '4H', '5H', '6H', '7H', '8H', '9H', '10H'];
+                    categoriesAfter.forEach(cat => {
+                      const count = afterCategoryMap[cat] || 0;
+                      console.log(`   ${cat} : ${count} stok`);
+                    });
+                    
+                    // Save completion to database
+                    setKonfigurasi('last_bekasan_shift_date', today).then(() => {
+                      // Commit transaction
+                      db.run('COMMIT', (commitErr) => {
+                        if (commitErr) {
+                          console.error(`❌ Commit error:`, commitErr.message);
+                          reject(commitErr);
+                        } else {
+                          console.log(`✅ Shift completed! Expired: ${deletedCount}, Active shifted: ${netShifted}`);
+                          
+                          resolve({
+                            success: true,
+                            date: today,
+                            expired: deletedCount,
+                            shifted: netShifted,
+                            total_processed: totalShifted,
+                            expired_items: expiredItems,
+                            message: `Shift completed: ${deletedCount} expired, ${netShifted} active shifted`
+                          });
+                        }
+                      });
+                    }).catch(reject);
+                  });
+                });
+              });
+            });
+          });
+        });
+      });
+    }).catch(reject);
+  });
+};
+          console.log(`� Step 1: Starting category shifts (3H will become 2H, then delete expired 2H)...`);
+          
+          // PERBAIKAN: Shift dulu, baru delete
+          // Step 2: Shift categories (REVERSE ORDER + 3H→2H)
+          // CRITICAL: Must be done in reverse order to prevent cascade shifting!
+          const shiftMappings = [
+            { from: '4H', to: '3H' },
+            { from: '5H', to: '4H' },
+            { from: '6H', to: '5H' },
+            { from: '7H', to: '6H' },
+            { from: '8H', to: '7H' },
+            { from: '9H', to: '8H' },
+            { from: '10H', to: '9H' },
+            { from: '3H', to: '2H' }  // TAMBAH: 3H menjadi 2H
+          ];
+            
+            let shiftIndex = 0;
+            
+            const processShift = () => {
+              if (shiftIndex >= shiftMappings.length) {
+                // All shifts completed, NOW delete expired 2H
+                console.log(`🗑️ Final Step: Deleting expired 2H stok...`);
+                db.run('DELETE FROM stok WHERE kategori = ? AND status = ?', ['2H', 'allow'], function(err) {
+                  if (err) {
+                    console.error(`❌ Error deleting expired 2H stok:`, err.message);
+                    db.run('ROLLBACK');
+                    reject(err);
+                    return;
+                  }
+                  
+                  results.deleted = this.changes;
+                  if (this.changes > 0) {
+                    console.log(`✅ Deleted ${this.changes} expired 2H stok`);
+                    results.details.push(`Deleted ${this.changes} expired 2H stok`);
+                  } else {
+                    console.log(`ℹ️ No expired 2H stok to delete`);
+                  }
+                  
+                  // Save completion to database
+                  console.log(`💾 Saving shift completion to database...`);
+                  setKonfigurasi('last_bekasan_shift_date', today).then(() => {
+                    // Commit transaction
+                    db.run('COMMIT', (err) => {
+                      if (err) {
+                        console.error(`❌ Error committing transaction:`, err.message);
+                        reject(err);
+                      } else {
+                        console.log(`✅ Bekasan auto-shift completed successfully!`);
+                        console.log(`📊 Summary: ${results.deleted} deleted, ${results.shifted} shifted`);
+                        console.log(`📋 Details: ${results.details.join(' | ')}`);
+                        resolve({
+                          success: true,
+                          date: today,
+                          deleted: results.deleted,
+                          shifted: results.shifted,
+                          details: results.details,
+                          message: `Shift completed: ${results.deleted} deleted, ${results.shifted} shifted`
+                        });
+                      }
+                    });
+                  }).catch(reject);
+                });
+                return;
+              }
+              
+              const mapping = shiftMappings[shiftIndex];
+              
+              console.log(`⚡ Processing shift: ${mapping.from} → ${mapping.to}`);
+              db.run('UPDATE stok SET kategori = ? WHERE kategori = ? AND status = ?', 
+                [mapping.to, mapping.from, 'allow'], function(err) {
+                  if (err) {
+                    console.error(`❌ Error shifting ${mapping.from}→${mapping.to}:`, err.message);
+                    db.run('ROLLBACK');
+                    reject(err);
+                    return;
+                  }
+                  
+                  if (this.changes > 0) {
+                    console.log(`✅ ${mapping.from}→${mapping.to}: ${this.changes} items shifted`);
+                    results.shifted += this.changes;
+                    results.details.push(`${mapping.from}→${mapping.to}: ${this.changes} items`);
+                  } else {
+                    console.log(`ℹ️ ${mapping.from}→${mapping.to}: No items to shift`);
+                  }
+                  
+                  shiftIndex++;
+                  processShift();
+                });
+            };
+            
+// Function untuk cek apakah perlu auto-shift dan eksekusi jika perlu
+const checkAndExecuteBekasanShift = async () => {
+  try {
+    const jakartaTime = getJakartaTime();
+    const today = jakartaTime.toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    // Cek apakah hari ini sudah shift
+    const lastShiftDate = await getKonfigurasi('last_bekasan_shift_date');
+    if (lastShiftDate === today) {
+      // Sudah shift hari ini, skip pengecekan
+      return { success: false, message: 'Already shifted today', date: today, skipCheck: true };
+    }
+    
+    const hours = jakartaTime.getHours();
+    const minutes = jakartaTime.getMinutes();
+    
+    // Parse BEKASAN_SHIFT_TIME dari format "HH:MM"
+    const [shiftHour, shiftMinute] = BEKASAN_SHIFT_TIME.split(':').map(Number);
+    
+    // Execute at configured shift time
+    if (hours === shiftHour && minutes === shiftMinute) {
+      // Protection: cek apakah shift sudah dalam progress
+      if (isShiftInProgress) {
+        return { success: false, message: 'Shift already in progress', time: `${hours}:${minutes.toString().padStart(2, '0')}` };
+      }
+      
+      console.log(`🕐 Auto-shift time reached: ${formatJakartaTime(jakartaTime)}`);
+      
+      // Set flag untuk mencegah multiple execution
+      isShiftInProgress = true;
+      
+      try {
+        const result = await shiftBekasanDaily();
+        if (result.success) {
+          console.log(`✅ Bekasan auto-shift completed: ${result.message}`);
+        } else {
+          console.log(`ℹ️ Bekasan auto-shift skipped: ${result.message}`);
+        }
+        
+        // Reset flag setelah selesai (akan reset otomatis pada menit berikutnya)
+        setTimeout(() => {
+          isShiftInProgress = false;
+        }, 65000); // Reset after 65 seconds (lebih dari 1 menit)
+        
+        return result;
+      } catch (error) {
+        // Reset flag jika ada error
+        isShiftInProgress = false;
+        throw error;
+      }
+    }
+    
+    // Reset flag jika bukan waktu shift (untuk memastikan reset di menit lain)
+    if (minutes !== shiftMinute) {
+      isShiftInProgress = false;
+    }
+    
+    return { success: false, message: `Not shift time (${BEKASAN_SHIFT_TIME})`, time: `${hours}:${minutes.toString().padStart(2, '0')}` };
+  } catch (error) {
+    console.error('❌ Bekasan auto-shift error:', error.message);
+    isShiftInProgress = false; // Reset flag jika ada error
+    throw error;
+  }
+};
+
+// Function untuk manual trigger shift (admin)
+const manualBekasanShift = () => {
+  return shiftBekasanDaily();
+};
+
+// Function untuk get bekasan shift status
+const getBekasanShiftStatus = async () => {
+  try {
+    const lastShiftDate = await getKonfigurasi('last_bekasan_shift_date');
+    const jakartaTime = getJakartaTime();
+    const today = jakartaTime.toISOString().split('T')[0];
+    
+    return {
+      lastShiftDate: lastShiftDate || 'Never',
+      hasShiftedToday: lastShiftDate === today,
+      nextShiftTime: `${BEKASAN_SHIFT_TIME} WIB (Daily)`,
+      currentTime: formatJakartaTime(jakartaTime)
+    };
+  } catch (error) {
+    return {
+      lastShiftDate: 'Error',
+      hasShiftedToday: false,
+      nextShiftTime: `${BEKASAN_SHIFT_TIME} WIB (Daily)`,
+      currentTime: formatJakartaTime(getJakartaTime()),
+      error: error.message
+    };
+  }
+};
+
+// Enhanced getStok dengan auto-shift check (seamless integration)
+const getStokWithAutoShift = async (kategori) => {
+  try {
+    // Check if we need to auto-shift before getting stok
+    await checkAndExecuteBekasanShift();
+  } catch (error) {
+    // Silent fail untuk auto-shift, tetap return stok
+    console.error('Auto-shift check failed, continuing with stok retrieval:', error.message);
+  }
+  
+  // Return normal stok data
+  return getStok(kategori);
+};
+
+// === TRACKING FUNCTIONS ===
+
+// Function untuk memeriksa status nomor customer aktif
 const checkNumberActiveStatus = (nomorCustomer, pengelola = null) => {
   return new Promise((resolve, reject) => {
     const now = new Date().toISOString();
@@ -1578,5 +1990,12 @@ module.exports = {
   getLastPengelolaForNumber,
   getNumberTransactionHistory,
   getMostUsedPengelolaForNumber,
-  checkNumberActiveStatus
+  checkNumberActiveStatus,
+  
+  // === BEKASAN AUTO-SHIFT FUNCTIONS ===
+  shiftBekasanDaily,
+  checkAndExecuteBekasanShift,
+  manualBekasanShift,
+  getBekasanShiftStatus,
+  getStokWithAutoShift
 };

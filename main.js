@@ -128,6 +128,17 @@ bot.on('callback_query', async (query) => {
   }
 })();
 
+// === BEKASAN AUTO-SHIFT SCHEDULER ===
+// Frequent check every 10 seconds for immediate response
+setInterval(async () => {
+  try {
+    const { checkAndExecuteBekasanShift } = require('./db');
+    await checkAndExecuteBekasanShift();
+  } catch (error) {
+    // Silent fail untuk auto-shift check
+  }
+}, 10000); // Check every 10 seconds for immediate response
+
 // === PRELOAD INLINE KEYBOARDS ===
 // Function untuk generate main keyboard berdasarkan user ID
 const generateMainKeyboard = (userId) => {
