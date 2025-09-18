@@ -15,7 +15,7 @@ const safeDeleteMessage = async (bot, chatId, messageId, context = '') => {
     // Only log non-"message not found" errors for debugging
     if (!e.message.includes('message to delete not found') && 
         !e.message.includes('Bad Request: message to delete not found')) {
-      console.log(`Safe delete message error (${context}):`, e.message);
+      // console.log(`Safe delete message error (${context}):`, e.message);
     }
   }
 };
@@ -429,7 +429,7 @@ const checkSlotKosong = async (chatId) => {
             await safeDeleteMessage(global.bot, chatId, loadingMessageId, 'retry slot check');
           } catch (e) {
             // Ignore send/delete error - tapi tetap update state jika ada retry message
-            console.log('Retry message handling error (ignored):', e.message);
+            // console.log('Retry message handling error (ignored):', e.message);
           }
         }
 
@@ -1185,70 +1185,90 @@ module.exports = (bot) => {
         }
       }, 2000); // 2 detik delay untuk memberi waktu user membaca hasil
 
-      // Auto edit kuota setelah ADD sukses (urutan: ADD → Wait 5s → CEKSLOT → SET_KUBER)
-      if (addExecutionTime >= 8) {
-        setTimeout(async () => {
-          try {
-            // === LANGSUNG SET_KUBER DENGAN ROBUST APPROACH ===
-            const formattedParent = formatNomorToInternational(nomor_hp);
-            
-            // ✅ LANGSUNG HIT member_info_akrab untuk mendapat fresh member_id
-            const recheckBody = new URLSearchParams({
-              id_parent: formattedParent,
-              token: process.env.APIKEY1
-            }).toString();
-            
-            const recheckRes = await axios.post(
-              `${process.env.API1}/member_info_akrab`,
-              recheckBody,
-              {
-                headers: {
-                  'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                timeout: 10000
-              }
-            );
-            
-            // ✅ KONVERSI GB KE BYTES DULU (sebelum member search untuk menghindari undefined error)
-            const kuotaGBInt = parseInt(kuotaGB);
-            let kuberInBytes = kuotaGBInt * 1073741824;
-            
-            // ✅ WORKAROUND: API KHFY tidak support new_allocation: 0, gunakan 1024 bytes sebagai pseudo 0GB
-            if (kuotaGBInt === 0) {
-              kuberInBytes = 1024; // 1024 bytes ≈ 0.000001 GB (praktis 0GB)
-            }
-            
-            // ✅ ROBUST MEMBER EXTRACTION - Jangan terlalu strict dengan status
-            let freshMemberList = [];
+        // Auto edit kuota setelah ADD sukses (urutan: ADD → Wait 5s → CEKSLOT → SET_KUBER)
+        if (addExecutionTime >= 8) {
+          setTimeout(async () => {
+            // ✅ DECLARE VARIABLES OUTSIDE TRY-CATCH untuk menghindari ReferenceError
+            let kuberInBytes;
             let familyMemberId = null;
             
-            // Coba ekstrak dari berbagai kemungkinan struktur response
-            if (recheckRes.data?.data?.member_info?.members) {
-              freshMemberList = recheckRes.data.data.member_info.members;
-            } else if (recheckRes.data?.data && Array.isArray(recheckRes.data.data)) {
-              freshMemberList = recheckRes.data.data;
-            }
-            
-            // Jika belum dapat member_id, cari dari array berdasarkan nomor HP yang di-ADD
-            if (freshMemberList.length > 0) {
-              // ✅ NORMALIZE TARGET NUMBER untuk matching
-              const targetMsisdn = normalizedNumber.startsWith('62') ? normalizedNumber : `62${normalizedNumber.slice(1)}`;
+            try {
+              // === LANGSUNG SET_KUBER DENGAN ROBUST APPROACH ===
+              const formattedParent = formatNomorToInternational(nomor_hp);
               
-              // ✅ SKIP INDEX 0 (parent/pengelola) - member mulai dari index 1
-              const membersOnly = freshMemberList.slice(1); // Skip index 0 yang adalah parent
+              // ✅ LANGSUNG HIT member_info_akrab untuk mendapat fresh member_id
+              const recheckBody = new URLSearchParams({
+                id_parent: formattedParent,
+                token: process.env.APIKEY1
+              }).toString();
               
-              const targetMember = membersOnly.find(member => 
-                member.msisdn === targetMsisdn || member.msisdn === normalizedNumber
+              const recheckRes = await axios.post(
+                `${process.env.API1}/member_info_akrab`,
+                recheckBody,
+                {
+                  headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                  },
+                  timeout: 10000
+                }
               );
               
-              if (targetMember) {
-                familyMemberId = targetMember.family_member_id;
-              } else {
-                console.warn(`❌ No member found with msisdn ${targetMsisdn} or ${normalizedNumber}`);
-                console.warn(`❌ Available member msisdns (excluding parent):`, membersOnly.map(m => m.msisdn));
-                console.warn(`❌ Parent msisdn (index 0):`, freshMemberList[0]?.msisdn || 'N/A');
+              // ✅ KONVERSI GB KE BYTES DULU (sebelum member search untuk menghindari undefined error)
+              const kuotaGBInt = parseInt(kuotaGB);
+              kuberInBytes = kuotaGBInt * 1073741824;
+              
+              // ✅ WORKAROUND: API KHFY tidak support new_allocation: 0, gunakan 1024 bytes sebagai pseudo 0GB
+              if (kuotaGBInt === 0) {
+                kuberInBytes = 1024; // 1024 bytes ≈ 0.000001 GB (praktis 0GB)
               }
-            }
+              
+              // ✅ ROBUST MEMBER EXTRACTION - Jangan terlalu strict dengan status
+              let freshMemberList = [];
+              
+              // Coba ekstrak dari berbagai kemungkinan struktur response
+              if (recheckRes.data?.data?.member_info?.members) {
+                freshMemberList = recheckRes.data.data.member_info.members;
+                
+                // ✅ TAMBAH ADDITIONAL_MEMBERS jika ada (seperti handler_bulanan.js)
+                const additionalMembers = recheckRes.data.data.member_info.additional_members || [];
+                freshMemberList = [...freshMemberList, ...additionalMembers];
+                
+                // console.log(`📋 Total members (including additional): ${freshMemberList.length}`);
+              } else if (recheckRes.data?.data && Array.isArray(recheckRes.data.data)) {
+                freshMemberList = recheckRes.data.data;
+              }
+              
+              // Jika belum dapat member_id, cari dari array berdasarkan nomor HP yang di-ADD
+              if (freshMemberList.length > 0) {
+                // ✅ NORMALIZE TARGET NUMBER untuk matching
+                const targetMsisdn = normalizedNumber.startsWith('62') ? normalizedNumber : `62${normalizedNumber.slice(1)}`;
+                
+                // console.log(`🔍 Looking for member with msisdn: ${targetMsisdn} or ${normalizedNumber}`);
+                
+                // ✅ SKIP INDEX 0 (parent/pengelola) - member mulai dari index 1
+                const membersOnly = freshMemberList.slice(1); // Skip index 0 yang adalah parent
+                
+                // ✅ CARI DI MEMBER BIASA DULU
+                let targetMember = membersOnly.find(member => 
+                  member.msisdn === targetMsisdn || member.msisdn === normalizedNumber
+                );
+                
+                if (targetMember) {
+                  familyMemberId = targetMember.family_member_id;
+                  // console.log(`✅ Found target member at index ${freshMemberList.indexOf(targetMember)}: ${targetMember.msisdn}`);
+                } else {
+                  // ✅ FALLBACK: Gunakan family_member_id dari ADD response jika ada
+                  if (addedMemberFamilyId) {
+                    familyMemberId = addedMemberFamilyId;
+                    // console.log(`✅ Found family_member_id from ADD response: ${familyMemberId}`);
+                  } else {
+                    console.warn(`❌ No member found with msisdn ${targetMsisdn} or ${normalizedNumber}`);
+                    console.warn(`❌ Available member msisdns (excluding parent):`, membersOnly.map(m => m.msisdn));
+                    console.warn(`❌ Parent msisdn (index 0):`, freshMemberList[0]?.msisdn || 'N/A');
+                    console.warn(`❌ ADD response family_member_id:`, addedMemberFamilyId || 'N/A');
+                  }
+                }
+              }
             
             if (!familyMemberId) {
               throw new Error(`No fresh member_id found for ${normalizedNumber} after ADD - member not found in recheck`);
@@ -1282,22 +1302,22 @@ module.exports = (bot) => {
             if (setKuberResponse.data.status === true || setKuberResponse.data.status === 'success') {
               // SET_KUBER berhasil - tidak perlu log detail
             }
-          } catch (setKuberErr) {
-            console.warn(`⚠️ SET_KUBER Error untuk ${nomor_hp} SLOT ${nomor_slot}:`);
-            console.warn(`   - Error: ${setKuberErr.message}`);
-            console.warn(`   - Member ID: ${familyMemberId || 'NOT_FOUND'}`);
-            console.warn(`   - Allocation: ${kuberInBytes || 'NOT_SET'} bytes`);
-            
-            // Jika error axios, log response juga
-            if (setKuberErr.response) {
-              console.warn(`   - API Response:`, setKuberErr.response.data);
+            } catch (setKuberErr) {
+              console.warn(`⚠️ SET_KUBER Error untuk ${nomor_hp} SLOT ${nomor_slot}:`);
+              console.warn(`   - Error: ${setKuberErr.message}`);
+              console.warn(`   - Member ID: ${familyMemberId || 'NOT_FOUND'}`);
+              console.warn(`   - Allocation: ${kuberInBytes || 'NOT_SET'} bytes`);
+              
+              // Jika error axios, log response juga
+              if (setKuberErr.response) {
+                console.warn(`   - API Response:`, setKuberErr.response.data);
+              }
             }
-          }
-        }, 5000); // 5 detik delay untuk mendapat fresh member_id setelah ADD
-      }
+          }, 10000); // 10 detik delay untuk mendapat fresh member_id setelah ADD (sama seperti handler_bulanan.js)
+        }
 
-  } catch (err) {
-    console.error(`Error adding anggota bekasan: ${err.message}`);
+      } catch (err) {
+        console.error(`Error adding anggota bekasan: ${err.message}`);
     const addExecutionTime = Math.floor((Date.now() - addStartTime) / 1000);
     const { getHargaGagal } = require('../../db');
     const biayaGagal = await getHargaGagal();
@@ -1358,13 +1378,17 @@ module.exports = (bot) => {
 
         // Auto edit kuota untuk socket hang up yang dianggap sukses
         setTimeout(async () => {
+          // ✅ DECLARE VARIABLES OUTSIDE TRY-CATCH untuk menghindari ReferenceError
+          let kuberInBytes;
+          let familyMemberId = null;
+          
           try {
             // === API1 KHFY-Store SET_KUBER ===
             const formattedParent = formatNomorToInternational(nomor_hp);
             
             // ✅ AMBIL FAMILY_MEMBER_ID dari data CEKSLOT1 yang sudah disimpan
             const { selectedSlotData } = state;
-            let familyMemberId = selectedSlotData?.family_member_id;
+            familyMemberId = selectedSlotData?.family_member_id;
             
             // ✅ FALLBACK: Jika tidak ada family_member_id, coba gunakan slot_id atau hitung berdasarkan slot
             if (!familyMemberId) {
@@ -1387,7 +1411,7 @@ module.exports = (bot) => {
             
             // ✅ KONVERSI GB KE BYTES (bilangan utuh * 1073741824)
             const kuotaGBInt = parseInt(kuotaGB);
-            let kuberInBytes = kuotaGBInt * 1073741824;
+            kuberInBytes = kuotaGBInt * 1073741824;
             
             // ✅ WORKAROUND: API KHFY tidak support new_allocation: 0, gunakan 1024 bytes sebagai pseudo 0GB
             if (kuotaGBInt === 0) {
@@ -1412,7 +1436,10 @@ module.exports = (bot) => {
             });
             
           } catch (editErr) {
-            console.warn(`⚠️ Edit kuota timeout case gagal untuk ${nomor_hp} SLOT ${nomor_slot}:`, editErr.message);
+            console.warn(`⚠️ Edit kuota timeout case gagal untuk ${nomor_hp} SLOT ${nomor_slot}:`);
+            console.warn(`   - Error: ${editErr.message}`);
+            console.warn(`   - Member ID: ${familyMemberId || 'NOT_FOUND'}`);
+            console.warn(`   - Allocation: ${kuberInBytes || 'NOT_SET'} bytes`);
           }
         }, 10000);
 
