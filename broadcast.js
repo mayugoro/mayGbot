@@ -12,6 +12,34 @@ const {
 
 const adminState = new Map();
 
+// ✅ Helper function untuk cleanup semua messages broadcast
+async function cleanupMessages(bot, chatId, state, statusMessageId = null, inputMessageId = null) {
+  const messagesToDelete = [];
+  
+  // Collect message IDs yang perlu dihapus
+  if (state && state.inputMessageId) {
+    messagesToDelete.push(state.inputMessageId);
+  }
+  if (statusMessageId && statusMessageId !== state?.inputMessageId) {
+    messagesToDelete.push(statusMessageId);
+  }
+  if (inputMessageId) {
+    messagesToDelete.push(inputMessageId);
+  }
+  
+  // Delete semua messages dengan safe handling
+  for (const messageId of messagesToDelete) {
+    try {
+      await bot.deleteMessage(chatId, messageId);
+    } catch (e) {
+      if (!e.message.includes('message to delete not found') && 
+          !e.message.includes('Bad Request: message to delete not found')) {
+        console.log(`Cleanup message error (ignored): ${e.message}`);
+      }
+    }
+  }
+}
+
 module.exports = (bot) => {
   // === SETUP GLOBAL BROADCAST PROTECTION ===
   // Attach broadcast protection function ke bot object
@@ -64,8 +92,13 @@ module.exports = (bot) => {
       // Cek apakah ini bukan command slash dan ada text
       if (!msg.text || msg.text.startsWith('/')) return;
       
-      // Keywords untuk trigger broadcast (lebih spesifik)
+      // Keywords untuk trigger broadcast (lebih spesifik dengan mode)
       const broadcastKeywords = [
+        // ✅ PIN Mode Keywords
+        'bpin', '/bpin', 'broadcast pin', 'broadcast dengan pin',
+        // ✅ NORMAL Mode Keywords  
+        'bcast', '/bcast', 'broadcast normal', 'broadcast tanpa pin',
+        // ✅ Legacy Keywords (default ke pin)
         'broadcast', 'broadcast ke semua', 'kirim ke semua user',
         '/broadcast', 'pengumuman', 'blast message'
       ];
@@ -76,20 +109,33 @@ module.exports = (bot) => {
       );
       
       if (isBroadcastRequest) {
-        // ✅ MENGGUNAKAN UTILS TEMPLATE untuk inisialisasi flow state
+        // ✅ Determine broadcast mode based on keywords
+        let broadcastMode = 'pin'; // Default ke pin mode
+        let modeDescription = 'Broadcast Aktif (PIN)';
+        
+        if (messageText.includes('bcast') || messageText.includes('normal') || messageText.includes('tanpa pin')) {
+          broadcastMode = 'normal';
+          modeDescription = 'Broadcast Aktif (NORMAL)';
+        } else if (messageText.includes('bpin') || messageText.includes('pin')) {
+          broadcastMode = 'pin';
+          modeDescription = 'Broadcast Aktif (PIN)';
+        }
+        // ✅ MENGGUNAKAN UTILS TEMPLATE untuk inisialisasi flow state dengan mode
         initializeFlowState(adminState, chatId, 'broadcast', { 
           step: 'input_message', 
-          startTime: Date.now() 
+          startTime: Date.now(),
+          broadcastMode: broadcastMode // ✅ Simpan mode broadcast
         });
         
         const broadcastPrompt = '📢 <b>SESI BROADCAST DIMULAI</b>\n\n' +
-          '🔒 <b>Mode:</b> Broadcast Aktif\n' +
+          `🔒 <b>Mode:</b> ${modeDescription}\n` +
           '📝 Kirim pesan yang akan di-broadcast:\n\n' +
           '✅ <b>Support:</b>\n• Teks\n• Foto + Caption\n• Video + Caption\n• Audio/Voice\n• Document/File\n• Sticker\n• GIF/Animation\n\n' +
+          '⚠️ <b>PENTING:</b> Teks harus lebih dari 2 karakter\n' +
           '❌ <b>Keluar:</b> ' + generateExitInstruction('exit');
         
         // ✅ MENGGUNAKAN UTILS TEMPLATE untuk send message dengan tracking
-        await sendMessageWithTracking(
+        const sentMessage = await sendMessageWithTracking(
           bot, 
           chatId, 
           broadcastPrompt, 
@@ -98,6 +144,13 @@ module.exports = (bot) => {
           adminState.get(chatId),
           msg
         );
+        
+        // ✅ Update state dengan inputMessageId dari message yang baru dikirim
+        const currentState = adminState.get(chatId);
+        if (currentState && sentMessage) {
+          currentState.inputMessageId = sentMessage.message_id;
+          adminState.set(chatId, currentState);
+        }
         return;
       }
     }
@@ -108,7 +161,52 @@ module.exports = (bot) => {
 
   // === Function untuk memproses pesan broadcast ===
   async function processBroadcastMessage(msg, bot, chatId, state) {
+    let statusMessageId = null; // ✅ Track status message ID secara eksplisit
+    
+    // ✅ ANTI-EXITER PROTECTION: Cek panjang teks untuk mencegah exit keywords terkirim sebagai broadcast
+    if (msg.text && msg.text.trim().length <= 2) {
+      // Jika teks terlalu pendek (kemungkinan exit keyword), batalkan sesi tanpa broadcast
+      const cancelMsg = '⚠️ <b>Sesi broadcast dibatalkan</b>\n\nTeks terlalu pendek (kemungkinan exit command).\n\n🔓 Silakan mulai broadcast baru.';
+      
+      // ✅ Hapus input message admin SEBELUM kirim cancel message
+      try {
+        await bot.deleteMessage(chatId, msg.message_id);
+      } catch (e) {
+        // Ignore delete error
+      }
+      
+      if (state.inputMessageId) {
+        try {
+          await bot.editMessageText(cancelMsg, {
+            chat_id: chatId,
+            message_id: state.inputMessageId,
+            parse_mode: 'HTML'
+          });
+          statusMessageId = state.inputMessageId;
+        } catch (e) {
+          const sentMsg = await bot.sendMessage(chatId, cancelMsg, { parse_mode: 'HTML' });
+          statusMessageId = sentMsg.message_id;
+        }
+      } else {
+        const sentMsg = await bot.sendMessage(chatId, cancelMsg, { parse_mode: 'HTML' });
+        statusMessageId = sentMsg.message_id;
+      }
+      
+      // Auto-delete cancel message setelah 3 detik (input message sudah dihapus di atas)
+      setTimeout(async () => {
+        await cleanupMessages(bot, chatId, state, statusMessageId, null);
+      }, 3000);
+      
+      clearBroadcastSession(chatId);
+      return;
+    }
+
+    // ✅ IMMEDIATE INPUT CLEANUP: Hapus input message admin setelah validasi berhasil
     try {
+      await bot.deleteMessage(chatId, msg.message_id);
+    } catch (e) {
+      // Ignore delete error - pesan mungkin sudah terhapus
+    }    try {
       // Ambil semua user
       const users = await getAllUsers();
       
@@ -121,21 +219,20 @@ module.exports = (bot) => {
               chat_id: chatId,
               message_id: state.inputMessageId
             });
+            // ✅ Set status message ID untuk penghapusan nanti
+            statusMessageId = state.inputMessageId;
           } catch (e) {
-            await bot.sendMessage(chatId, teksError);
+            const sentMsg = await bot.sendMessage(chatId, teksError);
+            statusMessageId = sentMsg.message_id;
           }
         } else {
-          await bot.sendMessage(chatId, teksError);
+          const sentMsg = await bot.sendMessage(chatId, teksError);
+          statusMessageId = sentMsg.message_id;
         }
         
+        // ✅ Cleanup semua messages (input message sudah dihapus di awal)
+        await cleanupMessages(bot, chatId, state, statusMessageId, null);
         clearBroadcastSession(chatId);
-        try {
-          await bot.deleteMessage(chatId, msg.message_id);
-        } catch (e) {
-          if (!e.message.includes('message to delete not found')) {
-            console.error('Error deleting message:', e.message);
-          }
-        }
         return;
       }
 
@@ -198,18 +295,24 @@ module.exports = (bot) => {
       const targetCount = users.length;
       
       // Update status ke admin
-      const statusMsg = `📡 Broadcasting ${messageType} ke ${targetCount} user...\n\n⏳ Mohon tunggu...`;
+      const broadcastMode = state.broadcastMode || 'pin'; // Default ke pin mode
+      const modeText = broadcastMode === 'pin' ? '📌 PIN' : '📄 NORMAL';
+      const statusMsg = `📡 Broadcasting ${messageType} ke ${targetCount} user...\n\n🔒 <b>Mode:</b> ${modeText}\n⏳ Mohon tunggu...`;
       if (state.inputMessageId) {
         try {
           await bot.editMessageText(statusMsg, {
             chat_id: chatId,
             message_id: state.inputMessageId
           });
+          // ✅ Set status message ID untuk penghapusan nanti
+          statusMessageId = state.inputMessageId;
         } catch (e) {
-          await bot.sendMessage(chatId, statusMsg);
+          const sentMsg = await bot.sendMessage(chatId, statusMsg);
+          statusMessageId = sentMsg.message_id;
         }
       } else {
-        await bot.sendMessage(chatId, statusMsg);
+        const sentMsg = await bot.sendMessage(chatId, statusMsg);
+        statusMessageId = sentMsg.message_id;
       }
       
       // Broadcast ke semua user
@@ -300,14 +403,15 @@ module.exports = (bot) => {
               break;
           }
           
-          // Auto-pin pesan broadcast yang berhasil dikirim
-          if (sentMessage && sentMessage.message_id) {
+          // ✅ Auto-pin pesan broadcast berdasarkan mode yang dipilih
+          if (sentMessage && sentMessage.message_id && state.broadcastMode === 'pin') {
             try {
               await bot.pinChatMessage(user.user_id, sentMessage.message_id, {
                 disable_notification: true
               });
             } catch (pinError) {
-              console.log(`⚠️ Gagal pin pesan untuk user ${user.user_id}: ${pinError.message}`);
+              // Silent ignore pin error untuk mencegah spam log
+              // console.log(`⚠️ Gagal pin pesan untuk user ${user.user_id}: ${pinError.message}`);
             }
           }
           
@@ -361,9 +465,11 @@ module.exports = (bot) => {
       
       // Kirim hasil ke admin dengan breakdown detail
       const totalFailed = blockedCount + deactivatedCount + errorCount;
+      // Reuse broadcastMode dan modeText dari scope atas
       
       let hasilBroadcast = `✅ <b>BROADCAST SELESAI!</b>\n\n`;
       hasilBroadcast += `📊 <b>STATISTIK:</b>\n`;
+      hasilBroadcast += `🔒 Mode: ${modeText}\n`;
       hasilBroadcast += `🎯 Target: ${targetCount} user\n`;
       hasilBroadcast += `✅ Berhasil: ${successCount}\n`;
       hasilBroadcast += `❌ Gagal: ${totalFailed}\n\n`;
@@ -382,7 +488,8 @@ module.exports = (bot) => {
       hasilBroadcast += `\n📈 Success Rate: ${successRate}%`;
       
       let resultMessageId;
-      if (state.inputMessageId) {
+      if (state.inputMessageId && statusMessageId === state.inputMessageId) {
+        // ✅ Jika status message adalah edit dari input message
         try {
           await bot.editMessageText(hasilBroadcast, {
             chat_id: chatId,
@@ -395,22 +502,29 @@ module.exports = (bot) => {
           resultMessageId = sentMsg.message_id;
         }
       } else {
+        // ✅ Jika ada status message terpisah, hapus dulu lalu kirim hasil baru
+        if (statusMessageId) {
+          try {
+            await bot.deleteMessage(chatId, statusMessageId);
+          } catch (e) {
+            // Ignore delete error
+          }
+        }
         const sentMsg = await bot.sendMessage(chatId, hasilBroadcast, { parse_mode: 'HTML' });
         resultMessageId = sentMsg.message_id;
       }
       
-      // Auto-delete hasil broadcast setelah 3 detik
+      // ✅ Auto-delete hasil broadcast setelah 5 detik (input message sudah dihapus di awal)
       setTimeout(async () => {
-        try {
-          await bot.deleteMessage(chatId, resultMessageId);
-        } catch (e) {}
-      }, 3000);
+        await cleanupMessages(bot, chatId, state, resultMessageId, null); // null karena input msg sudah dihapus
+      }, 5000);
       
     } catch (error) {
-      const teksError = `❌ Gagal melakukan broadcast!\n\n🔍 <b>ERROR:</b>\n<code>${error.message}</code>\n\n🔓 Sesi broadcast berakhir.\n⏰ Pesan ini akan hilang dalam 3 detik...`;
+      const teksError = `❌ Gagal melakukan broadcast!\n\n🔍 <b>ERROR:</b>\n<code>${error.message}</code>\n\n🔓 Sesi broadcast berakhir.\n⏰ Pesan ini akan hilang dalam 5 detik...`;
       
       let errorMessageId;
-      if (state.inputMessageId) {
+      if (state.inputMessageId && statusMessageId === state.inputMessageId) {
+        // ✅ Jika status message adalah edit dari input message
         try {
           await bot.editMessageText(teksError, {
             chat_id: chatId,
@@ -423,27 +537,28 @@ module.exports = (bot) => {
           errorMessageId = sentMsg.message_id;
         }
       } else {
+        // ✅ Jika ada status message terpisah, hapus dulu lalu kirim error baru
+        if (statusMessageId) {
+          try {
+            await bot.deleteMessage(chatId, statusMessageId);
+          } catch (e) {
+            // Ignore delete error
+          }
+        }
         const sentMsg = await bot.sendMessage(chatId, teksError, { parse_mode: 'HTML' });
         errorMessageId = sentMsg.message_id;
       }
       
-      // Auto-delete error message setelah 3 detik
+      // ✅ Auto-delete error message setelah 5 detik (input message sudah dihapus di awal)
       setTimeout(async () => {
-        try {
-          await bot.deleteMessage(chatId, errorMessageId);
-        } catch (e) {}
-      }, 3000);
+        await cleanupMessages(bot, chatId, state, errorMessageId, null); // null karena input msg sudah dihapus
+      }, 5000);
     }
     
-    // WAJIB: Clear sesi broadcast setelah selesai
+    // ✅ WAJIB: Clear sesi broadcast setelah selesai (tidak perlu cleanup manual lagi)
     clearBroadcastSession(chatId);
-    try {
-      await bot.deleteMessage(chatId, msg.message_id);
-    } catch (e) {
-      if (!e.message.includes('message to delete not found')) {
-        console.error('Error deleting message:', e.message);
-      }
-    }
+    
+    // ✅ Cleanup sudah ditangani oleh setTimeout di atas, tidak perlu manual delete di sini
     return;
   }
 
@@ -462,20 +577,22 @@ module.exports = (bot) => {
       return;
     }
     
-    // ✅ MENGGUNAKAN UTILS TEMPLATE untuk inisialisasi flow state
+    // ✅ MENGGUNAKAN UTILS TEMPLATE untuk inisialisasi flow state (default pin mode)
     initializeFlowState(adminState, msg.chat.id, 'broadcast', { 
       step: 'input_message', 
-      startTime: Date.now() 
+      startTime: Date.now(),
+      broadcastMode: 'pin' // Default ke pin mode untuk backward compatibility
     });
     
     const broadcastPrompt = '📢 <b>SESI BROADCAST DIMULAI</b>\n\n' +
-      '🔒 <b>Mode:</b> Broadcast Aktif (via command)\n' +
+      '🔒 <b>Mode:</b> Broadcast Aktif (PIN) - via command\n' +
       '📝 Kirim pesan yang akan di-broadcast:\n\n' +
       '✅ <b>Support:</b>\n• Teks\n• Foto + Caption\n• Video + Caption\n• Audio/Voice\n• Document/File\n• Sticker\n• GIF/Animation\n\n' +
+      '⚠️ <b>PENTING:</b> Teks harus lebih dari 2 karakter\n' +
       '❌ <b>Keluar:</b> ' + generateExitInstruction('exit');
     
     // ✅ MENGGUNAKAN UTILS TEMPLATE untuk send message dengan tracking
-    await sendMessageWithTracking(
+    const sentMessage = await sendMessageWithTracking(
       bot, 
       msg.chat.id, 
       broadcastPrompt, 
@@ -484,6 +601,101 @@ module.exports = (bot) => {
       adminState.get(msg.chat.id),
       msg
     );
+    
+    // ✅ Update state dengan inputMessageId dari message yang baru dikirim
+    const currentState = adminState.get(msg.chat.id);
+    if (currentState && sentMessage) {
+      currentState.inputMessageId = sentMessage.message_id;
+      adminState.set(msg.chat.id, currentState);
+    }
+  });
+
+  // === /bpin command - Broadcast dengan PIN ===
+  bot.onText(/\/bpin/, async (msg) => {
+    if (msg.from.id.toString() !== process.env.ADMIN_ID) {
+      await bot.sendMessage(msg.chat.id, 'ente siapa njir🗿');
+      await autoDeleteMessage(bot, msg.chat.id, msg.message_id);
+      return;
+    }
+    
+    if (isInBroadcastSession(msg.chat.id)) {
+      await bot.sendMessage(msg.chat.id, '⚠️ Anda sedang dalam sesi broadcast aktif!\n\n' + generateExitInstruction() + ' untuk keluar atau lanjutkan mengirim pesan broadcast.');
+      return;
+    }
+    
+    initializeFlowState(adminState, msg.chat.id, 'broadcast', { 
+      step: 'input_message', 
+      startTime: Date.now(),
+      broadcastMode: 'pin'
+    });
+    
+    const broadcastPrompt = '📢 <b>SESI BROADCAST DIMULAI</b>\n\n' +
+      '🔒 <b>Mode:</b> Broadcast PIN (📌 Auto-pin)\n' +
+      '📝 Kirim pesan yang akan di-broadcast:\n\n' +
+      '✅ <b>Support:</b>\n• Teks\n• Foto + Caption\n• Video + Caption\n• Audio/Voice\n• Document/File\n• Sticker\n• GIF/Animation\n\n' +
+      '⚠️ <b>PENTING:</b> Teks harus lebih dari 2 karakter\n' +
+      '❌ <b>Keluar:</b> ' + generateExitInstruction('exit');
+    
+    const sentMessage = await sendMessageWithTracking(
+      bot, 
+      msg.chat.id, 
+      broadcastPrompt, 
+      { parse_mode: 'HTML' },
+      adminState,
+      adminState.get(msg.chat.id),
+      msg
+    );
+    
+    // ✅ Update state dengan inputMessageId dari message yang baru dikirim
+    const currentState = adminState.get(msg.chat.id);
+    if (currentState && sentMessage) {
+      currentState.inputMessageId = sentMessage.message_id;
+      adminState.set(msg.chat.id, currentState);
+    }
+  });
+
+  // === /bcast command - Broadcast NORMAL (tanpa pin) ===
+  bot.onText(/\/bcast/, async (msg) => {
+    if (msg.from.id.toString() !== process.env.ADMIN_ID) {
+      await bot.sendMessage(msg.chat.id, 'ente siapa njir🗿');
+      await autoDeleteMessage(bot, msg.chat.id, msg.message_id);
+      return;
+    }
+    
+    if (isInBroadcastSession(msg.chat.id)) {
+      await bot.sendMessage(msg.chat.id, '⚠️ Anda sedang dalam sesi broadcast aktif!\n\n' + generateExitInstruction() + ' untuk keluar atau lanjutkan mengirim pesan broadcast.');
+      return;
+    }
+    
+    initializeFlowState(adminState, msg.chat.id, 'broadcast', { 
+      step: 'input_message', 
+      startTime: Date.now(),
+      broadcastMode: 'normal'
+    });
+    
+    const broadcastPrompt = '📢 <b>SESI BROADCAST DIMULAI</b>\n\n' +
+      '🔒 <b>Mode:</b> Broadcast NORMAL (📄 Tanpa pin)\n' +
+      '📝 Kirim pesan yang akan di-broadcast:\n\n' +
+      '✅ <b>Support:</b>\n• Teks\n• Foto + Caption\n• Video + Caption\n• Audio/Voice\n• Document/File\n• Sticker\n• GIF/Animation\n\n' +
+      '⚠️ <b>PENTING:</b> Teks harus lebih dari 2 karakter\n' +
+      '❌ <b>Keluar:</b> ' + generateExitInstruction('exit');
+    
+    const sentMessage = await sendMessageWithTracking(
+      bot, 
+      msg.chat.id, 
+      broadcastPrompt, 
+      { parse_mode: 'HTML' },
+      adminState,
+      adminState.get(msg.chat.id),
+      msg
+    );
+    
+    // ✅ Update state dengan inputMessageId dari message yang baru dikirim
+    const currentState = adminState.get(msg.chat.id);
+    if (currentState && sentMessage) {
+      currentState.inputMessageId = sentMessage.message_id;
+      adminState.set(msg.chat.id, currentState);
+    }
   });
 
   // Export function untuk cek sesi dari luar (opsional)
