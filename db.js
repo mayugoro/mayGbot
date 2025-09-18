@@ -1477,7 +1477,7 @@ const getMostUsedPengelolaForNumber = (nomorCustomer, daysPeriod = 30) => {
 // === FUNGSI BEKASAN AUTO-SHIFT SYSTEM ===
 
 // === KONFIGURASI WAKTU SHIFT (EDIT HANYA DI SINI) ===
-const BEKASAN_SHIFT_TIME = "02:25";  // Format: HH:MM (24-hour) - Production: 01:00 WIB
+const BEKASAN_SHIFT_TIME = "00:00";  // Format: HH:MM (24-hour) - Production: 01:00 WIB
 // ============================================
 
 // Protection flag untuk mencegah multiple execution dalam menit yang sama
