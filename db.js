@@ -1685,7 +1685,7 @@ const shiftBekasanDaily = () => {
     }).catch(reject);
   });
 };
-          console.log(`� Step 1: Starting category shifts (3H will become 2H, then delete expired 2H)...`);
+          // console.log(`� Step 1: Starting category shifts (3H will become 2H, then delete expired 2H)...`);
           
           // PERBAIKAN: Shift dulu, baru delete
           // Step 2: Shift categories (REVERSE ORDER + 3H→2H)
