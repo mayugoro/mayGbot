@@ -6,7 +6,7 @@ const { getJakartaTime, createJakartaDate, calculateDaysDiff, formatDaysDiff, fo
 const { sendStyledInputMessage, autoDeleteMessage, EXIT_KEYWORDS } = require('./utils/exiter');
 
 // Storage untuk dompul states
-const dompulStates = new Map(); // key: chatId, value: { step, inputMessageId }
+const dompulStates = new Map(); // key: chatId, value: { step, inputMessageId, timeoutId }
 
 // Database setup
 const dbPath = path.join(__dirname, 'database.db');
@@ -239,6 +239,10 @@ module.exports = (bot) => {
       if (existingState.inputMessageId) {
         autoDeleteMessage(bot, chatId, existingState.inputMessageId, 0);
       }
+      // Clear existing timeout jika ada
+      if (existingState.timeoutId) {
+        clearTimeout(existingState.timeoutId);
+      }
       dompulStates.delete(chatId);
     }
 
@@ -260,9 +264,31 @@ module.exports = (bot) => {
       'Bisa massal, pisahkan dengan Enter.'
     );
     
-    // Simpan message ID input untuk bisa diedit nanti
+    // Setup timeout 30 detik untuk auto-delete pesan input
+    const timeoutId = setTimeout(async () => {
+      const currentState = dompulStates.get(chatId);
+      if (currentState && currentState.step === 'input_nomor') {
+        // Auto-delete pesan input karena timeout
+        if (currentState.inputMessageId) {
+          autoDeleteMessage(bot, chatId, currentState.inputMessageId, 0);
+        }
+        
+        // Send timeout message dengan auto-delete
+        const timeoutMsg = await bot.sendMessage(chatId, 
+          '<i>⏰ Waktu input habis (30 detik)\nSilakan ketik /dompul untuk mengulang</i>', 
+          { parse_mode: 'HTML' }
+        );
+        autoDeleteMessage(bot, chatId, timeoutMsg.message_id, 5000);
+        
+        // Clear state
+        dompulStates.delete(chatId);
+      }
+    }, 30000); // 30 detik timeout
+    
+    // Simpan message ID input dan timeout ID untuk bisa diedit/clear nanti
     const currentState = dompulStates.get(chatId);
     currentState.inputMessageId = inputMsg.message_id;
+    currentState.timeoutId = timeoutId;
     dompulStates.set(chatId, currentState);
   });
 
@@ -295,6 +321,11 @@ module.exports = (bot) => {
       
       // === CEK CANCEL/EXIT ===
       if (EXIT_KEYWORDS.COMBINED.includes(text)) {
+        // Clear timeout jika ada
+        if (state.timeoutId) {
+          clearTimeout(state.timeoutId);
+        }
+        
         // Hapus input form dengan auto-delete
         if (state.inputMessageId) {
           autoDeleteMessage(bot, chatId, state.inputMessageId, 0);
@@ -328,6 +359,11 @@ module.exports = (bot) => {
         state.processing = false;
         dompulStates.set(chatId, state);
         return;
+      }
+
+      // Clear timeout karena user sudah input valid
+      if (state.timeoutId) {
+        clearTimeout(state.timeoutId);
       }
 
       // Hapus pesan input user dan form input dengan auto-delete
@@ -844,6 +880,12 @@ module.exports = (bot) => {
 
     } catch (error) {
       console.error('Error handling dompul input:', error.message);
+      
+      // Clear timeout jika ada error
+      if (state && state.timeoutId) {
+        clearTimeout(state.timeoutId);
+      }
+      
       const errorMsg = await bot.sendMessage(chatId, '❌ <b>Terjadi error, silakan coba lagi!</b>', { parse_mode: 'HTML' });
       autoDeleteMessage(bot, chatId, errorMsg.message_id, 3000);
       dompulStates.delete(chatId);
