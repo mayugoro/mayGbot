@@ -1196,7 +1196,7 @@ module.exports = (bot) => {
             if (recheckRes.data?.data?.member_info?.additional_members) {
               const additionalMembers = recheckRes.data.data.member_info.additional_members;
               freshMemberList = [...freshMemberList, ...additionalMembers];
-              console.warn(`📋 Total members (including additional): ${freshMemberList.length}`);
+              // console.warn(`📋 Total members (including additional): ${freshMemberList.length}`);
             }
             
             // Jika belum dapat member_id, cari dari array berdasarkan nomor HP yang di-ADD
@@ -1204,22 +1204,22 @@ module.exports = (bot) => {
               // ✅ NORMALIZE TARGET NUMBER untuk matching
               const targetMsisdn = normalizedNumber.startsWith('62') ? normalizedNumber : `62${normalizedNumber.slice(1)}`;
               
-              console.warn(`🔍 Looking for member with msisdn: ${targetMsisdn} or ${normalizedNumber}`);
-              console.warn(`📋 All members (including parent):`, freshMemberList.map((m, i) => `[${i}] ${m?.msisdn || 'undefined'}`));
+              // console.warn(`🔍 Looking for member with msisdn: ${targetMsisdn} or ${normalizedNumber}`);
+              // console.warn(`📋 All members (including parent):`, freshMemberList.map((m, i) => `[${i}] ${m?.msisdn || 'undefined'}`));
               
               // ✅ CARI DI SEMUA MEMBER (TERMASUK PARENT) - jangan skip index 0
               const targetMember = freshMemberList.find((member, index) => {
                 if (!member || !member.msisdn) return false;
                 const match = member.msisdn === targetMsisdn || member.msisdn === normalizedNumber;
                 if (match) {
-                  console.warn(`✅ Found target member at index ${index}: ${member.msisdn}`);
+                  // console.warn(`✅ Found target member at index ${index}: ${member.msisdn}`);
                 }
                 return match;
               });
               
               if (targetMember && targetMember.family_member_id) {
                 familyMemberId = targetMember.family_member_id;
-                console.warn(`✅ Found family_member_id: ${familyMemberId.substring(0, 20)}...`);
+                // console.warn(`✅ Found family_member_id: ${familyMemberId.substring(0, 20)}...`);
               } else {
                 console.warn(`❌ No member found with msisdn ${targetMsisdn} or ${normalizedNumber}`);
                 console.warn(`❌ Available member msisdns (all):`, freshMemberList.map(m => m?.msisdn || 'undefined'));
@@ -1229,12 +1229,12 @@ module.exports = (bot) => {
             
             if (!familyMemberId) {
               // ✅ FALLBACK UNTUK SLOT TERAKHIR - coba gunakan latest member_id dari ADD response
-              console.warn(`⚠️ Fallback: Trying to use member_id from ADD response...`);
+              // console.warn(`⚠️ Fallback: Trying to use member_id from ADD response...`);
               
               // Ambil member_id dari state yang disimpan saat ADD berhasil
               if (state.selectedSlotData?.family_member_id) {
                 familyMemberId = state.selectedSlotData.family_member_id;
-                console.warn(`✅ Using member_id from ADD response: ${familyMemberId.substring(0, 20)}...`);
+                // console.warn(`✅ Using member_id from ADD response: ${familyMemberId.substring(0, 20)}...`);
               } else {
                 throw new Error(`No fresh member_id found for ${normalizedNumber} after ADD - member not found in recheck and no fallback available`);
               }
