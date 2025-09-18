@@ -293,11 +293,15 @@ module.exports = (bot) => {
       let deactivatedCount = 0; 
       let errorCount = 0;
       const targetCount = users.length;
+      const adminId = process.env.ADMIN_ID; // ✅ Deklarasi adminId di scope utama
       
       // Update status ke admin
       const broadcastMode = state.broadcastMode || 'pin'; // Default ke pin mode
       const modeText = broadcastMode === 'pin' ? '📌 PIN' : '📄 NORMAL';
-      const statusMsg = `📡 Broadcasting ${messageType} ke ${targetCount} user...\n\n🔒 <b>Mode:</b> ${modeText}\n⏳ Mohon tunggu...`;
+      const adminInList = users.some(user => user.user_id.toString() === adminId);
+      const adminNote = adminInList ? '\n👑 Admin akan menerima broadcast terakhir' : '';
+      
+      const statusMsg = `📡 Broadcasting ${messageType} ke ${targetCount} user...\n\n🔒 <b>Mode:</b> ${modeText}${adminNote}\n⏳ Mohon tunggu...`;
       if (state.inputMessageId) {
         try {
           await bot.editMessageText(statusMsg, {
@@ -315,8 +319,27 @@ module.exports = (bot) => {
         statusMessageId = sentMsg.message_id;
       }
       
-      // Broadcast ke semua user
+      // ✅ ADMIN LAST PRIORITY: Pisahkan admin dari user list dan tempatkan di urutan terakhir
+      const regularUsers = [];
+      let adminUser = null;
+      
+      // Pisahkan admin dari user biasa (menggunakan adminId yang sudah dideklarasi di atas)
       for (const user of users) {
+        if (user.user_id.toString() === adminId) {
+          adminUser = user;
+        } else {
+          regularUsers.push(user);
+        }
+      }
+      
+      // Gabungkan: user biasa dulu, admin terakhir
+      const sortedUsers = [...regularUsers];
+      if (adminUser) {
+        sortedUsers.push(adminUser);
+      }
+      
+      // Broadcast ke semua user (admin akan menerima broadcast terakhir)
+      for (const user of sortedUsers) {
         try {
           let sendOptions = {};
           if (broadcastData.caption) {
@@ -470,6 +493,7 @@ module.exports = (bot) => {
       let hasilBroadcast = `✅ <b>BROADCAST SELESAI!</b>\n\n`;
       hasilBroadcast += `📊 <b>STATISTIK:</b>\n`;
       hasilBroadcast += `🔒 Mode: ${modeText}\n`;
+      if (adminInList) hasilBroadcast += `👑 Admin diproses terakhir\n`;
       hasilBroadcast += `🎯 Target: ${targetCount} user\n`;
       hasilBroadcast += `✅ Berhasil: ${successCount}\n`;
       hasilBroadcast += `❌ Gagal: ${totalFailed}\n\n`;
