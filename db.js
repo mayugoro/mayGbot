@@ -1172,6 +1172,349 @@ const getBlockedUsersCount = () => {
   });
 };
 
+// === Function untuk tracking nomor ke pengelola sebelumnya ===
+const getLastPengelolaForNumber = (nomorCustomer, kategori = null, daysPeriod = 30) => {
+  return new Promise((resolve, reject) => {
+    // Import normalize function
+    const { normalizePhoneNumber, formatForLogger } = require('./utils/normalize');
+    
+    // Generate kedua format nomor (08 dan 62)
+    const searchNumbers = generateSearchNumbers(nomorCustomer);
+    
+    // Step 1: Cari transaksi terakhir dulu
+    let findLastTransactionQuery = `
+      SELECT 
+        MAX(CASE WHEN th.created_at IS NOT NULL THEN th.created_at ELSE s.expired_at END) as last_transaction_date
+      FROM stok s
+      LEFT JOIN transaction_history th ON (
+        th.user_id = s.user_id AND 
+        th.kategori = s.kategori AND
+        th.nomor = s.anggota
+      )
+      WHERE s.anggota IN (${searchNumbers.map(() => '?').join(',')})
+      AND s.status = 'freeze'
+    `;
+    
+    db.get(findLastTransactionQuery, searchNumbers, (err, lastTxRow) => {
+      if (err) return reject(err);
+      
+      if (!lastTxRow || !lastTxRow.last_transaction_date) {
+        // Tidak ada transaksi sama sekali
+        return resolve([]);
+      }
+      
+      const lastTransactionDate = new Date(lastTxRow.last_transaction_date);
+      const now = new Date();
+      const daysDiff = Math.floor((now - lastTransactionDate) / (1000 * 60 * 60 * 24));
+      
+      // Jika transaksi terakhir lebih dari daysPeriod hari, return kosong
+      if (daysDiff > daysPeriod) {
+        console.log(`⏰ Transaksi terakhir: ${daysDiff} hari yang lalu (melebihi batas ${daysPeriod} hari)`);
+        return resolve([]);
+      }
+      
+      // Step 2: Ambil data dari tanggal transaksi terakhir (bukan dari daysPeriod hari yang lalu)
+      // Hitung cutoff berdasarkan transaksi terakhir
+      const cutoffDate = new Date(lastTransactionDate.getTime() - (daysPeriod * 24 * 60 * 60 * 1000));
+      const cutoffDateStr = cutoffDate.toISOString();
+      
+      let query = `
+        SELECT 
+          s.pengelola,
+          s.kategori,
+          s.anggota as nomor_customer,
+          s.expired_at,
+          th.created_at as transaction_date,
+          th.username,
+          CASE WHEN th.created_at IS NOT NULL THEN th.created_at ELSE s.expired_at END as sort_date
+        FROM stok s
+        LEFT JOIN transaction_history th ON (
+          th.user_id = s.user_id AND 
+          th.kategori = s.kategori AND
+          th.nomor = s.anggota
+        )
+        WHERE s.anggota IN (${searchNumbers.map(() => '?').join(',')})
+        AND s.status = 'freeze'
+        AND (th.created_at IS NULL OR th.created_at >= ?)
+      `;
+      
+      let params = [...searchNumbers, cutoffDateStr];
+      
+      // Filter berdasarkan kategori jika diminta
+      if (kategori) {
+        query += ' AND s.kategori = ?';
+        params.push(kategori.toUpperCase());
+      }
+      
+      query += `
+        ORDER BY sort_date DESC
+        LIMIT 5
+      `;
+      
+      db.all(query, params, (err, rows) => {
+        if (err) return reject(err);
+        
+        // Tambahkan informasi umur transaksi
+        const enhancedRows = rows.map(row => ({
+          ...row,
+          days_ago: Math.floor((now - new Date(row.sort_date)) / (1000 * 60 * 60 * 24)),
+          is_recent: daysDiff <= daysPeriod
+        }));
+        
+        resolve(enhancedRows);
+      });
+    });
+  });
+};
+
+// === Function helper untuk generate format nomor pencarian ===
+const generateSearchNumbers = (inputNumber) => {
+  const { normalizePhoneNumber } = require('./utils/normalize');
+  
+  if (!inputNumber || typeof inputNumber !== 'string') return [inputNumber];
+  
+  const cleanNumber = inputNumber.replace(/\D/g, '');
+  const searchNumbers = [];
+  
+  // Tambahkan nomor asli
+  searchNumbers.push(inputNumber);
+  
+  // Format 1: 08xxxxxxxxx (normalized)
+  const normalized = normalizePhoneNumber(inputNumber);
+  if (normalized && !searchNumbers.includes(normalized)) {
+    searchNumbers.push(normalized);
+  }
+  
+  // Format 2: 62xxxxxxxxx (international)
+  if (cleanNumber.startsWith('08')) {
+    const international = '62' + cleanNumber.substring(1);
+    if (!searchNumbers.includes(international)) {
+      searchNumbers.push(international);
+    }
+  } else if (cleanNumber.startsWith('628')) {
+    const international = cleanNumber;
+    if (!searchNumbers.includes(international)) {
+      searchNumbers.push(international);
+    }
+  } else if (cleanNumber.startsWith('8') && cleanNumber.length >= 10) {
+    // Format 8xxxxxxxxx
+    const withZero = '0' + cleanNumber;
+    const international = '62' + cleanNumber;
+    if (!searchNumbers.includes(withZero)) {
+      searchNumbers.push(withZero);
+    }
+    if (!searchNumbers.includes(international)) {
+      searchNumbers.push(international);
+    }
+  }
+  
+  // Remove duplicates dan null values
+  return [...new Set(searchNumbers.filter(num => num))];
+};
+
+// === Function untuk mendapatkan riwayat transaksi nomor dalam periode tertentu ===
+const getNumberTransactionHistory = (nomorCustomer, daysPeriod = 30) => {
+  return new Promise((resolve, reject) => {
+    // Generate kedua format nomor (08 dan 62)
+    const searchNumbers = generateSearchNumbers(nomorCustomer);
+    
+    // Step 1: Cari transaksi terakhir dulu
+    let findLastTransactionQuery = `
+      SELECT 
+        MAX(th.created_at) as last_transaction_date
+      FROM transaction_history th
+      WHERE th.nomor IN (${searchNumbers.map(() => '?').join(',')})
+      AND th.status = 'completed'
+    `;
+    
+    db.get(findLastTransactionQuery, searchNumbers, (err, lastTxRow) => {
+      if (err) return reject(err);
+      
+      if (!lastTxRow || !lastTxRow.last_transaction_date) {
+        // Tidak ada transaksi sama sekali
+        return resolve([]);
+      }
+      
+      const lastTransactionDate = new Date(lastTxRow.last_transaction_date);
+      const now = new Date();
+      const daysDiff = Math.floor((now - lastTransactionDate) / (1000 * 60 * 60 * 24));
+      
+      // Jika transaksi terakhir lebih dari daysPeriod hari, return kosong
+      if (daysDiff > daysPeriod) {
+        console.log(`⏰ Transaksi terakhir: ${daysDiff} hari yang lalu (melebihi batas ${daysPeriod} hari)`);
+        return resolve([]);
+      }
+      
+      // Step 2: Ambil data dari rentang berdasarkan transaksi terakhir
+      const cutoffDate = new Date(lastTransactionDate.getTime() - (daysPeriod * 24 * 60 * 60 * 1000));
+      const cutoffDateStr = cutoffDate.toISOString();
+      
+      const query = `
+        SELECT 
+          th.id,
+          th.user_id,
+          th.username,
+          th.kategori,
+          th.nomor,
+          th.created_at,
+          th.expired_at,
+          th.status,
+          -- Coba ambil pengelola dari stok yang cocok
+          (
+            SELECT s.pengelola 
+            FROM stok s 
+            WHERE s.anggota = th.nomor 
+            AND s.kategori = th.kategori 
+            AND s.user_id = th.user_id
+            AND s.status = 'freeze'
+            LIMIT 1
+          ) as pengelola_terakhir
+        FROM transaction_history th
+        WHERE th.nomor IN (${searchNumbers.map(() => '?').join(',')})
+        AND th.created_at >= ?
+        AND th.status = 'completed'
+        ORDER BY th.created_at DESC
+      `;
+      
+      const params = [...searchNumbers, cutoffDateStr];
+      
+      db.all(query, params, (err, rows) => {
+        if (err) return reject(err);
+        
+        // Tambahkan informasi umur transaksi
+        const enhancedRows = rows.map(row => ({
+          ...row,
+          days_ago: Math.floor((now - new Date(row.created_at)) / (1000 * 60 * 60 * 24)),
+          is_recent: daysDiff <= daysPeriod
+        }));
+        
+        resolve(enhancedRows);
+      });
+    });
+  });
+};
+
+// === Function untuk mendapatkan pengelola yang paling sering digunakan untuk nomor tertentu ===
+const getMostUsedPengelolaForNumber = (nomorCustomer, daysPeriod = 30) => {
+  return new Promise((resolve, reject) => {
+    // Generate kedua format nomor (08 dan 62)
+    const searchNumbers = generateSearchNumbers(nomorCustomer);
+    
+    // Step 1: Cari transaksi terakhir dulu
+    let findLastTransactionQuery = `
+      SELECT 
+        MAX(CASE WHEN th.created_at IS NOT NULL THEN th.created_at ELSE s.expired_at END) as last_transaction_date
+      FROM stok s
+      LEFT JOIN transaction_history th ON (
+        th.user_id = s.user_id AND 
+        th.kategori = s.kategori AND
+        th.nomor = s.anggota
+      )
+      WHERE s.anggota IN (${searchNumbers.map(() => '?').join(',')})
+      AND s.status = 'freeze'
+    `;
+    
+    db.get(findLastTransactionQuery, searchNumbers, (err, lastTxRow) => {
+      if (err) return reject(err);
+      
+      if (!lastTxRow || !lastTxRow.last_transaction_date) {
+        // Tidak ada transaksi sama sekali
+        return resolve([]);
+      }
+      
+      const lastTransactionDate = new Date(lastTxRow.last_transaction_date);
+      const now = new Date();
+      const daysDiff = Math.floor((now - lastTransactionDate) / (1000 * 60 * 60 * 24));
+      
+      // Jika transaksi terakhir lebih dari daysPeriod hari, return kosong
+      if (daysDiff > daysPeriod) {
+        console.log(`⏰ Transaksi terakhir: ${daysDiff} hari yang lalu (melebihi batas ${daysPeriod} hari)`);
+        return resolve([]);
+      }
+      
+      // Step 2: Ambil data dari rentang berdasarkan transaksi terakhir
+      const cutoffDate = new Date(lastTransactionDate.getTime() - (daysPeriod * 24 * 60 * 60 * 1000));
+      const cutoffDateStr = cutoffDate.toISOString();
+      
+      const query = `
+        SELECT 
+          s.pengelola,
+          COUNT(*) as usage_count,
+          MAX(th.created_at) as last_used_date,
+          GROUP_CONCAT(DISTINCT s.kategori) as categories_used
+        FROM stok s
+        LEFT JOIN transaction_history th ON (
+          th.user_id = s.user_id AND 
+          th.kategori = s.kategori AND
+          th.nomor = s.anggota
+        )
+        WHERE s.anggota IN (${searchNumbers.map(() => '?').join(',')})
+        AND s.status = 'freeze'
+        AND (th.created_at IS NULL OR th.created_at >= ?)
+        GROUP BY s.pengelola
+        ORDER BY usage_count DESC, last_used_date DESC
+      `;
+      
+      const params = [...searchNumbers, cutoffDateStr];
+      
+      db.all(query, params, (err, rows) => {
+        if (err) return reject(err);
+        
+        // Tambahkan informasi umur transaksi
+        const enhancedRows = rows.map(row => ({
+          ...row,
+          days_ago: row.last_used_date ? Math.floor((now - new Date(row.last_used_date)) / (1000 * 60 * 60 * 24)) : null,
+          is_recent: daysDiff <= daysPeriod
+        }));
+        
+        resolve(enhancedRows);
+      });
+    });
+  });
+};
+
+// === Function untuk cek apakah nomor customer sedang aktif di pengelola tertentu ===
+const checkNumberActiveStatus = (nomorCustomer, pengelola = null) => {
+  return new Promise((resolve, reject) => {
+    const now = new Date().toISOString();
+    
+    // Generate kedua format nomor (08 dan 62)
+    const searchNumbers = generateSearchNumbers(nomorCustomer);
+    
+    let query = `
+      SELECT 
+        s.pengelola,
+        s.kategori,
+        s.anggota,
+        s.expired_at,
+        s.kuota,
+        s.slot_ke,
+        CASE 
+          WHEN s.expired_at IS NULL THEN 'permanent'
+          WHEN s.expired_at > ? THEN 'active'
+          ELSE 'expired'
+        END as status
+      FROM stok s
+      WHERE s.anggota IN (${searchNumbers.map(() => '?').join(',')})
+      AND s.status = 'freeze'
+    `;
+    
+    let params = [now, ...searchNumbers];
+    
+    if (pengelola) {
+      query += ' AND s.pengelola = ?';
+      params.push(pengelola);
+    }
+    
+    query += ' ORDER BY s.expired_at DESC';
+    
+    db.all(query, params, (err, rows) => {
+      if (err) return reject(err);
+      resolve(rows);
+    });
+  });
+};
+
 module.exports = {
   db,
   addStok,
@@ -1228,6 +1571,12 @@ module.exports = {
   getAllProdukDinamis,
   getProdukDinamis,
   updateHargaMarkup,
-  getHargaFinalProduk
+  getHargaFinalProduk,
   // REMOVED: semua fungsi auto-sync API - gunakan manual tools
+  
+  // === TRACKING FUNCTIONS ===
+  getLastPengelolaForNumber,
+  getNumberTransactionHistory,
+  getMostUsedPengelolaForNumber,
+  checkNumberActiveStatus
 };
