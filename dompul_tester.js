@@ -49,8 +49,6 @@ const checkDompulRaw = async (nomor_hp) => {
     });
 
     console.log('\n' + '='.repeat(80));
-    console.log('📱 DOMPUL CHECK RESULT');
-    console.log('='.repeat(80));
 
     // Extract dan tampilkan field "hasil" jika ada
     if (response.data && response.data.data && response.data.data.hasil) {
@@ -61,16 +59,50 @@ const checkDompulRaw = async (nomor_hp) => {
         .replace(/&nbsp;/g, ' ') // Replace HTML space
         .trim();
 
-      console.log('\n📋 DOMPUL INFORMATION:');
-      console.log('━'.repeat(60));
-      console.log(cleanedHasil);
-      console.log('━'.repeat(60));
+      // Filter out Volte status lines and format umur kartu
+      const filteredHasil = cleanedHasil
+        .split('\n')
+        .filter(line => {
+          const trimmedLine = line.trim();
+          return !trimmedLine.startsWith('Status Volte Device:') &&
+                 !trimmedLine.startsWith('Status Volte Area:') &&
+                 !trimmedLine.startsWith('Status Volte Simcard:');
+        })
+        .map(line => {
+          // Format umur kartu untuk menghilangkan "0 Tahun" dan tampilan yang lebih bersih
+          if (line.trim().startsWith('Umur Kartu:')) {
+            let umurText = line.replace('Umur Kartu:', '').trim();
+            
+            // Parse tahun dan bulan
+            const tahunMatch = umurText.match(/(\d+)\s*Tahun/);
+            const bulanMatch = umurText.match(/(\d+)\s*Bulan/);
+            
+            let tahun = tahunMatch ? parseInt(tahunMatch[1]) : 0;
+            let bulan = bulanMatch ? parseInt(bulanMatch[1]) : 0;
+            
+            // Format berdasarkan nilai
+            let formattedUmur = '';
+            if (tahun > 0 && bulan > 0) {
+              formattedUmur = `${tahun} Tahun ${bulan} Bulan`;
+            } else if (tahun > 0 && bulan === 0) {
+              formattedUmur = `${tahun} Tahun`;
+            } else if (tahun === 0 && bulan > 0) {
+              formattedUmur = `${bulan} Bulan`;
+            } else {
+              // Jika tidak ada match atau keduanya 0, gunakan original text
+              formattedUmur = umurText || '-';
+            }
+            
+            return `Umur Kartu: ${formattedUmur}`;
+          }
+          return line;
+        })
+        .join('\n');
+
+      console.log(filteredHasil);
 
     } else {
-      console.log('\n❌ DOMPUL INFORMATION:');
-      console.log('━'.repeat(30));
-      console.log('No hasil data available in response');
-      console.log('━'.repeat(30));
+      console.log('\n❌ No hasil data available in response');
     }
 
     console.log('\n' + '='.repeat(80));
@@ -192,9 +224,6 @@ const main = async () => {
       }
 
       // Setelah selesai, tampilkan prompt untuk input berikutnya
-      console.log('\n' + '='.repeat(80));
-      console.log('✨ Check completed! Try another number or type "exit" to quit');
-      console.log('='.repeat(80));
       askForNumber();
     });
   };
