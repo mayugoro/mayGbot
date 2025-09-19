@@ -168,31 +168,6 @@ const sortAkrabBenefits = (benefits) => {
   return [...sorted, ...others];
 };
 
-// Function untuk format benefits dengan alignment
-const formatBenefitsWithAlignment = (benefits) => {
-  if (benefits.length === 0) return [];
-  
-  // Find the longest benefit name
-  let maxLength = 0;
-  benefits.forEach(benefit => {
-    const benefitName = benefit.split(':')[0];
-    if (benefitName.length > maxLength) {
-      maxLength = benefitName.length;
-    }
-  });
-  
-  // Format each benefit with proper alignment
-  return benefits.map(benefit => {
-    const parts = benefit.split(':');
-    const benefitName = parts[0];
-    const sisaKuota = parts[1] ? parts[1].trim() : '';
-    
-    // Pad the benefit name to max length
-    const paddedName = benefitName.padEnd(maxLength);
-    return `${paddedName}: ${sisaKuota}`;
-  });
-};
-
 // Function untuk post-process akrab benefits setelah merge
 const postProcessAkrabBenefits = (resultText) => {
   const lines = resultText.split('\n');
@@ -204,27 +179,17 @@ const postProcessAkrabBenefits = (resultText) => {
   let currentBenefitName = '';
   let currentBenefitSisaKuota = '';
   let akrabBenefits = []; // Store akrab benefits for sorting
-  let nonAkrabBenefits = []; // Store non-akrab benefits for alignment
-  let currentPackageType = '';
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     
     // Detect akrab package
     if (line.includes('🎁 Quota:') && line.toLowerCase().includes('akrab')) {
-      // Process any pending non-akrab benefits
-      if (nonAkrabBenefits.length > 0) {
-        const formattedBenefits = formatBenefitsWithAlignment(nonAkrabBenefits);
-        processedLines.push(...formattedBenefits);
-        nonAkrabBenefits = [];
-      }
-      
       isInAkrabPackage = true;
       foundKuotaBersama = false;
       skipNextBenefitBlock = false;
       skipSmsVoiceBenefit = false;
       akrabBenefits = [];
-      currentPackageType = 'akrab';
       processedLines.push(line);
       continue;
     }
@@ -234,23 +199,14 @@ const postProcessAkrabBenefits = (resultText) => {
       // Sort and add akrab benefits if we were in akrab package
       if (isInAkrabPackage && akrabBenefits.length > 0) {
         const sortedBenefits = sortAkrabBenefits(akrabBenefits);
-        const formattedBenefits = formatBenefitsWithAlignment(sortedBenefits);
-        processedLines.push(...formattedBenefits);
+        processedLines.push(...sortedBenefits);
         akrabBenefits = [];
-      }
-      
-      // Process any pending non-akrab benefits
-      if (nonAkrabBenefits.length > 0) {
-        const formattedBenefits = formatBenefitsWithAlignment(nonAkrabBenefits);
-        processedLines.push(...formattedBenefits);
-        nonAkrabBenefits = [];
       }
       
       isInAkrabPackage = false;
       foundKuotaBersama = false;
       skipNextBenefitBlock = false;
       skipSmsVoiceBenefit = false;
-      currentPackageType = 'non-akrab';
       processedLines.push(line);
       continue;
     }
@@ -294,7 +250,7 @@ const postProcessAkrabBenefits = (resultText) => {
     } else if (!isInAkrabPackage && line.includes('🌲 Sisa Kuota:') && currentBenefitName) {
       // Combine benefit name with sisa kuota for non-akrab
       const sisaKuota = line.replace('🌲 Sisa Kuota:', '').trim();
-      nonAkrabBenefits.push(`${currentBenefitName}: ${sisaKuota}`);
+      processedLines.push(`${currentBenefitName}: ${sisaKuota}`);
       currentBenefitName = '';
     } else if (skipSmsVoiceBenefit) {
       // Skip lines that are part of SMS/Voice benefit blocks
@@ -349,14 +305,7 @@ const postProcessAkrabBenefits = (resultText) => {
   // Sort and add remaining akrab benefits at the end
   if (isInAkrabPackage && akrabBenefits.length > 0) {
     const sortedBenefits = sortAkrabBenefits(akrabBenefits);
-    const formattedBenefits = formatBenefitsWithAlignment(sortedBenefits);
-    processedLines.push(...formattedBenefits);
-  }
-  
-  // Process any remaining non-akrab benefits
-  if (nonAkrabBenefits.length > 0) {
-    const formattedBenefits = formatBenefitsWithAlignment(nonAkrabBenefits);
-    processedLines.push(...formattedBenefits);
+    processedLines.push(...sortedBenefits);
   }
   
   return processedLines.join('\n');
