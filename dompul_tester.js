@@ -29,6 +29,247 @@ const formatDateToReadable = (dateString) => {
   return dateString; // Return original if no match
 };
 
+// Function untuk menggabungkan package dengan nama yang mirip
+const mergePackagesByName = (resultText) => {
+  const lines = resultText.split('\n');
+  const mergedLines = [];
+  const packageGroups = new Map();
+  
+  let currentPackage = null;
+  let currentBenefits = [];
+  let isInPackageSection = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // Detect package start
+    if (line.includes('🎁 Quota:')) {
+      // Save previous package if exists
+      if (currentPackage) {
+        const key = getPackageKey(currentPackage.name);
+        if (!packageGroups.has(key)) {
+          packageGroups.set(key, {
+            names: [],
+            expiry: currentPackage.expiry,
+            benefits: [],
+            isAkrab: key === 'akrab'
+          });
+        }
+        packageGroups.get(key).names.push(currentPackage.name);
+        
+        // Process benefits untuk akrab package
+        packageGroups.get(key).benefits.push(...currentBenefits);
+      }
+      
+      // Start new package
+      const packageName = line.replace('🎁 Quota:', '').trim();
+      currentPackage = { name: packageName, expiry: null };
+      currentBenefits = [];
+      isInPackageSection = true;
+      continue;
+    }
+    
+    // Detect expiry date
+    if (line.includes('🍂 Aktif Hingga:') && currentPackage) {
+      currentPackage.expiry = line.replace('🍂 Aktif Hingga:', '').trim();
+      continue;
+    }
+    
+    // Detect separator (end of package)
+    if (line.includes('===========================') && isInPackageSection) {
+      isInPackageSection = false;
+      continue;
+    }
+    
+    // Collect benefits
+    if (isInPackageSection && (line.includes('🎁 Benefit:') || line.includes('🎁 Tipe Kuota:') || line.includes('🎁 Kuota:') || line.includes('🌲 Sisa Kuota:'))) {
+      currentBenefits.push(line);
+      continue;
+    }
+    
+    // Non-package lines
+    if (!isInPackageSection) {
+      mergedLines.push(line);
+    }
+  }
+  
+  // Handle last package
+  if (currentPackage) {
+    const key = getPackageKey(currentPackage.name);
+    if (!packageGroups.has(key)) {
+      packageGroups.set(key, {
+        names: [],
+        expiry: currentPackage.expiry,
+        benefits: [],
+        isAkrab: key === 'akrab'
+      });
+    }
+    packageGroups.get(key).names.push(currentPackage.name);
+    
+    // Process benefits untuk akrab package
+    packageGroups.get(key).benefits.push(...currentBenefits);
+  }
+  
+  // Reconstruct with merged packages
+  const separatorIndex = mergedLines.findIndex(line => line.includes('==========================='));
+  if (separatorIndex !== -1) {
+    const beforePackages = mergedLines.slice(0, separatorIndex + 1);
+    const afterPackages = mergedLines.slice(separatorIndex + 1);
+    
+    const reconstructed = [...beforePackages];
+    
+    // Add merged packages
+    packageGroups.forEach((group, key) => {
+      const mergedName = group.names.join(' & ');
+      reconstructed.push(`🎁 Quota: ${mergedName}`);
+      reconstructed.push(`🍂 Aktif Hingga: ${group.expiry}`);
+      reconstructed.push('===========================');
+      reconstructed.push(...group.benefits);
+      reconstructed.push('');
+    });
+    
+    reconstructed.push(...afterPackages);
+    return reconstructed.join('\n');
+  }
+  
+  return resultText;
+};
+
+// Function untuk post-process akrab benefits setelah merge
+const postProcessAkrabBenefits = (resultText) => {
+  const lines = resultText.split('\n');
+  const processedLines = [];
+  let isInAkrabPackage = false;
+  let foundKuotaBersama = false;
+  let skipNextBenefitBlock = false;
+  let skipSmsVoiceBenefit = false;
+  let currentBenefitName = '';
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // Detect akrab package
+    if (line.includes('🎁 Quota:') && line.toLowerCase().includes('akrab')) {
+      isInAkrabPackage = true;
+      foundKuotaBersama = false;
+      skipNextBenefitBlock = false;
+      skipSmsVoiceBenefit = false;
+      processedLines.push(line);
+      continue;
+    }
+    
+    // Reset when entering new package
+    if (line.includes('🎁 Quota:') && !line.toLowerCase().includes('akrab')) {
+      isInAkrabPackage = false;
+      foundKuotaBersama = false;
+      skipNextBenefitBlock = false;
+      skipSmsVoiceBenefit = false;
+      processedLines.push(line);
+      continue;
+    }
+    
+    // Process benefits in akrab package
+    if (isInAkrabPackage && line.includes('🎁 Benefit:')) {
+      // Skip SMS and Voice benefits
+      if (line.includes('SMS (ke XL)') || line.includes('Nelp (ke XL)')) {
+        skipSmsVoiceBenefit = true;
+        continue;
+      }
+      // Handle "24jam di semua jaringan" replacement and duplicate removal
+      else if (line.includes('24jam di semua jaringan')) {
+        if (!foundKuotaBersama) {
+          // Replace first occurrence with "Kuota Bersama"
+          processedLines.push(line.replace('24jam di semua jaringan', 'Kuota Bersama'));
+          currentBenefitName = 'Kuota Bersama';
+          foundKuotaBersama = true;
+          skipNextBenefitBlock = false;
+          skipSmsVoiceBenefit = false;
+        } else {
+          // Skip subsequent "24jam di semua jaringan" blocks
+          skipNextBenefitBlock = true;
+          skipSmsVoiceBenefit = false;
+          continue;
+        }
+      } else {
+        // Normal benefit
+        skipNextBenefitBlock = false;
+        skipSmsVoiceBenefit = false;
+        processedLines.push(line);
+        currentBenefitName = line.replace('🎁 Benefit:', '').trim();
+      }
+    } else if (skipSmsVoiceBenefit) {
+      // Skip lines that are part of SMS/Voice benefit blocks
+      if (line.includes('🌲 Sisa Kuota:')) {
+        continue;
+      } else if (line.trim() === '') {
+        // End of benefit block, stop skipping
+        skipSmsVoiceBenefit = false;
+        continue;
+      } else if (line.includes('🎁 Benefit:')) {
+        // New benefit started, stop skipping and process this line
+        skipSmsVoiceBenefit = false;
+        // Check again if this new benefit should be skipped
+        if (line.includes('SMS (ke XL)') || line.includes('Nelp (ke XL)')) {
+          skipSmsVoiceBenefit = true;
+          continue;
+        } else {
+          processedLines.push(line);
+          currentBenefitName = line.replace('🎁 Benefit:', '').trim();
+        }
+      } else {
+        continue;
+      }
+    } else if (skipNextBenefitBlock) {
+      // Skip lines that are part of the duplicate benefit block
+      if (line.includes('🌲 Sisa Kuota:')) {
+        continue;
+      } else if (line.trim() === '') {
+        // End of benefit block, stop skipping
+        skipNextBenefitBlock = false;
+        continue;
+      } else if (line.includes('🎁 Benefit:')) {
+        // New benefit started, stop skipping
+        skipNextBenefitBlock = false;
+        // Check if this new benefit should be skipped for SMS/Voice
+        if (line.includes('SMS (ke XL)') || line.includes('Nelp (ke XL)')) {
+          skipSmsVoiceBenefit = true;
+          continue;
+        } else {
+          processedLines.push(line);
+          currentBenefitName = line.replace('🎁 Benefit:', '').trim();
+        }
+      } else {
+        continue;
+      }
+    } else {
+      processedLines.push(line);
+    }
+  }
+  
+  return processedLines.join('\n');
+};
+
+// Function untuk mendapatkan key package berdasarkan kata kunci
+const getPackageKey = (packageName) => {
+  const name = packageName.toLowerCase();
+  
+  if (name.includes('akrab')) {
+    return 'akrab';
+  }
+  if (name.includes('bundling')) {
+    return 'bundling';
+  }
+  if (name.includes('pelanggan baru')) {
+    return 'pelanggan_baru';
+  }
+  if (name.includes('unlimited')) {
+    return 'unlimited';
+  }
+  
+  // Default: use first word as key
+  return packageName.split(' ')[0].toLowerCase();
+};
+
 // Function untuk cek dompul single nomor menggunakan KMSP Store API
 const checkDompulRaw = async (nomor_hp) => {
   try {
@@ -81,14 +322,16 @@ const checkDompulRaw = async (nomor_hp) => {
         .replace(/&nbsp;/g, ' ') // Replace HTML space
         .trim();
 
-      // Filter out Volte status lines and format umur kartu
+      // Filter out Volte status lines, Tipe Kuota, and Kuota lines, then format other fields
       const filteredHasil = cleanedHasil
         .split('\n')
         .filter(line => {
           const trimmedLine = line.trim();
           return !trimmedLine.startsWith('Status Volte Device:') &&
                  !trimmedLine.startsWith('Status Volte Area:') &&
-                 !trimmedLine.startsWith('Status Volte Simcard:');
+                 !trimmedLine.startsWith('Status Volte Simcard:') &&
+                 !line.includes('🎁 Tipe Kuota:') &&
+                 !line.includes('🎁 Kuota:');
         })
         .map(line => {
           // Format umur kartu untuk menghilangkan "0 Tahun" dan tampilan yang lebih bersih
@@ -149,7 +392,13 @@ const checkDompulRaw = async (nomor_hp) => {
         })
         .join('\n');
 
-      console.log(filteredHasil);
+      // Merge packages with similar names and process akrab benefits
+      let mergedResult = mergePackagesByName(filteredHasil);
+      
+      // Post-process to fix "24jam di semua jaringan" in akrab packages
+      mergedResult = postProcessAkrabBenefits(mergedResult);
+
+      console.log(mergedResult);
 
     } else {
       console.log('\n❌ No hasil data available in response');
@@ -286,4 +535,4 @@ if (require.main === module) {
   main().catch(console.error);
 }
 
-module.exports = { checkDompulRaw, normalizePhoneNumber, isXLAxisNumber, clearScreen, formatDateToReadable };
+module.exports = { checkDompulRaw, normalizePhoneNumber, isXLAxisNumber, clearScreen, formatDateToReadable, mergePackagesByName, postProcessAkrabBenefits };
