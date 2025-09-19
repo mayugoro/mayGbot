@@ -67,6 +67,7 @@ const processCekPulsaRequest = async (chatId, uniqueNumbers, bot) => {
     let totalSuccess = 0;
     let totalFailed = 0;
     let completedCount = 0;
+    let loadingDeleted = false; // Flag untuk memastikan loading message hanya dihapus sekali
     
     // Array untuk menyimpan nomor dengan pulsa bermasalah
     let problematicNumbers = [];
@@ -104,7 +105,15 @@ const processCekPulsaRequest = async (chatId, uniqueNumbers, bot) => {
     const processAndSendResult = async (result) => {
       completedCount++;
       
-      // Auto cleanup handled by sendMessageWithTracking
+      // Hapus loading message saat hasil pertama mulai muncul
+      if (!loadingDeleted && waitingMessage) {
+        try {
+          await autoDeleteMessage(bot, chatId, waitingMessage.message_id, 100);
+          loadingDeleted = true;
+        } catch (e) {
+          // Ignore error jika pesan sudah terhapus
+        }
+      }
       
       try {
         if (result.success && result.data) {
