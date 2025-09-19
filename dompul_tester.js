@@ -1,10 +1,22 @@
 const axios = require('axios');
 const readline = require('readline');
 
+// Function untuk clear screen cross-platform
+const clearScreen = () => {
+  // Clear screen untuk Windows dan Unix/Linux dengan delay
+  console.clear();
+};
+
 // Function untuk cek dompul single nomor menggunakan KMSP Store API
 const checkDompulRaw = async (nomor_hp) => {
   try {
+    // Clear screen sebelum mulai checking
+    clearScreen();
+    
+    console.log('🚀 DOMPUL KMSP RESPONSE TESTER');
+    console.log('='.repeat(50));
     console.log(`🔍 Checking dompul for: ${nomor_hp}`);
+    console.log('⏳ Please wait...\n');
 
     const params = {
       msisdn: nomor_hp,
@@ -54,107 +66,10 @@ const checkDompulRaw = async (nomor_hp) => {
       console.log(cleanedHasil);
       console.log('━'.repeat(60));
 
-      // Extract dan tampilkan field "packages" jika ada (structured data)
-      if (response.data && response.data.data && response.data.data_sp && response.data.data_sp.quotas && response.data.data_sp.quotas.value && response.data.data_sp.quotas.value.length > 0) {
-        console.log('\n📦 STRUCTURED PACKAGES DATA:');
-        console.log('━'.repeat(60));
-        
-        const quotaData = response.data.data_sp.quotas.value;
-        quotaData.forEach((quotaGroup, groupIndex) => {
-          if (quotaGroup && quotaGroup[0] && quotaGroup[0].packages) {
-            const pkg = quotaGroup[0].packages;
-            console.log(`\n✨ Package ${groupIndex + 1}: ${pkg.name}`);
-            console.log(`   📅 Expires: ${pkg.expDate}`);
-            
-            if (quotaGroup[0].benefits && quotaGroup[0].benefits.length > 0) {
-              console.log('   📊 Benefits:');
-              quotaGroup[0].benefits.forEach((benefit, benefitIndex) => {
-                console.log(`      ${benefitIndex + 1}. ${benefit.bname} (${benefit.type})`);
-                console.log(`         Quota: ${benefit.quota} | Remaining: ${benefit.remaining}`);
-              });
-            }
-          }
-        });
-        
-        console.log('━'.repeat(60));
-      } else {
-        console.log('\n📦 STRUCTURED PACKAGES DATA:');
-        console.log('━'.repeat(30));
-        console.log('❌ No structured package data available');
-        console.log('━'.repeat(30));
-      }
-
-      // Analisa error patterns untuk informasi tambahan
-      console.log('\n🔍 STATUS ANALYSIS:');
-      console.log('━'.repeat(40));
-
-      const equalsSeparatorIndex = cleanedHasil.indexOf('===========================');
-      if (equalsSeparatorIndex !== -1) {
-        const contentAfterSeparator = cleanedHasil.substring(equalsSeparatorIndex).trim();
-        
-        // Check error patterns
-        const errorPatterns = [
-          { pattern: /batas maksimal pengecekan.*?dalam.*?jam/i, name: '⚠️ Rate Limit Reached', status: 'warning' },
-          { pattern: /MSISDN.*?tidak memiliki paket/i, name: '📦 No Active Package', status: 'info' },
-          { pattern: /nomor.*?tidak.*?terdaftar/i, name: '❌ Invalid Number', status: 'error' },
-          { pattern: /layanan.*?tidak.*?tersedia/i, name: '🚫 Service Unavailable', status: 'error' },
-          { pattern: /sistem.*?sedang.*?maintenance/i, name: '🔧 System Maintenance', status: 'warning' },
-          { pattern: /gagal.*?memproses.*?permintaan/i, name: '❌ Processing Failed', status: 'error' }
-        ];
-
-        let statusFound = false;
-        for (const errorPattern of errorPatterns) {
-          if (errorPattern.pattern.test(contentAfterSeparator)) {
-            console.log(`   ${errorPattern.name}`);
-            statusFound = true;
-            break;
-          }
-        }
-        
-        if (!statusFound) {
-          console.log('   ✅ All systems normal');
-        }
-      } else {
-        console.log('   ✅ Data retrieved successfully');
-      }
-
     } else {
       console.log('\n❌ DOMPUL INFORMATION:');
       console.log('━'.repeat(30));
       console.log('No hasil data available in response');
-      console.log('━'.repeat(30));
-      
-      // Tetap cek structured data meskipun "hasil" tidak ada
-      if (response.data && response.data.data && response.data.data_sp && response.data.data_sp.quotas && response.data.data_sp.quotas.value && response.data.data_sp.quotas.value.length > 0) {
-        console.log('\n📦 STRUCTURED PACKAGES DATA:');
-        console.log('━'.repeat(60));
-        
-        const quotaData = response.data.data_sp.quotas.value;
-        quotaData.forEach((quotaGroup, groupIndex) => {
-          if (quotaGroup && quotaGroup[0] && quotaGroup[0].packages) {
-            const pkg = quotaGroup[0].packages;
-            console.log(`\n✨ Package ${groupIndex + 1}: ${pkg.name}`);
-            console.log(`   📅 Expires: ${pkg.expDate}`);
-            
-            if (quotaGroup[0].benefits && quotaGroup[0].benefits.length > 0) {
-              console.log('   📊 Benefits:');
-              quotaGroup[0].benefits.forEach((benefit, benefitIndex) => {
-                console.log(`      ${benefitIndex + 1}. ${benefit.bname} (${benefit.type})`);
-                console.log(`         Quota: ${benefit.quota} | Remaining: ${benefit.remaining}`);
-              });
-            }
-          }
-        });
-        
-        console.log('━'.repeat(60));
-      }
-    }
-
-    // Check field "message" untuk informasi tambahan
-    if (response.data && response.data.message) {
-      console.log('\n💬 API RESPONSE STATUS:');
-      console.log('━'.repeat(30));
-      console.log(`   ${response.data.message}`);
       console.log('━'.repeat(30));
     }
 
@@ -235,6 +150,9 @@ const main = async () => {
     output: process.stdout
   });
 
+  // Clear screen saat pertama kali start
+  clearScreen();
+
   console.log('🚀 DOMPUL KMSP RESPONSE TESTER');
   console.log('='.repeat(50));
   console.log('📱 Masukkan nomor HP untuk testing...');
@@ -245,7 +163,9 @@ const main = async () => {
   const askForNumber = () => {
     rl.question('🔢 Nomor HP: ', async (input) => {
       if (input.toLowerCase() === 'exit') {
-        console.log('\n👋 Terima kasih!');
+        clearScreen();
+        console.log('\n👋 Terima kasih telah menggunakan DOMPUL TESTER!');
+        console.log('🚀 Happy coding! 🚀\n');
         rl.close();
         return;
       }
@@ -253,7 +173,8 @@ const main = async () => {
       const normalizedNumber = normalizePhoneNumber(input);
       
       if (!normalizedNumber) {
-        console.log('❌ Format nomor tidak valid! Gunakan format 08xxxxxxxx atau 62xxxxxxxx');
+        console.log('\n❌ Format nomor tidak valid! Gunakan format 08xxxxxxxx atau 62xxxxxxxx');
+        console.log('⏳ Menunggu input yang benar...\n');
         askForNumber();
         return;
       }
@@ -262,7 +183,7 @@ const main = async () => {
         console.log('⚠️  Warning: Nomor bukan XL/Axis, tetapi tetap akan dicoba...');
       }
 
-      console.log(`✅ Normalized number: ${normalizedNumber}`);
+      console.log(`✅ Normalized number: ${normalizedNumber}\n`);
       
       try {
         await checkDompulRaw(normalizedNumber);
@@ -270,8 +191,10 @@ const main = async () => {
         console.error('💥 Unexpected error:', error.message);
       }
 
+      // Setelah selesai, tampilkan prompt untuk input berikutnya
       console.log('\n' + '='.repeat(80));
-      console.log('✨ Check completed! Try another number?\n');
+      console.log('✨ Check completed! Try another number or type "exit" to quit');
+      console.log('='.repeat(80));
       askForNumber();
     });
   };
@@ -284,4 +207,4 @@ if (require.main === module) {
   main().catch(console.error);
 }
 
-module.exports = { checkDompulRaw, normalizePhoneNumber, isXLAxisNumber };
+module.exports = { checkDompulRaw, normalizePhoneNumber, isXLAxisNumber, clearScreen };
