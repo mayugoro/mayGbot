@@ -27,6 +27,7 @@ const TAMBAH_STOK_BEKASAN_KEYBOARD = [
   [{ text: 'BEKASAN 8H', callback_data: 'add_stok_8h' }],
   [{ text: 'BEKASAN 9H', callback_data: 'add_stok_9h' }],
   [{ text: 'BEKASAN 10H', callback_data: 'add_stok_10h' }],
+  [{ text: '✨ SMART ADD STOK ✨', callback_data: 'smart_add_stok' }],
   [{ text: '🔙 KEMBALI', callback_data: 'tambah_stok' }]
 ];
 
@@ -52,6 +53,64 @@ const generateInputForm = (jenis, kategori) => {
   const jenisText = jenis === 'bekasan' ? 'BEKASAN' : 'BULANAN';
   const mainText = `📝 TAMBAH STOK ${jenisText} ${kategori}`;
   const subtitle = `Masukkan nomor-nomor untuk ${jenis === 'bekasan' ? 'kategori' : 'paket'} ${jenisText} ${kategori}:\n\nFormat: Satu nomor per baris\nContoh:\n087777111111\n087777222222\n087777333333`;
+  
+  return { mainText, subtitle };
+};
+
+// Function untuk smart parsing text input menjadi kategori bekasan + nomor
+const parseSmartAddInput = (inputText) => {
+  const lines = inputText.split(/\n|\r/).map(line => line.trim()).filter(line => line);
+  const result = {};
+  let currentCategory = null;
+  
+  // Pattern untuk mendeteksi kategori bekasan
+  const categoryPatterns = [
+    { pattern: /bekasan\s*3\s*hari/i, category: '3H' },
+    { pattern: /bekasan\s*4\s*hari/i, category: '4H' },
+    { pattern: /bekasan\s*5\s*hari/i, category: '5H' },
+    { pattern: /bekasan\s*6\s*hari/i, category: '6H' },
+    { pattern: /bekasan\s*7\s*hari/i, category: '7H' },
+    { pattern: /bekasan\s*8\s*hari/i, category: '8H' },
+    { pattern: /bekasan\s*9\s*hari/i, category: '9H' },
+    { pattern: /bekasan\s*10\s*hari/i, category: '10H' }
+  ];
+  
+  // Pattern untuk nomor HP Indonesia (08xxxxxxxx atau 62xxxxxxxx, 9-16 digit)
+  const phonePattern = /^(08|62)\d{7,14}$/;
+  
+  for (const line of lines) {
+    // Cek apakah line adalah kategori
+    let foundCategory = false;
+    for (const { pattern, category } of categoryPatterns) {
+      if (pattern.test(line)) {
+        currentCategory = category;
+        if (!result[currentCategory]) {
+          result[currentCategory] = [];
+        }
+        foundCategory = true;
+        break;
+      }
+    }
+    
+    // Jika bukan kategori dan ada kategori aktif, cek apakah nomor HP
+    if (!foundCategory && currentCategory && phonePattern.test(line)) {
+      // Normalisasi nomor ke format 08xxxxxxxx
+      let normalizedNumber = line;
+      if (line.startsWith('62')) {
+        normalizedNumber = '0' + line.substring(2);
+      }
+      
+      result[currentCategory].push(normalizedNumber);
+    }
+  }
+  
+  return result;
+};
+
+// Template untuk smart add input form
+const generateSmartAddInputForm = () => {
+  const mainText = '✨ SMART ADD STOK BEKASAN';
+  const subtitle = `Paste text dengan format kategori + nomor:\n\n<b>Contoh:</b>\n⚡️BEKASAN 3 HARI\n085924193416\n085924193401\n\n⚡️BEKASAN 7 HARI\n085926146058\n\n<i>• Akan otomatis mendeteksi kategori\n• Mendukung format: "BEKASAN X HARI"\n• Normalisasi nomor otomatis</i>`;
   
   return { mainText, subtitle };
 };
@@ -212,6 +271,27 @@ module.exports = (bot) => {
       return;
     }
 
+    // === SMART ADD STOK ===
+    if (data === 'smart_add_stok') {
+      if (from.id.toString() !== process.env.ADMIN_ID) {
+        return bot.answerCallbackQuery(id, { text: 'ente mau ngapain wak🗿', show_alert: true });
+      }
+      
+      adminState.set(chatId, { mode: 'smart_add_stok', menuMessageId: msgId });
+      
+      // JANGAN hapus menu, kirim input form di bawah menu dengan pattern exiter
+      const { mainText, subtitle } = generateSmartAddInputForm();
+      const inputMsg = await sendStyledInputMessage(bot, chatId, mainText, subtitle, 'membatalkan');
+      
+      // Simpan message ID untuk bisa diedit nanti
+      const currentState = adminState.get(chatId);
+      currentState.inputMessageId = inputMsg.message_id;
+      adminState.set(chatId, currentState);
+      
+      await bot.answerCallbackQuery(id);
+      return;
+    }
+
     // === PILIH KATEGORI STOK BEKASAN ===
     if (/^add_stok_\d+h$/i.test(data)) {
       if (from.id.toString() !== process.env.ADMIN_ID) {
@@ -263,7 +343,7 @@ module.exports = (bot) => {
     if (msg.from.id.toString() !== process.env.ADMIN_ID) return;
 
     const state = adminState.get(chatId);
-    if (!state || state.mode !== 'tambah_stok' || !state.kategori) return;
+    if (!state || (!state.mode || (state.mode !== 'tambah_stok' && state.mode !== 'smart_add_stok'))) return;
 
     // === CEK CANCEL/EXIT menggunakan EXIT_KEYWORDS dari exiter ===
     if (EXIT_KEYWORDS.COMBINED.includes(msg.text.trim())) {
@@ -279,99 +359,206 @@ module.exports = (bot) => {
       return;
     }
 
-    const kategori = state.kategori.toUpperCase();
-    const jenis = state.jenis;
-    
-    // Validasi kategori berdasarkan jenis
-    if (jenis === 'bekasan' && !['3H', '4H', '5H', '6H', '7H', '8H', '9H', '10H'].includes(kategori)) {
-      await bot.sendMessage(chatId, `❌ Kategori bekasan ${kategori} tidak valid.`);
-      adminState.delete(chatId);
-      return;
-    }
-    
-    if (jenis === 'bulanan' && !['SUPERMINI', 'SUPERBIG', 'MINI', 'BIG', 'LITE', 'JUMBO', 'MEGABIG', 'SUPERJUMBO'].includes(kategori)) {
-      await bot.sendMessage(chatId, `❌ Paket bulanan ${kategori} tidak valid.`);
-      adminState.delete(chatId);
-      return;
-    }
+    // === SMART ADD STOK HANDLER ===
+    if (state.mode === 'smart_add_stok') {
+      const parsedData = parseSmartAddInput(msg.text);
+      
+      if (Object.keys(parsedData).length === 0) {
+        await bot.sendMessage(chatId, '❌ <b>Tidak ditemukan kategori bekasan atau nomor yang valid</b>\n\n<i>Pastikan format sesuai contoh:\n⚡️BEKASAN 3 HARI\n085924193416\n085924193401</i>', { parse_mode: 'HTML' });
+        
+        // Hapus user message
+        try {
+          await bot.deleteMessage(chatId, msg.message_id);
+        } catch (e) {}
+        
+        return;
+      }
 
-    const list = msg.text.split(/\n|\r/).map(s => s.trim()).filter(s => s);
-    const hasil = [];
-    const gagal = [];
+      // Process setiap kategori yang ditemukan
+      const results = [];
+      let totalBerhasil = 0;
+      let totalGagal = 0;
 
-    for (const nomor of list) {
-      try {
-        const inserted = await addStok(kategori, nomor, nomor);
-        if (inserted) {
-          hasil.push(nomor);
-        } else {
-          gagal.push(nomor);
+      for (const [kategori, nomorList] of Object.entries(parsedData)) {
+        const hasil = [];
+        const gagal = [];
+
+        for (const nomor of nomorList) {
+          try {
+            const inserted = await addStok(kategori, nomor, nomor);
+            if (inserted) {
+              hasil.push(nomor);
+              totalBerhasil++;
+            } else {
+              gagal.push(nomor);
+              totalGagal++;
+            }
+          } catch (e) {
+            gagal.push(nomor);
+            totalGagal++;
+          }
         }
-      } catch (e) {
-        gagal.push(nomor);
-      }
-    }
 
-    const jenisText = jenis === 'bekasan' ? 'BEKASAN' : 'BULANAN';
-    
-    // Generate result message dengan logic yang lebih baik
-    let teksHasil = '';
-    
-    if (hasil.length > 0) {
-      teksHasil = `✅ <b>Stok ${jenisText} ${kategori}</b>\nBerhasil ditambah: <b>${hasil.length}</b> nomor`;
-    }
-    
-    if (gagal.length > 0) {
-      if (hasil.length > 0) {
-        teksHasil += `\n\n❌ Gagal menambahkan: <b>${gagal.length}</b> nomor`;
-      } else {
-        teksHasil = `❌ <b>Gagal menambahkan stok ${jenisText} ${kategori}</b>\nSemua <b>${gagal.length}</b> nomor gagal diproses`;
-      }
-    }
-    
-    // Jika tidak ada input yang valid
-    if (hasil.length === 0 && gagal.length === 0) {
-      teksHasil = `⚠️ <b>Tidak ada nomor yang valid untuk diproses</b>`;
-    }
-
-    // Store message ID untuk auto-delete
-    let resultMessageId = null;
-
-    // Edit input form menjadi notifikasi hasil
-    if (state.inputMessageId) {
-      try {
-        await bot.editMessageText(teksHasil, {
-          chat_id: chatId,
-          message_id: state.inputMessageId,
-          parse_mode: 'HTML'
+        results.push({
+          kategori,
+          berhasil: hasil.length,
+          gagal: gagal.length,
+          total: nomorList.length
         });
-        resultMessageId = state.inputMessageId;
-      } catch (e) {
-        console.log('Edit message error:', e.message);
+      }
+
+      // Generate hasil message
+      let teksHasil = '✨ <b>SMART ADD STOK COMPLETED</b>\n\n';
+      
+      for (const result of results) {
+        const statusIcon = result.gagal === 0 ? '✅' : result.berhasil > 0 ? '⚠️' : '❌';
+        teksHasil += `${statusIcon} <b>BEKASAN ${result.kategori}:</b> ${result.berhasil}/${result.total}\n`;
+      }
+      
+      teksHasil += `\n📊 <b>SUMMARY:</b>\n`;
+      teksHasil += `• Berhasil: <b>${totalBerhasil}</b> nomor\n`;
+      if (totalGagal > 0) {
+        teksHasil += `• Gagal: <b>${totalGagal}</b> nomor\n`;
+      }
+      teksHasil += `• Kategori: <b>${Object.keys(parsedData).length}</b> jenis bekasan`;
+
+      // Store message ID untuk auto-delete
+      let resultMessageId = null;
+
+      // Edit input form menjadi notifikasi hasil
+      if (state.inputMessageId) {
+        try {
+          await bot.editMessageText(teksHasil, {
+            chat_id: chatId,
+            message_id: state.inputMessageId,
+            parse_mode: 'HTML'
+          });
+          resultMessageId = state.inputMessageId;
+        } catch (e) {
+          console.log('Edit message error:', e.message);
+          const sentMsg = await bot.sendMessage(chatId, teksHasil, { parse_mode: 'HTML' });
+          resultMessageId = sentMsg.message_id;
+        }
+      } else {
         const sentMsg = await bot.sendMessage(chatId, teksHasil, { parse_mode: 'HTML' });
         resultMessageId = sentMsg.message_id;
       }
-    } else {
-      const sentMsg = await bot.sendMessage(chatId, teksHasil, { parse_mode: 'HTML' });
-      resultMessageId = sentMsg.message_id;
+      
+      // Hapus input user terlebih dahulu
+      try {
+        await bot.deleteMessage(chatId, msg.message_id);
+      } catch (e) {
+        console.log('Delete user message error:', e.message);
+      }
+      
+      // Clean up state
+      adminState.delete(chatId);
+      
+      // Auto delete notifikasi hasil menggunakan exiter function
+      if (resultMessageId) {
+        // Non-blocking auto-delete dengan exiter helper
+        exiterAutoDelete(bot, chatId, resultMessageId, 4000);
+      }
+      
+      return;
     }
-    
-    // Hapus input user terlebih dahulu
-    try {
-      await bot.deleteMessage(chatId, msg.message_id);
-    } catch (e) {
-      console.log('Delete user message error:', e.message);
+
+    // === REGULAR ADD STOK HANDLER ===
+    if (state.mode === 'tambah_stok' && state.kategori) {
+      const kategori = state.kategori.toUpperCase();
+      const jenis = state.jenis;
+      
+      // Validasi kategori berdasarkan jenis
+      if (jenis === 'bekasan' && !['3H', '4H', '5H', '6H', '7H', '8H', '9H', '10H'].includes(kategori)) {
+        await bot.sendMessage(chatId, `❌ Kategori bekasan ${kategori} tidak valid.`);
+        adminState.delete(chatId);
+        return;
+      }
+      
+      if (jenis === 'bulanan' && !['SUPERMINI', 'SUPERBIG', 'MINI', 'BIG', 'LITE', 'JUMBO', 'MEGABIG', 'SUPERJUMBO'].includes(kategori)) {
+        await bot.sendMessage(chatId, `❌ Paket bulanan ${kategori} tidak valid.`);
+        adminState.delete(chatId);
+        return;
+      }
+
+      const list = msg.text.split(/\n|\r/).map(s => s.trim()).filter(s => s);
+      const hasil = [];
+      const gagal = [];
+
+      for (const nomor of list) {
+        try {
+          const inserted = await addStok(kategori, nomor, nomor);
+          if (inserted) {
+            hasil.push(nomor);
+          } else {
+            gagal.push(nomor);
+          }
+        } catch (e) {
+          gagal.push(nomor);
+        }
+      }
+
+      const jenisText = jenis === 'bekasan' ? 'BEKASAN' : 'BULANAN';
+      
+      // Generate result message dengan logic yang lebih baik
+      let teksHasil = '';
+      
+      if (hasil.length > 0) {
+        teksHasil = `✅ <b>Stok ${jenisText} ${kategori}</b>\nBerhasil ditambah: <b>${hasil.length}</b> nomor`;
+      }
+      
+      if (gagal.length > 0) {
+        if (hasil.length > 0) {
+          teksHasil += `\n\n❌ Gagal menambahkan: <b>${gagal.length}</b> nomor`;
+        } else {
+          teksHasil = `❌ <b>Gagal menambahkan stok ${jenisText} ${kategori}</b>\nSemua <b>${gagal.length}</b> nomor gagal diproses`;
+        }
+      }
+      
+      // Jika tidak ada input yang valid
+      if (hasil.length === 0 && gagal.length === 0) {
+        teksHasil = `⚠️ <b>Tidak ada nomor yang valid untuk diproses</b>`;
+      }
+
+      // Store message ID untuk auto-delete
+      let resultMessageId = null;
+
+      // Edit input form menjadi notifikasi hasil
+      if (state.inputMessageId) {
+        try {
+          await bot.editMessageText(teksHasil, {
+            chat_id: chatId,
+            message_id: state.inputMessageId,
+            parse_mode: 'HTML'
+          });
+          resultMessageId = state.inputMessageId;
+        } catch (e) {
+          console.log('Edit message error:', e.message);
+          const sentMsg = await bot.sendMessage(chatId, teksHasil, { parse_mode: 'HTML' });
+          resultMessageId = sentMsg.message_id;
+        }
+      } else {
+        const sentMsg = await bot.sendMessage(chatId, teksHasil, { parse_mode: 'HTML' });
+        resultMessageId = sentMsg.message_id;
+      }
+      
+      // Hapus input user terlebih dahulu
+      try {
+        await bot.deleteMessage(chatId, msg.message_id);
+      } catch (e) {
+        console.log('Delete user message error:', e.message);
+      }
+      
+      // Clean up state
+      adminState.delete(chatId);
+      
+      // Auto delete notifikasi hasil menggunakan exiter function
+      if (resultMessageId) {
+        // Non-blocking auto-delete dengan exiter helper
+        exiterAutoDelete(bot, chatId, resultMessageId, 3000);
+      }
+      
+      return;
     }
-    
-    // Clean up state
-    adminState.delete(chatId);
-    
-    // Auto delete notifikasi hasil menggunakan exiter function
-    if (resultMessageId) {
-      // Non-blocking auto-delete dengan exiter helper
-      exiterAutoDelete(bot, chatId, resultMessageId, 3000);
-    }
-    
-    return;
   });
 };
