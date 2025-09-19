@@ -130,16 +130,16 @@ const processCekPulsaRequest = async (chatId, uniqueNumbers, bot) => {
                 amount: saldoAmount,
                 indicator: '❗❗'
               });
-            } else if (saldoAmount < 10000) {
-              saldoIndicator = ' ⚠️⚠️'; // Pulsa di bawah 10rb
+            } else if (saldoAmount < 160000) {
+              saldoIndicator = ' ⚠️⚠️'; // Pulsa di bawah 160rb
               // Tambahkan ke daftar nomor bermasalah
               problematicNumbers.push({
                 nomor: result.nomor,
                 amount: saldoAmount,
                 indicator: '⚠️⚠️'
               });
-            } else if (saldoAmount > 150000) {
-              saldoIndicator = ' ✅✅'; // Pulsa di atas 150rb
+            } else if (saldoAmount >= 160000) {
+              saldoIndicator = ' ✅✅'; // Pulsa 160rb ke atas
             }
             
             resultText += `💰 Pulsa: Rp ${saldoAmount.toLocaleString()}${saldoIndicator}\n`;
@@ -179,16 +179,16 @@ const processCekPulsaRequest = async (chatId, uniqueNumbers, bot) => {
                     amount: saldoAmount,
                     indicator: '❗❗'
                   });
-                } else if (saldoAmount < 10000) {
-                  saldoIndicator = ' ⚠️⚠️'; // Pulsa di bawah 10rb
+                } else if (saldoAmount < 160000) {
+                  saldoIndicator = ' ⚠️⚠️'; // Pulsa di bawah 160rb
                   // Tambahkan ke daftar nomor bermasalah
                   problematicNumbers.push({
                     nomor: result.nomor,
                     amount: saldoAmount,
                     indicator: '⚠️⚠️'
                   });
-                } else if (saldoAmount > 150000) {
-                  saldoIndicator = ' ✅✅'; // Pulsa di atas 150rb
+                } else if (saldoAmount >= 160000) {
+                  saldoIndicator = ' ✅✅'; // Pulsa 160rb ke atas
                 }
                 
                 resultText += `💰 Pulsa: Rp ${saldoAmount.toLocaleString()}${saldoIndicator}\n`;
@@ -260,7 +260,7 @@ const processCekPulsaRequest = async (chatId, uniqueNumbers, bot) => {
     // Kirim daftar nomor bermasalah jika ada (hanya untuk multiple numbers)
     if (problematicNumbers.length > 0 && uniqueNumbers.length > 1) {
       let problemText = '───────────────────\n';
-      problemText += '<b>📋 DAFTAR NOMOR BERMASALAH:</b>\n\n';
+      problemText += '<b>📋 NOMOR PULSA RENDAH:</b>\n\n';
       
       // Urutkan berdasarkan tingkat masalah (❗❗ dulu, lalu ⚠️⚠️)
       problematicNumbers.sort((a, b) => {
@@ -269,8 +269,25 @@ const processCekPulsaRequest = async (chatId, uniqueNumbers, bot) => {
         return 0;
       });
       
-      for (const item of problematicNumbers) {
-        problemText += `<code>${item.nomor}</code>${item.indicator} Rp.${item.amount.toLocaleString()}\n`;
+      // Pisahkan berdasarkan kategori untuk rekap yang lebih jelas
+      const dangerNumbers = problematicNumbers.filter(item => item.indicator === '❗❗');
+      const warnNumbers = problematicNumbers.filter(item => item.indicator === '⚠️⚠️');
+      
+      // Tampilkan nomor dengan pulsa habis (DANGER) dulu
+      if (dangerNumbers.length > 0) {
+        problemText += '<b>🚨 PULSA HABIS (URGENT):</b>\n';
+        for (const item of dangerNumbers) {
+          problemText += `<code>${item.nomor}</code>${item.indicator} Rp.${item.amount.toLocaleString()}\n`;
+        }
+        problemText += '\n';
+      }
+      
+      // Tampilkan nomor dengan pulsa rendah (WARNING)
+      if (warnNumbers.length > 0) {
+        problemText += '<b>⚠️ PULSA RENDAH (&lt;160rb):</b>\n';
+        for (const item of warnNumbers) {
+          problemText += `<code>${item.nomor}</code>${item.indicator} Rp.${item.amount.toLocaleString()}\n`;
+        }
       }
       
       await bot.sendMessage(chatId, problemText, { parse_mode: 'HTML' });
