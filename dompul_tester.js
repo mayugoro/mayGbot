@@ -7,6 +7,28 @@ const clearScreen = () => {
   console.clear();
 };
 
+// Function untuk format tanggal dari YYYY-MM-DD ke DD MonthName YYYY
+const formatDateToReadable = (dateString) => {
+  if (!dateString || dateString === '-') return dateString;
+  
+  const months = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+  ];
+  
+  // Parse tanggal format YYYY-MM-DD
+  const dateMatch = dateString.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (dateMatch) {
+    const year = dateMatch[1];
+    const month = parseInt(dateMatch[2]) - 1; // Month is 0-indexed
+    const day = parseInt(dateMatch[3]);
+    
+    return `${day.toString().padStart(2, '0')} ${months[month]} ${year}`;
+  }
+  
+  return dateString; // Return original if no match
+};
+
 // Function untuk cek dompul single nomor menggunakan KMSP Store API
 const checkDompulRaw = async (nomor_hp) => {
   try {
@@ -95,6 +117,34 @@ const checkDompulRaw = async (nomor_hp) => {
             
             return `Umur Kartu: ${formattedUmur}`;
           }
+          
+          // Format Status Dukcapil dengan simbol
+          if (line.trim().startsWith('Status Dukcapil:')) {
+            let dukcapilText = line.replace('Status Dukcapil:', '').trim();
+            
+            if (dukcapilText === 'Sudah') {
+              return `Status Dukcapil: ${dukcapilText} ✅`;
+            } else if (dukcapilText === 'Belum') {
+              return `Status Dukcapil: ${dukcapilText} ❌`;
+            } else {
+              return line; // Jika status lain, biarkan seperti semula
+            }
+          }
+          
+          // Format Masa Aktif dengan format tanggal yang readable
+          if (line.trim().startsWith('Masa Aktif:')) {
+            let masaAktifText = line.replace('Masa Aktif:', '').trim();
+            let formattedDate = formatDateToReadable(masaAktifText);
+            return `Masa Aktif: ${formattedDate}`;
+          }
+          
+          // Format Masa Berakhir Tenggang dengan format tanggal yang readable
+          if (line.trim().startsWith('Masa Berakhir Tenggang:')) {
+            let tengganganText = line.replace('Masa Berakhir Tenggang:', '').trim();
+            let formattedDate = formatDateToReadable(tengganganText);
+            return `Masa Berakhir Tenggang: ${formattedDate}`;
+          }
+          
           return line;
         })
         .join('\n');
@@ -236,4 +286,4 @@ if (require.main === module) {
   main().catch(console.error);
 }
 
-module.exports = { checkDompulRaw, normalizePhoneNumber, isXLAxisNumber, clearScreen };
+module.exports = { checkDompulRaw, normalizePhoneNumber, isXLAxisNumber, clearScreen, formatDateToReadable };
