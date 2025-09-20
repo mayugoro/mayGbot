@@ -771,9 +771,16 @@ module.exports = (bot) => {
                        !trimmedLine.startsWith('Status Volte Area:') &&
                        !trimmedLine.startsWith('Status Volte Simcard:') &&
                        !line.includes('🎁 Tipe Kuota:') &&
-                       !line.includes('🎁 Kuota:');
+                       !line.includes('🎁 Kuota:') &&
+                       !line.includes('📃 RESULT:');
               })
               .map(line => {
+                // Format MSISDN menjadi Nomor
+                if (line.trim().startsWith('MSISDN:')) {
+                  let nomorText = line.replace('MSISDN:', '').trim();
+                  return `Nomor: ${nomorText}`;
+                }
+                
                 // Format umur kartu untuk menghilangkan "0 Tahun" dan tampilan yang lebih bersih
                 if (line.trim().startsWith('Umur Kartu:')) {
                   let umurText = line.replace('Umur Kartu:', '').trim();
@@ -836,28 +843,15 @@ module.exports = (bot) => {
             let mergedResult = mergePackagesByName(filteredHasil);
             
             // Final formatting untuk Telegram dengan header SUKSES
-            formattedResult = `├──────────SUKSES──────────┤\n\n${mergedResult}\n\n`;
+            formattedResult = `├──────────SUKSES──────────┤\n${mergedResult}\n├─────────────────────────┤`;
             
-            // Add footer dengan error message jika ada
-            formattedResult += `├──────────────────────────┤\n`;
-            
-            // Tambahkan informasi dari field "message" jika ada
-            if (result.messageInfo) {
-              formattedResult += `📋 <b>Message Info:</b> ${result.messageInfo}\n`;
-              formattedResult += `├──────────────────────────┤\n`;
-            }
-            
-            // Jika ada error setelah separator, tambahkan di tengah sebelum footer timestamp
+            // Jika ada error setelah separator, tambahkan di tengah
             if (hasErrorAfterSeparator) {
-              formattedResult += `${errorMessage}\n`;
-              formattedResult += `├──────────────────────────┤\n\n`;
-              formattedResult += `⌚️ <b>Last Update:</b> ${getDompulTimestamp()}\n`;
+              formattedResult += `\n${errorMessage}\n├─────────────────────────┤`;
               
               await bot.sendMessage(chatId, formattedResult, { parse_mode: 'HTML' });
               totalFailed++; // Count as failed karena ada error message
             } else {
-              formattedResult += `\n⌚️ <b>Last Update:</b> ${getDompulTimestamp()}\n`;
-              
               await bot.sendMessage(chatId, formattedResult, { parse_mode: 'HTML' });
               totalSuccess++; // Count as success karena tidak ada error
             }

@@ -374,9 +374,16 @@ const checkDompulRaw = async (nomor_hp) => {
                  !trimmedLine.startsWith('Status Volte Area:') &&
                  !trimmedLine.startsWith('Status Volte Simcard:') &&
                  !line.includes('🎁 Tipe Kuota:') &&
-                 !line.includes('🎁 Kuota:');
+                 !line.includes('🎁 Kuota:') &&
+                 !line.includes('📃 RESULT:');
         })
         .map(line => {
+          // Format MSISDN menjadi Nomor
+          if (line.trim().startsWith('MSISDN:')) {
+            let nomorText = line.replace('MSISDN:', '').trim();
+            return `Nomor: ${nomorText}`;
+          }
+          
           // Format umur kartu untuk menghilangkan "0 Tahun" dan tampilan yang lebih bersih
           if (line.trim().startsWith('Umur Kartu:')) {
             let umurText = line.replace('Umur Kartu:', '').trim();
