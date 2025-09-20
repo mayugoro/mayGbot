@@ -7,23 +7,32 @@ const clearScreen = () => {
   console.clear();
 };
 
-// Function untuk format tanggal dari YYYY-MM-DD ke DD MonthName YYYY
+// Function untuk format tanggal dari YYYY-MM-DD ke DD/MM/YYYY dengan hari tersisa
 const formatDateToReadable = (dateString) => {
   if (!dateString || dateString === '-') return dateString;
-  
-  const months = [
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-  ];
   
   // Parse tanggal format YYYY-MM-DD
   const dateMatch = dateString.match(/(\d{4})-(\d{2})-(\d{2})/);
   if (dateMatch) {
     const year = dateMatch[1];
-    const month = parseInt(dateMatch[2]) - 1; // Month is 0-indexed
-    const day = parseInt(dateMatch[3]);
+    const month = dateMatch[2];
+    const day = dateMatch[3];
     
-    return `${day.toString().padStart(2, '0')} ${months[month]} ${year}`;
+    // Calculate days remaining
+    const expiryDate = new Date(year, month - 1, day);
+    const currentDate = new Date();
+    const timeDiff = expiryDate.getTime() - currentDate.getTime();
+    const daysRemaining = Math.ceil(timeDiff / (1000 * 3600 * 24));
+    
+    const formattedDate = `${day}/${month}/${year}`;
+    
+    if (daysRemaining > 0) {
+      return `${formattedDate} (⚡️${daysRemaining} HARI)`;
+    } else if (daysRemaining === 0) {
+      return `${formattedDate} (⚡️HARI INI)`;
+    } else {
+      return `${formattedDate} (❌EXPIRED)`;
+    }
   }
   
   return dateString; // Return original if no match
@@ -120,10 +129,10 @@ const mergePackagesByName = (resultText) => {
     
     // Add merged packages
     packageGroups.forEach((group, key) => {
-      const mergedName = group.names.join(' & ');
-      reconstructed.push(`🎁 Quota: ${mergedName}`);
-      reconstructed.push(`🍂 Aktif Hingga: ${group.expiry}`);
-      reconstructed.push('===========================');
+      const mergedName = group.names.join(' + ');
+      reconstructed.push(`✨ ${mergedName} :`);
+      reconstructed.push(`� Aktif Hingga : ${group.expiry}`);
+      reconstructed.push('');
       reconstructed.push(...group.benefits);
       reconstructed.push('');
     });
@@ -143,7 +152,7 @@ const sortAkrabBenefits = (benefits) => {
     'Kuota Lokal 2',
     'Kuota Lokal 3',
     'Kuota Lokal 4',
-    'Bonus myRewards'
+    'My Reward'
   ];
   
   const sorted = [];
@@ -242,7 +251,7 @@ const postProcessAkrabBenefits = (resultText) => {
     } else if (isInAkrabPackage && line.includes('🌲 Sisa Kuota:') && currentBenefitName && !skipSmsVoiceBenefit && !skipNextBenefitBlock) {
       // Combine benefit name with sisa kuota for akrab
       const sisaKuota = line.replace('🌲 Sisa Kuota:', '').trim();
-      akrabBenefits.push(`${currentBenefitName}: ${sisaKuota}`);
+      akrabBenefits.push(`🔖 ${currentBenefitName.padEnd(12)} : ${sisaKuota}`);
       currentBenefitName = '';
     } else if (!isInAkrabPackage && line.includes('🎁 Benefit:')) {
       // Non-akrab package benefit
@@ -250,7 +259,7 @@ const postProcessAkrabBenefits = (resultText) => {
     } else if (!isInAkrabPackage && line.includes('🌲 Sisa Kuota:') && currentBenefitName) {
       // Combine benefit name with sisa kuota for non-akrab
       const sisaKuota = line.replace('🌲 Sisa Kuota:', '').trim();
-      processedLines.push(`${currentBenefitName}: ${sisaKuota}`);
+      processedLines.push(`🔖 ${currentBenefitName.padEnd(12)} : ${sisaKuota}`);
       currentBenefitName = '';
     } else if (skipSmsVoiceBenefit) {
       // Skip lines that are part of SMS/Voice benefit blocks
