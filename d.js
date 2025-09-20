@@ -204,8 +204,12 @@ const processBenefitsForPackage = (benefitLines, isAkrab) => {
         if (benefitName.includes('Nasional')) benefitName = 'Kuota Nasional';
         if (benefitName.includes('myRewards')) benefitName = 'My Reward';
       } else {
-        // Non-Akrab naming
-        if (benefitName.includes('24 Jam Semua Jaringan')) {
+        // Non-Akrab naming - Remove "24Jam" text from all benefits
+        // Remove "24Jam" or "24 Jam" (case insensitive) but keep other "jam" words
+        benefitName = benefitName.replace(/24\s*[Jj]am(?=\s|$)/g, '').trim();
+        
+        // Then apply specific mappings
+        if (benefitName.includes('Semua Jaringan')) {
           // Check for app-specific first
           if (benefitName.match(/YouTube|Instagram|Facebook|Netflix|Iflix|VIU|Joox/i)) {
             const appMatch = benefitName.match(/(YouTube|Instagram|Facebook|Netflix|Iflix|VIU|Joox)/i);
@@ -213,11 +217,14 @@ const processBenefitsForPackage = (benefitLines, isAkrab) => {
               benefitName = appMatch[1];
             }
           } else {
-            benefitName = benefitName.replace('24 Jam Semua Jaringan', 'Kuota reguler').replace(/\s+/g, ' ').trim();
+            benefitName = benefitName.replace('Semua Jaringan', 'Kuota reguler').replace(/\s+/g, ' ').trim();
           }
-        } else if (benefitName.includes('24jam di semua jaringan')) {
-          benefitName = 'Kuota Utama';
+        } else if (benefitName.includes('di semua jaringan')) {
+          benefitName = benefitName.replace('di semua jaringan', 'Kuota Utama').replace(/\s+/g, ' ').trim();
         }
+        
+        // Clean up extra spaces
+        benefitName = benefitName.replace(/\s+/g, ' ').trim();
       }
       
       currentBenefit = benefitName;
