@@ -1,5 +1,6 @@
 const axios = require('axios');
 const readline = require('readline');
+const { calculateDaysDiff, formatToDDMMYYYY, formatPackageExpiry, parseToJakartaDate } = require('./utils/date');
 
 // Function untuk clear screen cross-platform
 const clearScreen = () => {
@@ -11,31 +12,26 @@ const clearScreen = () => {
 const formatDateToReadable = (dateString) => {
   if (!dateString || dateString === '-') return dateString;
   
-  // Parse tanggal format YYYY-MM-DD
-  const dateMatch = dateString.match(/(\d{4})-(\d{2})-(\d{2})/);
-  if (dateMatch) {
-    const year = dateMatch[1];
-    const month = dateMatch[2];
-    const day = dateMatch[3];
-    
-    // Calculate days remaining
-    const expiryDate = new Date(year, month - 1, day);
-    const currentDate = new Date();
-    const timeDiff = expiryDate.getTime() - currentDate.getTime();
-    const daysRemaining = Math.ceil(timeDiff / (1000 * 3600 * 24));
-    
-    const formattedDate = `${day}/${month}/${year}`;
-    
-    if (daysRemaining > 0) {
-      return `${formattedDate} (⚡️${daysRemaining} HARI)`;
-    } else if (daysRemaining === 0) {
-      return `${formattedDate} (⚡️HARI INI)`;
-    } else {
-      return `${formattedDate} (❌EXPIRED)`;
-    }
+  // Parse tanggal menggunakan utility function
+  const parsedDate = parseToJakartaDate(dateString);
+  if (!parsedDate) {
+    return dateString; // Return original if parsing failed
   }
   
-  return dateString; // Return original if no match
+  // Format tanggal ke DD/MM/YYYY
+  const formattedDate = formatToDDMMYYYY(parsedDate);
+  
+  // Hitung selisih hari menggunakan utility function
+  const daysRemaining = calculateDaysDiff(dateString);
+  
+  if (isNaN(daysRemaining)) {
+    return formattedDate; // Return tanpa info hari jika gagal hitung
+  }
+  
+  // Format dengan emoji menggunakan utility function
+  const daysInfo = formatPackageExpiry(daysRemaining);
+  
+  return `${formattedDate} ${daysInfo}`;
 };
 
 // Function untuk menggabungkan package dengan nama yang mirip
@@ -606,4 +602,12 @@ if (require.main === module) {
   main().catch(console.error);
 }
 
-module.exports = { checkDompulRaw, normalizePhoneNumber, isXLAxisNumber, clearScreen, formatDateToReadable, mergePackagesByName, postProcessAkrabBenefits };
+module.exports = { 
+  checkDompulRaw, 
+  normalizePhoneNumber, 
+  isXLAxisNumber, 
+  clearScreen, 
+  formatDateToReadable, 
+  mergePackagesByName, 
+  postProcessAkrabBenefits 
+};
