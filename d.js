@@ -33,6 +33,27 @@ const formatDateToReadable = (dateString) => {
   return `${formattedDate} ${daysInfo}`;
 };
 
+// Function khusus untuk format "Aktif Hingga" - hanya tampilkan info hari
+const formatExpiryDaysOnly = (dateString) => {
+  if (!dateString || dateString === '-') return dateString;
+  
+  // Hitung selisih hari menggunakan utility function
+  const daysRemaining = calculateDaysDiff(dateString);
+  
+  if (isNaN(daysRemaining)) {
+    return dateString; // Return original if parsing failed
+  }
+  
+  // Format khusus tanpa kurung untuk Aktif Hingga
+  if (daysRemaining > 0) {
+    return `⚡${daysRemaining} HARI`;
+  } else if (daysRemaining === 0) {
+    return '⚡HARI INI';
+  } else {
+    return '⚡EXPIRED';
+  }
+};
+
 // Function untuk menggabungkan package dengan nama yang mirip (hanya untuk Akrab) - FIXED
 const mergePackagesByName = (resultText) => {
   const lines = resultText.split('\n');
@@ -121,7 +142,7 @@ const mergePackagesByName = (resultText) => {
     const mergedBenefits = akrabPackages.flatMap(pkg => pkg.benefits);
     
     result.push(`✨ ${mergedNames.join(' + ')} :`);
-    result.push(`🌙 Aktif Hingga : ${akrabPackages[0].expiry}`);
+    result.push(`🌙 Aktif Hingga : ${formatExpiryDaysOnly(akrabPackages[0].expiry)}`);
     
     // Process Akrab benefits
     const processedBenefits = processBenefitsForPackage(mergedBenefits, true);
@@ -132,7 +153,7 @@ const mergePackagesByName = (resultText) => {
   // Add other packages separately
   for (const pkg of otherPackages) {
     result.push(`✨ ${pkg.name} :`);
-    result.push(`🌙 Aktif Hingga : ${pkg.expiry}`);
+    result.push(`🌙 Aktif Hingga : ${formatExpiryDaysOnly(pkg.expiry)}`);
     
     // Process other package benefits
     const processedBenefits = processBenefitsForPackage(pkg.benefits, false);
@@ -556,6 +577,7 @@ module.exports = {
   isXLAxisNumber, 
   clearScreen, 
   formatDateToReadable, 
+  formatExpiryDaysOnly,
   mergePackagesByName, 
   postProcessAkrabBenefits 
 };
