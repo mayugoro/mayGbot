@@ -5,6 +5,289 @@ const { normalizePhoneNumber, isValidIndonesianPhone, extractPhonesFromMultiline
 const { getJakartaTime, createJakartaDate, calculateDaysDiff, formatDaysDiff, formatPackageExpiry, parseToJakartaDate, formatToDDMMYYYY, getDompulTimestamp } = require('./utils/date');
 const { sendStyledInputMessage, autoDeleteMessage, EXIT_KEYWORDS } = require('./utils/exiter');
 
+// ===== FORMATTING FUNCTIONS FROM d.js =====
+
+// Function untuk format tanggal dari YYYY-MM-DD ke DD/MM/YYYY dengan hari tersisa
+const formatDateToReadable = (dateString) => {
+  if (!dateString || dateString === '-') return dateString;
+  
+  // Parse tanggal menggunakan utility function
+  const parsedDate = parseToJakartaDate(dateString);
+  if (!parsedDate) {
+    return dateString; // Return original if parsing failed
+  }
+  
+  // Format tanggal ke DD/MM/YYYY
+  const formattedDate = formatToDDMMYYYY(parsedDate);
+  
+  // Hitung selisih hari menggunakan utility function
+  const daysRemaining = calculateDaysDiff(dateString);
+  
+  if (isNaN(daysRemaining)) {
+    return formattedDate; // Return tanpa info hari jika gagal hitung
+  }
+  
+  // Format dengan emoji menggunakan utility function
+  const daysInfo = formatPackageExpiry(daysRemaining);
+  
+  return `${formattedDate} ${daysInfo}`;
+};
+
+// Function khusus untuk format "Aktif Hingga" - hanya tampilkan info hari
+const formatExpiryDaysOnly = (dateString) => {
+  if (!dateString || dateString === '-') return dateString;
+  
+  // Hitung selisih hari menggunakan utility function
+  const daysRemaining = calculateDaysDiff(dateString);
+  
+  if (isNaN(daysRemaining)) {
+    return dateString; // Return original if parsing failed
+  }
+  
+  // Format khusus tanpa kurung untuk Aktif Hingga
+  if (daysRemaining > 0) {
+    return `⚡${daysRemaining} HARI`;
+  } else if (daysRemaining === 0) {
+    return '⚡HARI INI';
+  } else {
+    return '⚡EXPIRED';
+  }
+};
+
+// Function untuk menggabungkan package dengan nama yang mirip (hanya untuk Akrab) - FIXED
+const mergePackagesByName = (resultText) => {
+  const lines = resultText.split('\n');
+  const packages = [];
+  let currentPackage = null;
+  let currentBenefits = [];
+  let headerLines = [];
+  let isInPackageSection = false;
+  let isCollectingBenefits = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // Collect header lines before packages
+    if (!line.includes('🎁 Quota:') && !isInPackageSection) {
+      headerLines.push(line);
+      continue;
+    }
+    
+    // Detect package start
+    if (line.includes('🎁 Quota:')) {
+      // Save previous package
+      if (currentPackage) {
+        packages.push({
+          name: currentPackage.name,
+          expiry: currentPackage.expiry,
+          benefits: [...currentBenefits],
+          isAkrab: currentPackage.name.toLowerCase().includes('akrab')
+        });
+      }
+      
+      // Start new package
+      const packageName = line.replace('🎁 Quota:', '').trim();
+      currentPackage = { name: packageName, expiry: null };
+      currentBenefits = [];
+      isInPackageSection = true;
+      isCollectingBenefits = false;
+      continue;
+    }
+    
+    // Detect expiry
+    if (line.includes('🍂 Aktif Hingga:') && currentPackage) {
+      currentPackage.expiry = line.replace('🍂 Aktif Hingga:', '').trim();
+      continue;
+    }
+    
+    // Detect separator (start collecting benefits)
+    if (line.includes('===========================') && isInPackageSection) {
+      isCollectingBenefits = true;
+      continue;
+    }
+    
+    // Collect benefits for current package
+    if (isCollectingBenefits && (line.includes('🎁 Benefit:') || line.includes('🌲 Sisa Kuota:'))) {
+      currentBenefits.push(line);
+    }
+    
+    // Detect next package or end
+    if (line.includes('🎁 Quota:') || i === lines.length - 1) {
+      isCollectingBenefits = false;
+    }
+  }
+  
+  // Save last package
+  if (currentPackage) {
+    packages.push({
+      name: currentPackage.name,
+      expiry: currentPackage.expiry,
+      benefits: [...currentBenefits],
+      isAkrab: currentPackage.name.toLowerCase().includes('akrab')
+    });
+  }
+  
+  // Reconstruct output
+  const result = [];
+  
+  // Add header
+  result.push(...headerLines);
+  
+  // Merge Akrab packages
+  const akrabPackages = packages.filter(pkg => pkg.isAkrab);
+  const otherPackages = packages.filter(pkg => !pkg.isAkrab);
+  
+  if (akrabPackages.length > 0) {
+    const mergedNames = akrabPackages.map(pkg => pkg.name);
+    const mergedBenefits = akrabPackages.flatMap(pkg => pkg.benefits);
+    
+    result.push(`✨ ${mergedNames.join(' + ')} :`);
+    result.push(`🌙 Aktif Hingga : ${formatExpiryDaysOnly(akrabPackages[0].expiry)}`);
+    
+    // Process Akrab benefits
+    const processedBenefits = processBenefitsForPackage(mergedBenefits, true);
+    result.push(...processedBenefits);
+    result.push('');
+  }
+  
+  // Add other packages separately
+  for (const pkg of otherPackages) {
+    result.push(`✨ ${pkg.name} :`);
+    result.push(`🌙 Aktif Hingga : ${formatExpiryDaysOnly(pkg.expiry)}`);
+    
+    // Process other package benefits
+    const processedBenefits = processBenefitsForPackage(pkg.benefits, false);
+    result.push(...processedBenefits);
+    result.push('');
+  }
+  
+  // Remove last empty line
+  if (result[result.length - 1] === '') {
+    result.pop();
+  }
+  
+  return result.join('\n');
+};
+
+// Function untuk process benefits per package - NEW
+const processBenefitsForPackage = (benefitLines, isAkrab) => {
+  const benefits = [];
+  let currentBenefit = '';
+  let foundKuotaBersama = false;
+  let skipNext = false;
+  
+  for (let i = 0; i < benefitLines.length; i++) {
+    const line = benefitLines[i];
+    
+    if (line.includes('🎁 Benefit:')) {
+      let benefitName = line.replace('🎁 Benefit:', '').trim();
+      
+      if (isAkrab) {
+        // Skip SMS and Voice
+        if (benefitName.includes('SMS (ke XL)') || benefitName.includes('Nelp (ke XL)')) {
+          skipNext = true;
+          continue;
+        }
+        
+        // Handle Kuota Bersama
+        if (benefitName.includes('24jam di semua jaringan')) {
+          if (!foundKuotaBersama) {
+            foundKuotaBersama = true;
+            skipNext = true;
+            continue;
+          } else {
+            benefitName = 'Kuota Bersama';
+          }
+        }
+        
+        // Map other names
+        if (benefitName.includes('Nasional')) benefitName = 'Kuota Nasional';
+        if (benefitName.includes('myRewards')) benefitName = 'My Reward';
+      } else {
+        // Non-Akrab naming - Remove "24Jam" text from all benefits
+        // Remove "24Jam" or "24 Jam" (case insensitive) but keep other "jam" words
+        benefitName = benefitName.replace(/24\s*[Jj]am(?=\s|$)/g, '').trim();
+        
+        // Then apply specific mappings
+        if (benefitName.includes('Semua Jaringan')) {
+          // Check for app-specific first
+          if (benefitName.match(/YouTube|Instagram|Facebook|Netflix|Iflix|VIU|Joox/i)) {
+            const appMatch = benefitName.match(/(YouTube|Instagram|Facebook|Netflix|Iflix|VIU|Joox)/i);
+            if (appMatch) {
+              benefitName = appMatch[1];
+            }
+          } else {
+            benefitName = benefitName.replace('Semua Jaringan', 'Kuota reguler').replace(/\s+/g, ' ').trim();
+          }
+        } else if (benefitName.includes('di semua jaringan')) {
+          benefitName = benefitName.replace('di semua jaringan', 'Kuota Utama').replace(/\s+/g, ' ').trim();
+        }
+        
+        // Clean up extra spaces
+        benefitName = benefitName.replace(/\s+/g, ' ').trim();
+      }
+      
+      currentBenefit = benefitName;
+      skipNext = false;
+    } else if (line.includes('🌲 Sisa Kuota:') && currentBenefit && !skipNext) {
+      const sisaKuota = line.replace('🌲 Sisa Kuota:', '').trim();
+      benefits.push({ name: currentBenefit, sisa: sisaKuota });
+      currentBenefit = '';
+    } else if (skipNext && line.includes('🌲 Sisa Kuota:')) {
+      skipNext = false;
+    }
+  }
+  
+  // Sort Akrab benefits
+  if (isAkrab) {
+    benefits.sort((a, b) => {
+      const order = ['Kuota Bersama', 'Kuota Nasional', 'Kuota Lokal 2', 'Kuota Lokal 3', 'Kuota Lokal 4', 'My Reward'];
+      const aIndex = order.indexOf(a.name);
+      const bIndex = order.indexOf(b.name);
+      if (aIndex === -1 && bIndex === -1) return 0;
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
+  }
+  
+  // Format with alignment
+  return formatBenefitsWithAlignment(benefits);
+};
+
+// Function untuk format benefits dengan alignment yang rapi
+const formatBenefitsWithAlignment = (benefits) => {
+  if (benefits.length === 0) return [];
+  
+  let maxNameLength = Math.max(...benefits.map(b => b.name.length));
+  let maxValueLength = Math.max(...benefits.map(b => {
+    const valueOnly = b.sisa === '0' ? '0' : b.sisa.replace(/\s*(GB|MB|KB)$/i, '');
+    return valueOnly.length;
+  }));
+  
+  return benefits.map(benefit => {
+    const paddedName = benefit.name.padEnd(maxNameLength);
+    
+    let sisaFormatted;
+    if (benefit.sisa === '0') {
+      sisaFormatted = '0'.padStart(maxValueLength) + ' GB';
+    } else {
+      const valueMatch = benefit.sisa.match(/^(.*?)\s*(GB|MB|KB)?$/i);
+      if (valueMatch) {
+        const value = valueMatch[1];
+        const unit = valueMatch[2] || 'GB';
+        sisaFormatted = value.padStart(maxValueLength) + ' ' + unit;
+      } else {
+        sisaFormatted = benefit.sisa.padStart(maxValueLength + 3);
+      }
+    }
+    
+    return `<code>🔖 ${paddedName} : ${sisaFormatted}</code>`;
+  });
+};
+
+// ===== END FORMATTING FUNCTIONS =====
+
 // Storage untuk dompul states
 const dompulStates = new Map(); // key: chatId, value: { step, inputMessageId, timeoutId }
 
@@ -476,325 +759,84 @@ module.exports = (bot) => {
             }
 
             // Jika bukan error message, atau ada error tapi tetap ada data basic, lanjutkan parsing normal
-            // Extract informasi dasar
-            let formattedResult = `├──────────SUKSES──────────┤\n\n`;
-
-            // Extract dan format nomor
-            const msisdnMatch = rawData.match(/MSISDN:\s*(\d+)/);
-            if (msisdnMatch) {
-              let displayNumber = msisdnMatch[1];
-              if (displayNumber.startsWith('62')) {
-                displayNumber = '0' + displayNumber.substring(2);
-              }
-              formattedResult += `💌 <b>Nomor          :</b> <code>${displayNumber}</code>\n`;
-            }
-
-            // Extract tipe kartu
-            const tipeKartuMatch = rawData.match(/Tipe Kartu:\s*([^\n]+)/);
-            if (tipeKartuMatch) {
-              formattedResult += `📧 <b>Tipe              :</b> ${tipeKartuMatch[1]} (PREPAID)\n`;
-            }
-
-            // Extract dukcapil
-            const dukcapilMatch = rawData.match(/Status Dukcapil:\s*([^\n]+)/);
-            if (dukcapilMatch) {
-              formattedResult += `📧 <b>Dukcapil       :</b> ${dukcapilMatch[1]} ✅\n`;
-            }
-
-            // Extract umur kartu
-            const umurKartuMatch = rawData.match(/Umur Kartu:\s*([^\n]+)/);
-            if (umurKartuMatch) {
-              let umur = umurKartuMatch[1].replace(/\s*0 Bulan/g, '').trim();
-              formattedResult += `📧 <b>Umur Kartu  :</b> ${umur}\n`;
-            }
-
-            // Extract jaringan (dari Status 4G)
-            const status4gMatch = rawData.match(/Status 4G:\s*([^\n]+)/);
-            if (status4gMatch) {
-              formattedResult += `📶 <b>Jaringan       :</b> ${status4gMatch[1]}\n`;
-            }
-
-            // Calculate tenggang (masa berakhir - sekarang) with accurate Jakarta timezone
-            const masaBerakhirMatch = rawData.match(/Masa Berakhir Tenggang:\s*([^\n]+)/);
-            if (masaBerakhirMatch) {
-              try {
-                const diffDays = calculateDaysDiff(masaBerakhirMatch[1]);
-                formattedResult += `⚡ <b>Tenggang     :</b> ${formatDaysDiff(diffDays)}\n\n`;
-              } catch (e) {
-                formattedResult += `⚡ <b>Tenggang     :</b> ${masaBerakhirMatch[1]}\n\n`;
-              }
-            }
-
-            // Extract quota info
-            const quotaSections = rawData.split('🎁 Quota:').slice(1);
-            let akrabPackages = []; // Only Paket Akrab packages
-            let otherPackages = []; // Non-Paket Akrab packages
-            let kuotaData = [];
             
-            for (const section of quotaSections) {
-              const quotaNameMatch = section.match(/^([^\n]+)/);
-              const aktifHinggaMatch = section.match(/🍂 Aktif Hingga:\s*([^\n]+)/);
-              
-              if (quotaNameMatch && aktifHinggaMatch) {
-                const packageName = quotaNameMatch[1].trim();
-                
-                // Separate packages based on whether they contain "Paket Akrab"
-                if (packageName.toLowerCase().includes('paket akrab')) {
-                  akrabPackages.push({
-                    name: packageName,
-                    expiry: aktifHinggaMatch[1]
-                  });
-                } else {
-                  otherPackages.push({
-                    name: packageName,
-                    expiry: aktifHinggaMatch[1]
-                  });
-                }
-                
-                // Extract benefits dari section ini
-                const benefits = section.split('🎁 Benefit:').slice(1);
-                
-                for (const benefit of benefits) {
-                  const benefitNameMatch = benefit.match(/^([^\n]+)/);
-                  const tipeKuotaMatch = benefit.match(/🎁 Tipe Kuota:\s*([^\n]+)/);
-                  const kuotaMatch = benefit.match(/🎁 Kuota:\s*([^\n]+)/);
-                  const sisaKuotaMatch = benefit.match(/🌲 Sisa Kuota:\s*([^\n]+)/);
-
-                  if (benefitNameMatch && tipeKuotaMatch && tipeKuotaMatch[1] === 'DATA' && kuotaMatch && sisaKuotaMatch) {
-                    let benefitName = benefitNameMatch[1].trim();
-                    let totalKuota = kuotaMatch[1];
-                    let sisaKuota = sisaKuotaMatch[1];
-                    
-                    // Keep original benefit names for better identification
-                    // No mapping to simplified names
-                    
-                    kuotaData.push({
-                      name: benefitName,
-                      total: totalKuota,
-                      sisa: sisaKuota,
-                      packageName: packageName
-                    });
-                  }
-                }
-              }
-            }
-
-            // Format Paket Akrab packages (merged)
-            if (akrabPackages.length > 0) {
-              const akrabNames = akrabPackages.map(pkg => pkg.name);
-              formattedResult += `✨ <b>${akrabNames.join(' + ')} :</b>\n`;
-              
-              // Use first expiry date for merged display
-              let expiry = akrabPackages[0].expiry;
-              let remainingDays = '';
-              
-              if (expiry.match(/\d{4}-\d{2}-\d{2}/)) {
-                const diffDays = calculateDaysDiff(expiry.split(' ')[0]);
-                remainingDays = formatPackageExpiry(diffDays);
-                
-                const jakartaDate = parseToJakartaDate(expiry.split(' ')[0]);
-                expiry = jakartaDate ? formatToDDMMYYYY(jakartaDate) : expiry;
-              } else {
-                remainingDays = `(⚡30 HARI)`;
-              }
-              
-              formattedResult += `🌙 <b>Aktif Hingga :</b> ${expiry} ${remainingDays}\n\n`;
-            }
-
-            // Process kuota data - filter Kuota Bersama to keep only the smallest one
-            let processedKuota = [];
-            let kuotaBersamaEntries = [];
+            // ===== GUNAKAN FORMATTING DARI d.js =====
             
-            for (const kuota of kuotaData) {
-              // Check if this kuota belongs to Paket Akrab
-              const isFromAkrab = akrabPackages.some(pkg => pkg.name === kuota.packageName);
-              
-              if (isFromAkrab) {
-                // Apply simplified naming for Paket Akrab benefits
-                let benefitName = kuota.name;
-                if (benefitName.includes('24jam di semua jaringan')) {
-                  benefitName = 'Kuota Bersama';
-                } else if (benefitName.includes('Nasional')) {
-                  benefitName = 'Kuota Nasional';
-                } else if (benefitName.includes('myRewards')) {
-                  benefitName = 'My Reward';
-                }
-                
-                if (benefitName === 'Kuota Bersama') {
-                  kuotaBersamaEntries.push({
-                    name: benefitName,
-                    total: kuota.total,
-                    sisa: kuota.sisa
-                  });
-                } else {
-                  processedKuota.push({
-                    name: benefitName,
-                    total: kuota.total,
-                    sisa: kuota.sisa
-                  });
-                }
-              }
-            }
-            
-            // If there are multiple Kuota Bersama entries, keep only the one with smallest total
-            if (kuotaBersamaEntries.length > 0) {
-              let smallestKuotaBersama = kuotaBersamaEntries[0];
-              
-              for (const kuota of kuotaBersamaEntries) {
-                const currentTotal = parseFloat(kuota.total.replace(/[^\d.]/g, ''));
-                const smallestTotal = parseFloat(smallestKuotaBersama.total.replace(/[^\d.]/g, ''));
-                
-                if (currentTotal < smallestTotal) {
-                  smallestKuotaBersama = kuota;
-                }
-              }
-              
-              processedKuota.unshift(smallestKuotaBersama); // Add to beginning
-            }
-
-            // Sort processedKuota in specific order: Kuota Bersama -> Kuota Nasional -> Kuota Lokal 2/3/4 -> My Reward
-            processedKuota.sort((a, b) => {
-              const getOrder = (name) => {
-                if (name === 'Kuota Bersama') return 1;
-                if (name === 'Kuota Nasional') return 2;
-                if (name === 'Kuota Lokal 2') return 3;
-                if (name === 'Kuota Lokal 3') return 4;
-                if (name === 'Kuota Lokal 4') return 5;
-                if (name === 'My Reward') return 6;
-                return 7; // Others at the end
-              };
-              return getOrder(a.name) - getOrder(b.name);
-            });
-
-            // Format kuota data from Paket Akrab with <code> for alignment
-            if (processedKuota.length > 0) {
-              let maxNameLength = 0;
-              let maxValueLength = 0;
-              
-              // Find max lengths for name and value alignment
-              for (const kuota of processedKuota) {
-                if (kuota.name.length > maxNameLength) {
-                  maxNameLength = kuota.name.length;
-                }
-                
-                // Extract number part for alignment (remove unit like GB, MB, KB)
-                let valueOnly = kuota.sisa === '0' ? '0' : kuota.sisa.replace(/\s*(GB|MB|KB)$/i, '');
-                if (valueOnly.length > maxValueLength) {
-                  maxValueLength = valueOnly.length;
-                }
-              }
-              
-              for (const kuota of processedKuota) {
-                const paddedName = kuota.name.padEnd(maxNameLength);
-                
-                // Format sisa with aligned GB
-                let sisaFormatted;
-                if (kuota.sisa === '0') {
-                  sisaFormatted = '0'.padStart(maxValueLength) + ' GB';
-                } else {
-                  const valueMatch = kuota.sisa.match(/^(.*?)\s*(GB|MB|KB)?$/i);
-                  if (valueMatch) {
-                    const value = valueMatch[1];
-                    const unit = valueMatch[2] || 'GB';
-                    sisaFormatted = value.padStart(maxValueLength) + ' ' + unit;
+            // Filter out Volte status lines, Tipe Kuota, and Kuota lines, then format other fields
+            const filteredHasil = rawData
+              .split('\n')
+              .filter(line => {
+                const trimmedLine = line.trim();
+                return !trimmedLine.startsWith('Status Volte Device:') &&
+                       !trimmedLine.startsWith('Status Volte Area:') &&
+                       !trimmedLine.startsWith('Status Volte Simcard:') &&
+                       !line.includes('🎁 Tipe Kuota:') &&
+                       !line.includes('🎁 Kuota:');
+              })
+              .map(line => {
+                // Format umur kartu untuk menghilangkan "0 Tahun" dan tampilan yang lebih bersih
+                if (line.trim().startsWith('Umur Kartu:')) {
+                  let umurText = line.replace('Umur Kartu:', '').trim();
+                  
+                  // Parse tahun dan bulan
+                  const tahunMatch = umurText.match(/(\d+)\s*Tahun/);
+                  const bulanMatch = umurText.match(/(\d+)\s*Bulan/);
+                  
+                  let tahun = tahunMatch ? parseInt(tahunMatch[1]) : 0;
+                  let bulan = bulanMatch ? parseInt(bulanMatch[1]) : 0;
+                  
+                  // Format berdasarkan nilai
+                  let formattedUmur = '';
+                  if (tahun > 0 && bulan > 0) {
+                    formattedUmur = `${tahun} Tahun ${bulan} Bulan`;
+                  } else if (tahun > 0 && bulan === 0) {
+                    formattedUmur = `${tahun} Tahun`;
+                  } else if (tahun === 0 && bulan > 0) {
+                    formattedUmur = `${bulan} Bulan`;
                   } else {
-                    sisaFormatted = kuota.sisa.padStart(maxValueLength + 3); // fallback
+                    // Jika tidak ada match atau keduanya 0, gunakan original text
+                    formattedUmur = umurText || '-';
                   }
+                  
+                  return `Umur Kartu: ${formattedUmur}`;
                 }
                 
-                formattedResult += `<code>🔖 ${paddedName} : ${sisaFormatted}</code>\n`;
-              }
-            }
-
-            // Format other packages (non-Paket Akrab) separately
-            for (const otherPkg of otherPackages) {
-              formattedResult += `\n✨ <b>${otherPkg.name} :</b>\n`;
-              
-              let expiry = otherPkg.expiry;
-              let remainingDays = '';
-              
-              if (expiry.match(/\d{4}-\d{2}-\d{2}/)) {
-                const diffDays = calculateDaysDiff(expiry.split(' ')[0]);
-                remainingDays = formatPackageExpiry(diffDays);
-                
-                const jakartaDate = parseToJakartaDate(expiry.split(' ')[0]);
-                expiry = jakartaDate ? formatToDDMMYYYY(jakartaDate) : expiry;
-              } else {
-                remainingDays = `(⚡30 HARI)`;
-              }
-              
-              formattedResult += `🌙 <b>Aktif Hingga :</b> ${expiry} ${remainingDays}\n\n`;
-              
-              // Get kuota for this specific package
-              let otherKuotaData = [];
-              for (const kuota of kuotaData) {
-                if (kuota.packageName === otherPkg.name) {
-                  let customName = kuota.name;
+                // Format Status Dukcapil dengan simbol
+                if (line.trim().startsWith('Status Dukcapil:')) {
+                  let dukcapilText = line.replace('Status Dukcapil:', '').trim();
                   
-                  // Custom naming rules for non-Paket Akrab benefits
-                  if (customName.includes('24 Jam Semua Jaringan')) {
-                    // Check if it's an application-specific quota first
-                    if (customName.match(/YouTube|Instagram|Facebook|Netflix|Iflix|VIU|Joox/i)) {
-                      // For application-specific quotas, show only the app name
-                      const appMatch = customName.match(/(YouTube|Instagram|Facebook|Netflix|Iflix|VIU|Joox)/i);
-                      if (appMatch) {
-                        customName = appMatch[1];
-                      }
-                    }
-                    // For non-application quotas, replace "24 Jam Semua Jaringan" with "Kuota reguler"
-                    else {
-                      customName = customName.replace('24 Jam Semua Jaringan', 'Kuota reguler').replace(/\s+/g, ' ').trim();
-                    }
-                  }
-                  
-                  otherKuotaData.push({
-                    name: customName,
-                    total: kuota.total,
-                    sisa: kuota.sisa
-                  });
-                }
-              }
-              
-              // Format kuota for this package
-              if (otherKuotaData.length > 0) {
-                let maxNameLength = 0;
-                let maxValueLength = 0;
-                
-                // Find max lengths for name and value alignment
-                for (const kuota of otherKuotaData) {
-                  if (kuota.name.length > maxNameLength) {
-                    maxNameLength = kuota.name.length;
-                  }
-                  
-                  // Extract number part for alignment (remove unit like GB, MB, KB)
-                  let valueOnly = kuota.sisa === '0' ? '0' : kuota.sisa.replace(/\s*(GB|MB|KB)$/i, '');
-                  if (valueOnly.length > maxValueLength) {
-                    maxValueLength = valueOnly.length;
-                  }
-                }
-                
-                for (const kuota of otherKuotaData) {
-                  const paddedName = kuota.name.padEnd(maxNameLength);
-                  
-                  // Format sisa with aligned GB
-                  let sisaFormatted;
-                  if (kuota.sisa === '0') {
-                    sisaFormatted = '0'.padStart(maxValueLength) + ' GB';
+                  if (dukcapilText === 'Sudah') {
+                    return `Status Dukcapil: ${dukcapilText} ✅`;
+                  } else if (dukcapilText === 'Belum') {
+                    return `Status Dukcapil: ${dukcapilText} ❌`;
                   } else {
-                    const valueMatch = kuota.sisa.match(/^(.*?)\s*(GB|MB|KB)?$/i);
-                    if (valueMatch) {
-                      const value = valueMatch[1];
-                      const unit = valueMatch[2] || 'GB';
-                      sisaFormatted = value.padStart(maxValueLength) + ' ' + unit;
-                    } else {
-                      sisaFormatted = kuota.sisa.padStart(maxValueLength + 3); // fallback
-                    }
+                    return line; // Jika status lain, biarkan seperti semula
                   }
-                  
-                  formattedResult += `<code>🔖 ${paddedName} : ${sisaFormatted}</code>\n`;
                 }
-              }
-            }
+                
+                // Format Masa Aktif dengan format tanggal yang readable
+                if (line.trim().startsWith('Masa Aktif:')) {
+                  let masaAktifText = line.replace('Masa Aktif:', '').trim();
+                  let formattedDate = formatDateToReadable(masaAktifText);
+                  return `Masa Aktif: ${formattedDate}`;
+                }
+                
+                // Format Masa Berakhir Tenggang dengan format tanggal yang readable
+                if (line.trim().startsWith('Masa Berakhir Tenggang:')) {
+                  let tengganganText = line.replace('Masa Berakhir Tenggang:', '').trim();
+                  let formattedDate = formatDateToReadable(tengganganText);
+                  return `Masa Tenggang: ${formattedDate}`;
+                }
+                
+                return line;
+              })
+              .join('\n');
+
+            // Merge packages with similar names and process benefits menggunakan fungsi dari d.js
+            let mergedResult = mergePackagesByName(filteredHasil);
+            
+            // Final formatting untuk Telegram dengan header SUKSES
+            formattedResult = `├──────────SUKSES──────────┤\n\n${mergedResult}\n\n`;
             
             // Add footer dengan error message jika ada
             formattedResult += `├──────────────────────────┤\n`;
@@ -897,3 +939,8 @@ module.exports = (bot) => {
 module.exports.isDompulEnabled = isDompulEnabled;
 module.exports.isAuthorized = isAuthorized;
 module.exports.dompulStates = dompulStates;
+module.exports.formatDateToReadable = formatDateToReadable;
+module.exports.formatExpiryDaysOnly = formatExpiryDaysOnly;
+module.exports.mergePackagesByName = mergePackagesByName;
+module.exports.processBenefitsForPackage = processBenefitsForPackage;
+module.exports.formatBenefitsWithAlignment = formatBenefitsWithAlignment;

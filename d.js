@@ -428,7 +428,7 @@ const checkDompulRaw = async (nomor_hp) => {
           if (line.trim().startsWith('Masa Berakhir Tenggang:')) {
             let tengganganText = line.replace('Masa Berakhir Tenggang:', '').trim();
             let formattedDate = formatDateToReadable(tengganganText);
-            return `Masa Berakhir Tenggang: ${formattedDate}`;
+            return `Masa Tenggang: ${formattedDate}`;
           }
           
           return line;
